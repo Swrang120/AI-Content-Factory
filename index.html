@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="Private AI Content Factory — content planning, production and publishing control center.">
+  <title>AI Content Factory</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">AC</div>
+        <div><strong>AI Content</strong><span>Factory</span></div>
+      </div>
+      <nav id="nav">
+        <button class="nav-item active" data-view="dashboard">⌂ <span>Dashboard</span></button>
+        <button class="nav-item" data-view="content">▣ <span>Content</span></button>
+        <button class="nav-item" data-view="categories">◈ <span>Categories</span></button>
+        <button class="nav-item" data-view="schedule">◷ <span>Schedule</span></button>
+        <button class="nav-item" data-view="accounts">◎ <span>Platforms</span></button>
+        <button class="nav-item" data-view="settings">⚙ <span>Settings</span></button>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="status-dot"></span> API integrations ready later
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">PRIVATE WORKSPACE</p>
+          <h1 id="page-title">Dashboard</h1>
+        </div>
+        <div class="top-actions">
+          <button class="icon-btn" id="themeBtn" title="Toggle theme">☼</button>
+          <button class="primary" id="newContentBtn">＋ New Content</button>
+        </div>
+      </header>
+      <section id="view" class="view"></section>
+    </main>
+  </div>
+
+  <div class="modal hidden" id="contentModal">
+    <div class="modal-card">
+      <div class="modal-head"><div><p class="eyebrow">CONTENT PLANNER</p><h2>Create content</h2></div><button class="icon-btn" id="closeModal">×</button></div>
+      <form id="contentForm">
+        <label>Title / Topic<input name="title" required placeholder="e.g. New Bodo song promotion"></label>
+        <div class="form-grid">
+          <label>Category<select name="category" id="categorySelect"></select></label>
+          <label>Format<select name="format"><option>Short Video</option><option>Long Video</option><option>Reel</option><option>Promo</option></select></label>
+        </div>
+        <div class="form-grid">
+          <label>Language<select name="language"><option>English</option><option>Hindi</option><option>Bodo</option><option>Assamese</option><option>Hindi + Bodo</option></select></label>
+          <label>Status<select name="status"><option>Idea</option><option>Planned</option><option>Ready</option><option>Approval</option></select></label>
+        </div>
+        <label>Notes<textarea name="notes" rows="4" placeholder="Brief, source, CTA, or production notes..."></textarea></label>
+        <button class="primary full" type="submit">Add to Content Queue</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

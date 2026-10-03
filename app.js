@@ -1,43 +1,95 @@
-const KEY="acf_v1";
-const defaultData={categories:[
-{id:"music",icon:"🎵",name:"Music Promotion",desc:"Promote songs, artists, releases and music stories.",enabled:true},
-{id:"news",icon:"📰",name:"News & Updates",desc:"Research-backed current updates with source tracking.",enabled:true},
-{id:"product",icon:"🛍️",name:"Product Promotion",desc:"Create product explainers, demos and promotional videos.",enabled:true},
-{id:"sports",icon:"⚽",name:"Sports Information",desc:"Match, player and sports-information content.",enabled:true},
-{id:"editing",icon:"🎬",name:"Editing Knowledge",desc:"Video editing, creator tips and tutorials.",enabled:true},
-{id:"tech",icon:"🤖",name:"AI & Technology",desc:"Tools, workflows and technology explainers.",enabled:true}],
-content:[
-{id:1,title:"Welcome to AI Content Factory",category:"Editing Knowledge",format:"Short Video",language:"English",status:"Ready",notes:"Foundation demo item."},
-{id:2,title:"Music Promotion Workflow",category:"Music Promotion",format:"Reel",language:"Hindi + Bodo",status:"Planned",notes:"Future AI pipeline."},
-{id:3,title:"Product Promotion Template",category:"Product Promotion",format:"Promo",language:"Hindi",status:"Idea",notes:"Connect product research later."}],
-schedule:[],settings:{autoGenerate:false,approval:true,autoPublish:false}};
+const KEY="acf_v2";
+const defaultData={
+  categories:[
+    {id:"music",icon:"🎵",name:"Music Promotion",desc:"Promote songs, artists, releases and music stories.",enabled:true},
+    {id:"news",icon:"📰",name:"News & Updates",desc:"Research-backed current updates with source tracking.",enabled:true},
+    {id:"product",icon:"🛍️",name:"Product Promotion",desc:"Create product explainers, demos and promotional videos.",enabled:true},
+    {id:"sports",icon:"⚽",name:"Sports Information",desc:"Match, player and sports-information content.",enabled:true},
+    {id:"editing",icon:"🎬",name:"Editing Knowledge",desc:"Video editing, creator tips and tutorials.",enabled:true},
+    {id:"tech",icon:"🤖",name:"AI & Technology",desc:"Tools, workflows and technology explainers.",enabled:true}
+  ],
+  content:[
+    {id:1,title:"Welcome to AI Content Factory",category:"Editing Knowledge",format:"Short Video",language:"English",status:"Ready",notes:"Foundation demo item."},
+    {id:2,title:"Music Promotion Workflow",category:"Music Promotion",format:"Reel",language:"Hindi + Bodo",status:"Planned",notes:"Future AI pipeline."},
+    {id:3,title:"Product Promotion Template",category:"Product Promotion",format:"Promo",language:"Hindi",status:"Idea",notes:"Connect product research later."}
+  ],
+  schedule:[],
+  settings:{autoGenerate:false,approval:true,autoPublish:false}
+};
 let data=JSON.parse(localStorage.getItem(KEY)||"null")||defaultData;
 const save=()=>localStorage.setItem(KEY,JSON.stringify(data));
-const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
-const statusClass=s=>s.toLowerCase().replace(/\s/g,"");
+const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#039;"}[m]));
+const statusClass=s=>String(s).toLowerCase().replace(/\s/g,"");
 const view=document.getElementById("view");
 const title=document.getElementById("page-title");
-function renderDashboard(){title.textContent="Dashboard";const counts={Idea:0,Planned:0,Ready:0,Approval:0};data.content.forEach(x=>counts[x.status]=(counts[x.status]||0)+1);view.innerHTML=
-`<div class="hero"><p class="eyebrow">PRIVATE AI WORKSPACE</p><h2>Your content production command center.</h2><p>Plan now. Add AI generation, voice, video rendering, research and publishing APIs later without rebuilding the dashboard.</p></div>
-<div class="cards">
-<div class="card"><div class="metric-label">Total Content</div><div class="metric">${data.content.length}</div><div class="metric-note">In your queue</div></div>
-<div class="card"><div class="metric-label">Ready</div><div class="metric">${counts.Ready||0}</div><div class="metric-note">Production-ready</div></div>
-<div class="card"><div class="metric-label">Scheduled</div><div class="metric">${data.schedule.length}</div><div class="metric-note">Publishing slots</div></div>
-<div class="card"><div class="metric-label">Categories</div><div class="metric">${data.categories.filter(x=>x.enabled).length}</div><div class="metric-note">Active categories</div></div></div>
-<div class="two-col"><div class="table-card"><div class="section-head"><h3>Production Pipeline</h3><span class="badge">API-free foundation</span></div><div class="pipeline">
-<div class="stage"><strong>${counts.Idea||0}</strong><span>IDEAS</span></div><div class="stage"><strong>${counts.Planned||0}</strong><span>PLANNED</span></div><div class="stage"><strong>${counts.Ready||0}</strong><span>READY</span></div><div class="stage"><strong>${counts.Approval||0}</strong><span>APPROVAL</span></div><div class="stage"><strong>0</strong><span>PUBLISHED</span></div></div></div>
-<div class="table-card"><div class="section-head"><h3>Latest Content</h3><button class="small-btn" onclick="setView('content')">View all</button></div>${data.content.slice(-4).reverse().map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.title)}</div><div class="queue-meta">${esc(x.category)} · ${esc(x.format)}</div></div><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></div>`).join("")||'<div class="empty">No content yet.</div>'}</div></div>`;}
-function renderContent(){title.textContent="Content";view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Content Queue</h3><span class="muted">Ideas, planned videos and future AI-generated assets.</span></div><button class="primary" onclick="openModal()">＋ Add Content</button></div><table class="table"><thead><tr><th>Title</th><th>Category</th><th>Format</th><th>Language</th><th>Status</th></tr></thead><tbody>${data.content.map(x=>`<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.category)}</td><td>${esc(x.format)}</td><td>${esc(x.language)}</td><td><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></td></tr>`).join("")}</tbody></table></div>`;}
-function renderCategories(){title.textContent="Categories";view.innerHTML=`<div class="grid">${data.categories.map(c=>`<div class="category-card"><div class="category-icon">${c.icon}</div><h3>${esc(c.name)}</h3><p>${esc(c.desc)}</p><div class="category-actions"><span class="badge ${c.enabled?"ready":""}">${c.enabled?"Active":"Disabled"}</span><button class="small-btn" onclick="toggleCategory('${c.id}')">${c.enabled?"Disable":"Enable"}</button></div></div>`).join("")}</div>`;}
-function renderSchedule(){title.textContent="Schedule";view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Publishing Schedule</h3><span class="muted">Scheduling engine is ready for future platform adapters.</span></div></div>${data.schedule.length?data.schedule.map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.title)}</div><div class="queue-meta">${esc(x.platform)} · ${esc(x.time)}</div></div><span class="badge">Scheduled</span></div>`).join(""):'<div class="empty">No schedules yet.<br><button class="small-btn" onclick="openModal()">Create content first</button></div>'}</div>`;}
-function renderAccounts(){title.textContent="Platforms";const platforms=[["YouTube","Official API/OAuth adapter — future"],["Facebook","Meta publishing adapter — future"],["Instagram","Publishing adapter — future"],["Other platforms","Add connector when required"]];view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Connected Platforms</h3><span class="muted">No credentials are stored in this API-free version.</span></div></div>${platforms.map(p=>`<div class="platform"><div><div class="platform-name">${p[0]}</div><small>${p[1]}</small></div><span class="badge">Not connected</span></div>`).join("")}</div>`;}
-function renderSettings(){title.textContent="Settings";view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">These switches only store local preferences until the automation engine is connected.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically when platform APIs are connected.")}</div></div>`;}
+
+function renderDashboard(){
+  title.textContent="Dashboard";
+  const counts={Idea:0,Planned:0,Ready:0,Approval:0};
+  data.content.forEach(x=>counts[x.status]=(counts[x.status]||0)+1);
+  view.innerHTML=`
+  <div class="hero"><p class="eyebrow">PRIVATE AI WORKSPACE</p><h2>Your content production command center.</h2><p>Generate, review, schedule and publish from one workspace. YouTube publishing is now connected through the secure server adapter.</p></div>
+  <div class="cards">
+    <div class="card"><div class="metric-label">Total Content</div><div class="metric">${data.content.length}</div><div class="metric-note">In your queue</div></div>
+    <div class="card"><div class="metric-label">Ready</div><div class="metric">${counts.Ready||0}</div><div class="metric-note">Production-ready</div></div>
+    <div class="card"><div class="metric-label">Scheduled</div><div class="metric">${data.schedule.length}</div><div class="metric-note">Publishing slots</div></div>
+    <div class="card"><div class="metric-label">Categories</div><div class="metric">${data.categories.filter(x=>x.enabled).length}</div><div class="metric-note">Active categories</div></div>
+  </div>
+  <div class="two-col">
+    <div class="table-card"><div class="section-head"><h3>Production Pipeline</h3><span class="badge">YouTube adapter ready</span></div><div class="pipeline">
+      <div class="stage"><strong>${counts.Idea||0}</strong><span>IDEAS</span></div><div class="stage"><strong>${counts.Planned||0}</strong><span>PLANNED</span></div><div class="stage"><strong>${counts.Ready||0}</strong><span>READY</span></div><div class="stage"><strong>${counts.Approval||0}</strong><span>APPROVAL</span></div><div class="stage"><strong>—</strong><span>YOUTUBE</span></div>
+    </div></div>
+    <div class="table-card"><div class="section-head"><h3>Latest Content</h3><button class="small-btn" onclick="setView('content')">View all</button></div>
+      ${data.content.slice(-4).reverse().map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.title)}</div><div class="queue-meta">${esc(x.category)} · ${esc(x.format)}</div></div><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></div>`).join("")||'<div class="empty">No content yet.</div>'}
+    </div>
+  </div>`;
+}
+function renderContent(){
+  title.textContent="Content";
+  view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Content Queue</h3><span class="muted">Ideas, planned videos and future AI-generated assets.</span></div><button class="primary" onclick="openModal()">＋ Add Content</button></div><table class="table"><thead><tr><th>Title</th><th>Category</th><th>Format</th><th>Language</th><th>Status</th></tr></thead><tbody>${data.content.map(x=>`<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.category)}</td><td>${esc(x.format)}</td><td>${esc(x.language)}</td><td><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></td></tr>`).join("")}</tbody></table></div>`;
+}
+function renderCategories(){
+  title.textContent="Categories";
+  view.innerHTML=`<div class="grid">${data.categories.map(c=>`<div class="category-card"><div class="category-icon">${c.icon}</div><h3>${esc(c.name)}</h3><p>${esc(c.desc)}</p><div class="category-actions"><span class="badge ${c.enabled?"ready":""}">${c.enabled?"Active":"Disabled"}</span><button class="small-btn" onclick="toggleCategory('${c.id}')">${c.enabled?"Disable":"Enable"}</button></div></div>`).join("")}</div>`;
+}
+function renderSchedule(){
+  title.textContent="Schedule";
+  view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Publishing Schedule</h3><span class="muted">Schedules will be handed to the publishing worker.</span></div></div>${data.schedule.length?data.schedule.map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.title)}</div><div class="queue-meta">${esc(x.platform)} · ${esc(x.time)}</div></div><span class="badge">Scheduled</span></div>`).join(""):'<div class="empty">No schedules yet.<br><button class="small-btn" onclick="openModal()">Create content first</button></div>'}</div>`;
+}
+async function youtubeStatus(){
+  try{
+    const r=await fetch("/api/youtube/status");
+    return await r.json();
+  }catch(e){return {ok:false,connected:false,error:"Backend is not running"};}
+}
+function renderAccounts(){
+  title.textContent="Platforms";
+  view.innerHTML=`<div class="table-card">
+    <div class="section-head"><div><h3>Connected Platforms</h3><span class="muted">YouTube uses OAuth; secrets stay server-side.</span></div></div>
+    <div class="platform"><div><div class="platform-name">YouTube</div><small id="ytStatusText">Checking connection…</small></div><div class="platform-actions"><span id="ytBadge" class="badge">Checking</span><button class="small-btn" onclick="connectYouTube()">Connect</button></div></div>
+    <div class="platform"><div><div class="platform-name">Facebook</div><small>Meta publishing adapter</small></div><span class="badge">Not connected</span></div>
+    <div class="platform"><div><div class="platform-name">Instagram</div><small>Publishing adapter</small></div><span class="badge">Not connected</span></div>
+    <div class="table-card" style="margin-top:14px"><div class="section-head"><div><h3>Upload handoff</h3><span class="muted">The production engine can call the same YouTube adapter with a rendered video URL.</span></div></div><p class="muted">For now, upload automation expects a server-accessible video asset URL. This avoids sending large MP4 files through the dashboard request.</p></div>
+  </div>`;
+  youtubeStatus().then(s=>{
+    const badge=document.getElementById("ytBadge"), textEl=document.getElementById("ytStatusText");
+    if(!badge||!textEl)return;
+    if(s.connected){badge.textContent="Connected";badge.className="badge ready";textEl.textContent=`Channel: ${s.channel?.title||"Connected"}`;}
+    else {badge.textContent="Not connected";textEl.textContent=s.error||"Connect your YouTube channel";}
+  });
+}
+function connectYouTube(){window.location.href="/auth/youtube";}
+function renderSettings(){
+  title.textContent="Settings";
+  view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">These switches control the future generation and publishing workers.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically after QA when YouTube is connected.")}</div></div>`;
+}
 function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button class="switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
 function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings}[v]||renderDashboard)();}
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
 function openModal(){document.getElementById("categorySelect").innerHTML=data.categories.filter(c=>c.enabled).map(c=>`<option>${esc(c.name)}</option>`).join("");document.getElementById("contentModal").classList.remove("hidden");}
 function closeModal(){document.getElementById("contentModal").classList.add("hidden")}
-document.getElementById("newContentBtn").onclick=openModal;document.getElementById("closeModal").onclick=closeModal;
+document.getElementById("newContentBtn").onclick=openModal;
+document.getElementById("closeModal").onclick=closeModal;
 document.getElementById("contentModal").addEventListener("click",e=>{if(e.target.id==="contentModal")closeModal()});
 document.getElementById("contentForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.target);data.content.push({id:Date.now(),title:f.get("title"),category:f.get("category"),format:f.get("format"),language:f.get("language"),status:f.get("status"),notes:f.get("notes")});save();e.target.reset();closeModal();setView("content")});
 function toggleCategory(id){const c=data.categories.find(x=>x.id===id);if(c)c.enabled=!c.enabled;save();renderCategories();}

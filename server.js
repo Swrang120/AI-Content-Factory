@@ -9,6 +9,7 @@ const PORT=process.env.PORT||3456;
 const ROOT=__dirname;
 const TOKEN_FILE=path.join(ROOT,".data","youtube-token.json");
 const SETTINGS_FILE=path.join(ROOT,".data","factory-settings.json");
+const JOBS_FILE=path.join(ROOT,".data","research-jobs.json");
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];
 app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
 app.use(express.json({limit:"1mb"})); app.use(express.static(ROOT));
@@ -18,9 +19,56 @@ function loadTokens(){if(process.env.YOUTUBE_REFRESH_TOKEN)return {refresh_token
 function saveTokens(tokens){fs.mkdirSync(path.dirname(TOKEN_FILE),{recursive:true});fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));}
 function loadSettings(){try{return JSON.parse(fs.readFileSync(SETTINGS_FILE,"utf8"));}catch{return {autoGenerate:false,approval:true,autoPublish:false};}}
 function saveSettings(settings){fs.mkdirSync(path.dirname(SETTINGS_FILE),{recursive:true});fs.writeFileSync(SETTINGS_FILE,JSON.stringify(settings,null,2));}
+function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
+function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}
+function jobId(){return "job_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);}
 async function youtube(){const tokens=loadTokens();if(!tokens)throw new Error("YouTube is not connected. Open Platforms and connect YouTube first.");const client=oauthClient();client.setCredentials(tokens);client.on("tokens",t=>saveTokens({...tokens,...t}));return google.youtube({version:"v3",auth:client});}
 async function generateWithChatGPT(task,fields){if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT API is not configured. Add OPENAI_API_KEY on the server.");const model=process.env.OPENAI_MODEL||"gpt-6-luna";const instructions="You are the Content Brain for a private AI Content Factory. Create original, useful, platform-safe content. Never invent factual claims when source material is provided. For current news or sports facts, use only supplied source material.";const prompt=["TASK: "+task,"","CONTENT INPUT:",JSON.stringify(fields||{},null,2),"","OUTPUT REQUIREMENTS:","Write for YouTube first. Avoid copyrighted song lyrics, copied scripts, or fabricated sources."].join("\n");const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,instructions,input:[{role:"user",content:prompt}],store:false})});const body=await response.json();if(!response.ok)throw new Error(body?.error?.message||"ChatGPT API request failed");return body.output_text||"";}
 app.get("/api/ai/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL||"gpt-6-luna"}));
+// Automatic Research → Script pipeline
+app.post("/api/pipeline/research",requireAppKey,async(req,res)=>{
+  try{
+    const {topic,category="",language="English",format="Long Video",notes="",sourceText="",sources=[]}=req.body||{};
+    if(!topic)return res.status(400).json({ok:false,error:"topic is required"});
+    const id=jobId();
+    const jobs=loadJobs();
+    jobs[id]={id,status:"researching",topic,category,language,format,notes,sources,sourceText,createdAt:new Date().toISOString()};
+    saveJobs(jobs);
+    if(process.env.MAKE_RESEARCH_WEBHOOK_URL){
+      const hook=await fetch(process.env.MAKE_RESEARCH_WEBHOOK_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:id,topic,category,language,format,notes,sourceText,sources})});
+      if(!hook.ok)throw new Error("Make research webhook returned HTTP "+hook.status);
+      jobs[id].status="research_dispatched";
+      saveJobs(jobs);
+      return res.json({ok:true,jobId:id,status:jobs[id].status,message:"Research job sent to Make.com."});
+    }
+    const research=await generateWithChatGPT("research_plan",{topic,category,language,format,notes,sourceText,sources});
+    jobs[id].research=research;
+    jobs[id].status="script_ready";
+    jobs[id].script=await generateWithChatGPT("script",{topic,category,language,format,notes,sourceText,research,sources});
+    jobs[id].status="script_ready";
+    saveJobs(jobs);
+    res.json({ok:true,jobId:id,status:jobs[id].status,research:jobs[id].research,script:jobs[id].script});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+app.get("/api/pipeline/jobs/:id",requireAppKey,(req,res)=>{
+  const job=loadJobs()[req.params.id];
+  if(!job)return res.status(404).json({ok:false,error:"Job not found"});
+  res.json({ok:true,job});
+});
+app.post("/api/pipeline/research/callback",requireAppKey,async(req,res)=>{
+  try{
+    const {jobId,research="",sources=[]}=req.body||{};
+    if(!jobId||!research)return res.status(400).json({ok:false,error:"jobId and research are required"});
+    const jobs=loadJobs(); const job=jobs[jobId];
+    if(!job)return res.status(404).json({ok:false,error:"Job not found"});
+    job.research=research; job.sources=sources.length?sources:(job.sources||[]);
+    job.status="scripting";
+    job.script=await generateWithChatGPT("script",{topic:job.topic,category:job.category,language:job.language,format:job.format,notes:job.notes,sourceText:job.sourceText,research:job.research,sources:job.sources});
+    job.status="script_ready"; job.updatedAt=new Date().toISOString(); saveJobs(jobs);
+    res.json({ok:true,jobId,status:job.status,script:job.script});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
 app.post("/api/ai/generate",requireAppKey,async(req,res)=>{try{const {task="script",topic,category="",language="English",format="Long Video",notes="",sourceText=""}=req.body||{};if(!topic)return res.status(400).json({ok:false,error:"topic is required"});res.json({ok:true,task,output:await generateWithChatGPT(task,{topic,category,language,format,notes,sourceText})});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 function requireElevenLabs(){if(!process.env.ELEVENLABS_API_KEY)throw new Error("ElevenLabs is not configured. Add ELEVENLABS_API_KEY on the server.");}
 app.get("/api/voice/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.ELEVENLABS_API_KEY,voiceId:process.env.ELEVENLABS_VOICE_ID||null,model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2"}));

@@ -1,8 +1,9 @@
 {
   "name":"ai-content-factory",
-  "version":"1.0.0",
+  "version":"1.1.0",
   "private":true,
-  "description":"Private AI Content Factory with YouTube publishing adapter",
+  "description":"Private AI Content Factory with ChatGPT content generation and YouTube publishing adapter",
   "scripts":{"start":"node server.js"},
+  "engines":{"node":">=20"},
   "dependencies":{"dotenv":"^16.4.7","express":"^4.21.2","googleapis":"^171.1.0"}
 }

@@ -146,7 +146,8 @@ function useAIResult(){
   const notes=document.querySelector('#contentForm textarea[name="notes"]');
   if(notes)notes.value=t;
 }
-\nfunction renderSettings(){
+
+function renderSettings(){
   title.textContent="Settings";
   view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">These switches control the future generation and publishing workers.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically after QA when YouTube is connected.")}</div></div>`;
 }

@@ -22,6 +22,36 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&
 const statusClass=s=>String(s).toLowerCase().replace(/\s/g,"");
 const view=document.getElementById("view");
 const title=document.getElementById("page-title");
+const AI_ROBOTS=[
+ {id:"manager",icon:"🧠",name:"Factory Manager",role:"Orchestrator",task:"Assigns jobs and controls the production pipeline.",status:"Active",progress:82},
+ {id:"research",icon:"🔎",name:"Research Bot",role:"Research & Sources",task:"Collects source material before content generation.",status:"Standby",progress:18},
+ {id:"script",icon:"✍️",name:"Script Bot",role:"Script Writer",task:"Turns approved ideas and research into scripts.",status:"Active",progress:64},
+ {id:"voice",icon:"🎙️",name:"Voice Bot",role:"Voice Production",task:"Prepares narration and voice-production jobs.",status:"Standby",progress:0},
+ {id:"visual",icon:"🖼️",name:"Visual Bot",role:"Visual Planner",task:"Plans scenes, B-roll and visual assets.",status:"Standby",progress:0},
+ {id:"editor",icon:"🎬",name:"Editor Bot",role:"Video Editor",task:"Builds the timeline from approved media assets.",status:"Standby",progress:0},
+ {id:"thumb",icon:"🎨",name:"Thumbnail Bot",role:"Thumbnail Designer",task:"Creates thumbnail concepts, text and composition briefs.",status:"Standby",progress:0},
+ {id:"qa",icon:"🛡️",name:"QA & Rights Bot",role:"Quality / Copyright",task:"Checks sources, originality, metadata and approval gates.",status:"Active",progress:36},
+ {id:"publisher",icon:"📤",name:"Publisher Bot",role:"Platform Publisher",task:"Queues approved videos for connected platforms.",status:"Standby",progress:0},
+ {id:"analytics",icon:"📊",name:"Analytics Bot",role:"Performance Monitor",task:"Tracks published content and reports performance.",status:"Standby",progress:0}
+];
+function robotCard(r){
+ const active=r.status==="Active";
+ return `<div class="robot-card"><div class="robot-top"><div class="robot-avatar">${r.icon}</div><div><div class="robot-name">${r.name}</div><div class="robot-role">${r.role}</div></div><div class="robot-status ${active?"":"idle"}"><i></i>${r.status}</div></div><div class="robot-task">${r.task}</div><div class="robot-bar"><i style="width:${r.progress}%"></i></div><div class="robot-meta"><span>${active?"Working":"Waiting for job"}</span><span>${r.progress}%</span></div></div>`;
+}
+function renderRobots(){
+ title.textContent="AI Robots";
+ const active=AI_ROBOTS.filter(r=>r.status==="Active").length;
+ view.innerHTML=`<div class="hero"><p class="eyebrow">AI CONTROL ROOM</p><h2>Every robot has one clear job.</h2><p>Monitor the production agents from one place. Statuses shown here are the factory's current control-state UI; real worker execution will update them when the background pipeline is connected.</p></div>
+ <div class="cards"><div class="card"><div class="metric-label">AI Robots</div><div class="metric">${AI_ROBOTS.length}</div><div class="metric-note">Configured roles</div></div><div class="card"><div class="metric-label">Active</div><div class="metric">${active}</div><div class="metric-note">Currently marked active</div></div><div class="card"><div class="metric-label">Standby</div><div class="metric">${AI_ROBOTS.length-active}</div><div class="metric-note">Waiting for jobs</div></div><div class="card"><div class="metric-label">Pipeline</div><div class="metric">10</div><div class="metric-note">Production roles</div></div></div>
+ <div class="robot-summary">${AI_ROBOTS.map(robotCard).join("")}</div>
+ <div class="robot-grid"><div class="robot-panel"><div class="robot-header"><h3>Live Activity</h3><small>Latest control events</small></div>
+ <div class="robot-log"><b>NOW</b><span>Factory Manager → Script Bot: content job assigned</span></div>
+ <div class="robot-log"><b>NOW</b><span>QA & Rights Bot → waiting for source/originality checks</span></div>
+ <div class="robot-log"><b>READY</b><span>Publisher Bot → waiting for approved rendered video</span></div></div>
+ <div class="robot-panel"><div class="robot-header"><h3>Production Chain</h3><small>Idea → Publish</small></div>
+ <div class="pipeline"><div class="stage"><strong>01</strong><span>RESEARCH</span></div><div class="stage"><strong>02</strong><span>SCRIPT</span></div><div class="stage"><strong>03</strong><span>VOICE</span></div><div class="stage"><strong>04</strong><span>VIDEO</span></div><div class="stage"><strong>05</strong><span>PUBLISH</span></div></div></div></div>`;
+}
+
 
 function renderDashboard(){
   title.textContent="Dashboard";
@@ -35,6 +65,7 @@ function renderDashboard(){
     <div class="card"><div class="metric-label">Scheduled</div><div class="metric">${data.schedule.length}</div><div class="metric-note">Publishing slots</div></div>
     <div class="card"><div class="metric-label">Categories</div><div class="metric">${data.categories.filter(x=>x.enabled).length}</div><div class="metric-note">Active categories</div></div>
   </div>
+  <div class="table-card"><div class="section-head"><div><h3>AI Robot Control Room</h3><span class="muted">See which AI role is working, waiting or ready.</span></div><button class="small-btn" onclick="setView('robots')">Open Robot Room</button></div><div class="robot-summary">${AI_ROBOTS.slice(0,6).map(robotCard).join("")}</div></div>
   <div class="two-col">
     <div class="table-card"><div class="section-head"><h3>Production Pipeline</h3><span class="badge">YouTube adapter ready</span></div><div class="pipeline">
       <div class="stage"><strong>${counts.Idea||0}</strong><span>IDEAS</span></div><div class="stage"><strong>${counts.Planned||0}</strong><span>PLANNED</span></div><div class="stage"><strong>${counts.Ready||0}</strong><span>READY</span></div><div class="stage"><strong>${counts.Approval||0}</strong><span>APPROVAL</span></div><div class="stage"><strong>—</strong><span>YOUTUBE</span></div>
@@ -152,7 +183,7 @@ function renderSettings(){
   view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">These switches control the future generation and publishing workers.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically after QA when YouTube is connected.")}</div></div>`;
 }
 function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button class="switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
-function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,ai:renderAI,settings:renderSettings}[v]||renderDashboard)();}
+function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,ai:renderAI,robots:renderRobots,settings:renderSettings}[v]||renderDashboard)();}
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
 function openModal(){document.getElementById("categorySelect").innerHTML=data.categories.filter(c=>c.enabled).map(c=>`<option>${esc(c.name)}</option>`).join("");document.getElementById("contentModal").classList.remove("hidden");}
 function closeModal(){document.getElementById("contentModal").classList.add("hidden")}

@@ -177,6 +177,24 @@ app.get("/auth/youtube/callback",async(req,res)=>{try{if(req.query.error)return 
 app.get("/api/youtube/status",requireAppKey,async(req,res)=>{try{const yt=await youtube();const r=await yt.channels.list({part:"snippet,statistics",mine:true});const c=r.data.items?.[0];if(!c)return res.json({ok:false,connected:false,error:"No YouTube channel found"});res.json({ok:true,connected:true,channel:{id:c.id,title:c.snippet.title,subscribers:c.statistics?.subscriberCount||null}});}catch(e){res.status(400).json({ok:false,connected:false,error:e.message});}});
 app.get("/api/factory/settings",requireAppKey,(req,res)=>res.json({ok:true,settings:loadSettings()}));
 app.post("/api/factory/settings",requireAppKey,(req,res)=>{try{const next={...loadSettings(),...(req.body||{})};next.autoGenerate=!!next.autoGenerate;next.approval=next.approval!==false;next.autoPublish=!!next.autoPublish;saveSettings(next);res.json({ok:true,settings:next});}catch(e){res.status(500).json({ok:false,error:e.message});}});
+app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
+  try{
+    const {title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.query||{};
+    if(!title)return res.status(400).json({ok:false,error:"title is required"});
+    if(!req.body||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({ok:false,error:"MP4 file body is required"});
+    const selectedPrivacy=privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private";
+    if(selectedPrivacy==="public"&&loadSettings().approval)return res.status(409).json({ok:false,error:"Approval is required before public publishing."});
+    const yt=await youtube();
+    const status={privacyStatus:selectedPrivacy};
+    if(publishAt)status.publishAt=publishAt;
+    const response=await yt.videos.insert({
+      part:"snippet,status",
+      requestBody:{snippet:{title,description,tags:Array.isArray(tags)?tags:String(tags).split(",").map(x=>x.trim()).filter(Boolean),categoryId},status},
+      media:{body:Readable.from(req.body)}
+    });
+    res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||selectedPrivacy});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
 app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube();const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const settings=loadSettings();if(!settings.autoPublish)return res.status(409).json({ok:false,published:false,error:"Auto Publish is OFF."});if(settings.approval&&!req.body?.approved)return res.status(409).json({ok:false,published:false,error:"Human approval is required before publishing."});const p=req.body||{};if(!p.videoUrl||!p.title)return res.status(400).json({ok:false,published:false,error:"videoUrl and title are required"});const asset=await fetch(p.videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch rendered video asset");const yt=await youtube();const status={privacyStatus:p.privacyStatus||"public"};if(p.publishAt)status.publishAt=p.publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title:p.title,description:p.description||"",tags:p.tags||[],categoryId:p.categoryId||"22"},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,published:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,published:false,error:e.message});}});
 app.get("*",(req,res)=>res.sendFile(path.join(ROOT,"index.html")));

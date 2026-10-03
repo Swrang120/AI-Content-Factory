@@ -1,3 +1,5 @@
+const API_BASE=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"").replace(/\/+$/,"");
+const apiUrl=p=>API_BASE+p;
 const KEY="acf_v2";
 const defaultData={
   categories:[
@@ -89,7 +91,7 @@ function renderSchedule(){
 }
 async function youtubeStatus(){
   try{
-    const r=await fetch("/api/youtube/status");
+    const r=await fetch(apiUrl("/api/youtube/status");
     return await r.json();
   }catch(e){return {ok:false,connected:false,error:"Backend is not running"};}
 }
@@ -111,7 +113,7 @@ function renderAccounts(){
     else {badge.textContent="Not connected";textEl.textContent=s.error||"Connect your YouTube channel";}
   });
 }
-function connectYouTube(){window.location.href="/auth/youtube";}
+function connectYouTube(){window.location.href=apiUrl("/auth/youtube");}
 
 async function renderAI(){
   title.textContent="AI Studio";
@@ -144,7 +146,7 @@ async function renderAI(){
     </div>
   </div>`;
   try{
-    const r=await fetch("/api/ai/status");
+    const r=await fetch(apiUrl("/api/ai/status");
     const s=await r.json();
     const b=document.getElementById("aiBadge");
     if(s.configured){b.textContent="ChatGPT Ready";b.className="badge ready";}
@@ -155,7 +157,7 @@ async function generateAI(){
   const result=document.getElementById("aiResult");
   result.textContent="Generating…";
   try{
-    const r=await fetch("/api/ai/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+    const r=await fetch(apiUrl("/api/ai/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
       task:document.getElementById("aiTask").value,
       topic:document.getElementById("aiTopic").value.trim(),
       category:document.getElementById("aiCategory").value,
@@ -187,7 +189,7 @@ function renderSettings(){
 function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button class="switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
 async function loadServerSettings(){
   try{
-    const r=await fetch("/api/factory/settings");
+    const r=await fetch(apiUrl("/api/factory/settings");
     const s=await r.json();
     if(s.ok&&s.settings){data.settings=s.settings;save();}
   }catch(e){}
@@ -205,7 +207,7 @@ async function toggleSetting(k){
   data.settings[k]=!data.settings[k];
   save();
   try{
-    const r=await fetch("/api/factory/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data.settings)});
+    const r=await fetch(apiUrl("/api/factory/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data.settings)});
     const s=await r.json();
     if(s.ok&&s.settings){data.settings=s.settings;save();}
   }catch(e){}
@@ -214,3 +216,4 @@ async function toggleSetting(k){
 }
 document.getElementById("themeBtn").onclick=()=>document.body.classList.toggle("light");
 loadServerSettings().finally(()=>setView("dashboard"));
+window.setBackendUrl=function(url){const v=String(url||"").trim().replace(/\/+$/,"");if(v){localStorage.setItem("acf_backend_url",v);}else{localStorage.removeItem("acf_backend_url");}location.reload();};

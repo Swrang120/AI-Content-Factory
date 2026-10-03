@@ -18,7 +18,7 @@ const defaultData={
 };
 let data=JSON.parse(localStorage.getItem(KEY)||"null")||defaultData;
 const save=()=>localStorage.setItem(KEY,JSON.stringify(data));
-const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;","'":"&#039;"}[m]));
+const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 const statusClass=s=>String(s).toLowerCase().replace(/\s/g,"");
 const view=document.getElementById("view");
 const title=document.getElementById("page-title");

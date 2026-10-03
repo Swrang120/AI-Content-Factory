@@ -42,6 +42,35 @@ async function getJobFromSupabase(id){
 }
 async function youtube(){const tokens=loadTokens();if(!tokens)throw new Error("YouTube is not connected. Open Platforms and connect YouTube first.");const client=oauthClient();client.setCredentials(tokens);client.on("tokens",t=>saveTokens({...tokens,...t}));return google.youtube({version:"v3",auth:client});}
 async function generateWithChatGPT(task,fields){if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT API is not configured. Add OPENAI_API_KEY on the server.");const model=process.env.OPENAI_MODEL||"gpt-6-luna";const instructions="You are the Content Brain for a private AI Content Factory. Create original, useful, platform-safe content. Never invent factual claims when source material is provided. For current news or sports facts, use only supplied source material.";const prompt=["TASK: "+task,"","CONTENT INPUT:",JSON.stringify(fields||{},null,2),"","OUTPUT REQUIREMENTS:","Write for YouTube first. Avoid copyrighted song lyrics, copied scripts, or fabricated sources."].join("\n");const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,instructions,input:[{role:"user",content:prompt}],store:false})});const body=await response.json();if(!response.ok)throw new Error(body?.error?.message||"ChatGPT API request failed");return body.output_text||"";}
+async function generateThumbnailImage(prompt,size="1536x1024"){
+  if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT/OpenAI API is not configured. Add OPENAI_API_KEY on the server.");
+  const r=await fetch("https://api.openai.com/v1/images/generations",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_IMAGE_MODEL||"gpt-image-1",prompt:String(prompt||"").trim(),size})});
+  const body=await r.json();
+  if(!r.ok)throw new Error(body?.error?.message||"Thumbnail image generation failed");
+  const item=body?.data?.[0];
+  if(!item?.b64_json)throw new Error("Thumbnail generator returned no image.");
+  return item.b64_json;
+}
+app.get("/api/thumbnail/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.OPENAI_API_KEY,model:process.env.OPENAI_IMAGE_MODEL||"gpt-image-1"}));
+app.post("/api/thumbnail/generate",requireAppKey,async(req,res)=>{
+  try{
+    const {topic="",title="",style="professional cinematic",language="English",extra=""}=req.body||{};
+    if(!topic&&!title)return res.status(400).json({ok:false,error:"topic or title is required"});
+    const prompt=[
+      "Create a professional YouTube thumbnail for a private AI Content Factory.",
+      "Subject/topic: "+(topic||title),
+      "Thumbnail title text: "+(title||topic),
+      "Style: "+style,
+      "Language: "+language,
+      extra?"Extra direction: "+extra:"",
+      "Use a strong cinematic composition, clear focal subject, high contrast, premium creator aesthetic.",
+      "Keep important visual elements inside safe margins. Do not use copyrighted logos, celebrity likenesses, or copied artwork.",
+      "Use only short readable title text; avoid tiny paragraphs and clutter."
+    ].filter(Boolean).join("\n");
+    const b64=await generateThumbnailImage(prompt);
+    res.json({ok:true,model:process.env.OPENAI_IMAGE_MODEL||"gpt-image-1",mime:"image/png",dataUrl:"data:image/png;base64,"+b64});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
 app.get("/api/ai/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL||"gpt-6-luna"}));
 function requireElevenLabs(){if(!process.env.ELEVENLABS_API_KEY)throw new Error("ElevenLabs is not configured. Add ELEVENLABS_API_KEY on the server.");}
 

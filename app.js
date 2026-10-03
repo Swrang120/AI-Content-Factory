@@ -1,4 +1,4 @@
-const API_BASE=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"").replace(/\/+$/,"");
+const API_BASE=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://ai-content-factory-s67a.vercel.app").replace(/\/+$/,"");
 const apiUrl=p=>API_BASE+p;
 const KEY="acf_v2";
 const defaultData={

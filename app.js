@@ -114,6 +114,28 @@ function renderAccounts(){
   });
 }
 function connectYouTube(){window.location.href=apiUrl("/auth/youtube");}
+async function uploadYouTubeTest(){
+  const file=document.getElementById("ytTestFile")?.files?.[0];
+  const titleInput=document.getElementById("ytTestTitle");
+  const result=document.getElementById("ytUploadResult");
+  if(!file){result.textContent="Choose an MP4 file first.";return;}
+  if(!file.type.includes("video")){result.textContent="Please choose an MP4/video file.";return;}
+  result.textContent="Uploading to YouTube as PRIVATE…";
+  try{
+    const params=new URLSearchParams({
+      title:(titleInput?.value||"AI Content Factory — Private Upload Test").trim(),
+      privacyStatus:"private"
+    });
+    const r=await fetch(apiUrl("/api/youtube/upload-file?"+params.toString()),{
+      method:"POST",
+      headers:{"Content-Type":file.type||"video/mp4"},
+      body:file
+    });
+    const body=await r.json();
+    if(!r.ok||!body.ok)throw new Error(body.error||"YouTube upload failed");
+    result.innerHTML='Uploaded successfully: <a href="'+esc(body.url)+'" target="_blank" rel="noopener">Open private YouTube video</a>';
+  }catch(e){result.textContent="Upload failed: "+e.message;}
+}
 
 async function renderAI(){
   title.textContent="AI Studio";

@@ -79,12 +79,79 @@ function renderAccounts(){
   });
 }
 function connectYouTube(){window.location.href="/auth/youtube";}
-function renderSettings(){
+
+async function renderAI(){
+  title.textContent="AI Studio";
+  view.innerHTML=`
+  <div class="two-col">
+    <div class="table-card">
+      <div class="section-head"><div><h3>ChatGPT Content Brain</h3><span class="muted">Generate script, titles, thumbnail brief and YouTube metadata.</span></div><span id="aiBadge" class="badge">Checking</span></div>
+      <label>Topic / Idea<input id="aiTopic" placeholder="e.g. Promote my new Bodo song"></label>
+      <div class="form-grid">
+        <label>Task<select id="aiTask">
+          <option value="script">Full Script</option>
+          <option value="titles">YouTube Titles</option>
+          <option value="thumbnail">Thumbnail Brief</option>
+          <option value="description">Description + SEO</option>
+          <option value="short_caption">Short Caption</option>
+        </select></label>
+        <label>Language<select id="aiLanguage"><option>English</option><option>Hindi</option><option>Bodo</option><option>Assamese</option><option>Hindi + Bodo</option></select></label>
+      </div>
+      <div class="form-grid">
+        <label>Category<select id="aiCategory">${data.categories.map(c=>`<option>${esc(c.name)}</option>`).join("")}</select></label>
+        <label>Format<select id="aiFormat"><option>Long Video</option><option>Short Video</option><option>Reel</option><option>Promo</option></select></label>
+      </div>
+      <label>Extra Notes<textarea id="aiNotes" rows="4" placeholder="Audience, CTA, facts, music details, style..."></textarea></label>
+      <button class="primary full" onclick="generateAI()">✦ Generate with ChatGPT</button>
+    </div>
+    <div class="table-card">
+      <div class="section-head"><div><h3>Generated Result</h3><span class="muted">Review before adding it to production.</span></div><button class="small-btn" onclick="copyAIResult()">Copy</button></div>
+      <pre id="aiResult" class="ai-result">Your generated content will appear here.</pre>
+      <button class="small-btn full" onclick="useAIResult()">Add result to notes</button>
+    </div>
+  </div>`;
+  try{
+    const r=await fetch("/api/ai/status");
+    const s=await r.json();
+    const b=document.getElementById("aiBadge");
+    if(s.configured){b.textContent="ChatGPT Ready";b.className="badge ready";}
+    else {b.textContent="API key needed";b.className="badge"; }
+  }catch(e){}
+}
+async function generateAI(){
+  const result=document.getElementById("aiResult");
+  result.textContent="Generating…";
+  try{
+    const r=await fetch("/api/ai/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      task:document.getElementById("aiTask").value,
+      topic:document.getElementById("aiTopic").value.trim(),
+      category:document.getElementById("aiCategory").value,
+      language:document.getElementById("aiLanguage").value,
+      format:document.getElementById("aiFormat").value,
+      notes:document.getElementById("aiNotes").value
+    })});
+    const s=await r.json();
+    if(!s.ok) throw new Error(s.error||"Generation failed");
+    result.textContent=s.output;
+  }catch(e){result.textContent="Error: "+e.message;}
+}
+async function copyAIResult(){
+  const t=document.getElementById("aiResult")?.textContent||"";
+  try{await navigator.clipboard.writeText(t);}catch(e){}
+}
+function useAIResult(){
+  const t=document.getElementById("aiResult")?.textContent||"";
+  if(!t||t.startsWith("Your generated")||t.startsWith("Error:"))return;
+  openModal();
+  const notes=document.querySelector('#contentForm textarea[name="notes"]');
+  if(notes)notes.value=t;
+}
+\nfunction renderSettings(){
   title.textContent="Settings";
   view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">These switches control the future generation and publishing workers.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically after QA when YouTube is connected.")}</div></div>`;
 }
 function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button class="switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
-function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings}[v]||renderDashboard)();}
+function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,ai:renderAI,settings:renderSettings}[v]||renderDashboard)();}
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
 function openModal(){document.getElementById("categorySelect").innerHTML=data.categories.filter(c=>c.enabled).map(c=>`<option>${esc(c.name)}</option>`).join("");document.getElementById("contentModal").classList.remove("hidden");}
 function closeModal(){document.getElementById("contentModal").classList.add("hidden")}

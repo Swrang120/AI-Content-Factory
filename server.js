@@ -45,7 +45,7 @@ async function youtube(){
 async function generateWithChatGPT(task, fields){
   if(!process.env.OPENAI_API_KEY) throw new Error("ChatGPT API is not configured. Add OPENAI_API_KEY on the server.");
   const model=process.env.OPENAI_MODEL||"gpt-6-luna";
-  const instructions="You are the Content Brain for a private AI Content Factory. Create original, useful, platform-safe content. Never invent factual claims when the user provides source material. Return only the requested content, with clear headings when useful.";
+  const instructions="You are the Content Brain for a private AI Content Factory. Create original, useful, platform-safe content. Never invent factual claims when the user provides source material. Return only the requested content, with clear headings when useful. For current news or sports facts, use only source material supplied by the application and never fabricate facts."
   const prompt=[
     "TASK: "+task,
     "",
@@ -54,11 +54,12 @@ async function generateWithChatGPT(task, fields){
     "",
     "OUTPUT REQUIREMENTS:",
     "Write for YouTube first. Keep language natural and audience-friendly. Avoid copyrighted song lyrics, copied scripts, or fabricated sources."
-  ].join("\n");
+  ].join("
+");
   const response=await fetch("https://api.openai.com/v1/responses",{
     method:"POST",
     headers:{"Content-Type":"application/json","Authorization:"Bearer "+process.env.OPENAI_API_KEY},
-    body:JSON.stringify({model,input:[{role:"system",content:instructions},{role:"user",content:prompt}],store:false})
+    body:JSON.stringify({model,instructions,input:[{role:"user",content:prompt}],store:false})
   });
   const body=await response.json();
   if(!response.ok) throw new Error(body?.error?.message||"ChatGPT API request failed");
@@ -79,7 +80,8 @@ app.post("/api/ai/generate",requireAppKey,async(req,res)=>{
     res.status(500).json({ok:false,error:e.message});
   }
 });
-\napp.get("/api/health",(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!loadTokens()}));
+
+app.get("/api/health",(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!loadTokens()}));
 
 app.get("/auth/youtube",(req,res)=>{
   try{

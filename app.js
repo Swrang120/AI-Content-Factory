@@ -98,6 +98,8 @@ function renderAccounts(){
   view.innerHTML=`<div class="table-card">
     <div class="section-head"><div><h3>Connected Platforms</h3><span class="muted">YouTube uses OAuth; secrets stay server-side.</span></div></div>
     <div class="platform"><div><div class="platform-name">YouTube</div><small id="ytStatusText">Checking connection…</small></div><div class="platform-actions"><span id="ytBadge" class="badge">Checking</span><button class="small-btn" onclick="connectYouTube()">Connect</button></div></div>
+    <div class="platform"><div><div class="platform-name">Automatic Publishing</div><small>Publisher Bot can publish a rendered video automatically after the configured QA/approval gate passes.</small></div><button class="switch ${data.settings.autoPublish?"on":""}" onclick="toggleSetting('autoPublish')"><i></i></button></div>
+    <div class="platform"><div><div class="platform-name">Approval Gate</div><small>Keep this ON while testing. Public auto-publishing requires an approved job.</small></div><button class="switch ${data.settings.approval?"on":""}" onclick="toggleSetting('approval')"><i></i></button></div>
     <div class="platform"><div><div class="platform-name">Facebook</div><small>Meta publishing adapter</small></div><span class="badge">Not connected</span></div>
     <div class="platform"><div><div class="platform-name">Instagram</div><small>Publishing adapter</small></div><span class="badge">Not connected</span></div>
     <div class="table-card" style="margin-top:14px"><div class="section-head"><div><h3>Upload handoff</h3><span class="muted">The production engine can call the same YouTube adapter with a rendered video URL.</span></div></div><p class="muted">For now, upload automation expects a server-accessible video asset URL. This avoids sending large MP4 files through the dashboard request.</p></div>
@@ -183,6 +185,13 @@ function renderSettings(){
   view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">These switches control the future generation and publishing workers.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically after QA when YouTube is connected.")}</div></div>`;
 }
 function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button class="switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
+async function loadServerSettings(){
+  try{
+    const r=await fetch("/api/factory/settings");
+    const s=await r.json();
+    if(s.ok&&s.settings){data.settings=s.settings;save();}
+  }catch(e){}
+}
 function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,ai:renderAI,robots:renderRobots,settings:renderSettings}[v]||renderDashboard)();}
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
 function openModal(){document.getElementById("categorySelect").innerHTML=data.categories.filter(c=>c.enabled).map(c=>`<option>${esc(c.name)}</option>`).join("");document.getElementById("contentModal").classList.remove("hidden");}
@@ -192,6 +201,16 @@ document.getElementById("closeModal").onclick=closeModal;
 document.getElementById("contentModal").addEventListener("click",e=>{if(e.target.id==="contentModal")closeModal()});
 document.getElementById("contentForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.target);data.content.push({id:Date.now(),title:f.get("title"),category:f.get("category"),format:f.get("format"),language:f.get("language"),status:f.get("status"),notes:f.get("notes")});save();e.target.reset();closeModal();setView("content")});
 function toggleCategory(id){const c=data.categories.find(x=>x.id===id);if(c)c.enabled=!c.enabled;save();renderCategories();}
-function toggleSetting(k){data.settings[k]=!data.settings[k];save();renderSettings();}
+async function toggleSetting(k){
+  data.settings[k]=!data.settings[k];
+  save();
+  try{
+    const r=await fetch("/api/factory/settings",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data.settings)});
+    const s=await r.json();
+    if(s.ok&&s.settings){data.settings=s.settings;save();}
+  }catch(e){}
+  if(document.querySelector('.nav-item.active')?.dataset.view==="accounts") renderAccounts();
+  else renderSettings();
+}
 document.getElementById("themeBtn").onclick=()=>document.body.classList.toggle("light");
-setView("dashboard");
+loadServerSettings().finally(()=>setView("dashboard"));

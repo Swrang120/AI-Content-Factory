@@ -4,6 +4,7 @@ const path=require("path");
 const fs=require("fs");
 const {Readable}=require("stream");
 const {google}=require("googleapis");
+const {createClient}=require("@supabase/supabase-js");
 const app=express();
 const PORT=process.env.PORT||3456;
 const ROOT=__dirname;
@@ -11,6 +12,9 @@ const TOKEN_FILE=path.join(ROOT,".data","youtube-token.json");
 const SETTINGS_FILE=path.join(ROOT,".data","factory-settings.json");
 const JOBS_FILE=path.join(ROOT,".data","research-jobs.json");
 const VOICE_DIR=path.join(ROOT,".data","voices");
+const SUPABASE_URL=process.env.SUPABASE_URL||"";
+const SUPABASE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_PUBLISHABLE_KEY||"";
+const supabase=(SUPABASE_URL&&SUPABASE_KEY)?createClient(SUPABASE_URL,SUPABASE_KEY):null;
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];
 app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
 app.use(express.json({limit:"1mb"})); app.use(express.static(ROOT));
@@ -23,6 +27,19 @@ function saveSettings(settings){fs.mkdirSync(path.dirname(SETTINGS_FILE),{recurs
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
 function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}
 function jobId(){return "job_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);}
+async function persistJob(job){
+  if(!supabase)return;
+  const row={id:job.id,status:job.status,topic:job.topic||"",category:job.category||"",language:job.language||"English",format:job.format||"Long Video",notes:job.notes||"",source_text:job.sourceText||"",sources:job.sources||[],research:job.research||null,script:job.script||null,voice:job.voice||null,created_at:job.createdAt||new Date().toISOString(),updated_at:job.updatedAt||new Date().toISOString()};
+  const {error}=await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
+  if(error)throw new Error("Supabase content_jobs write failed: "+error.message);
+}
+async function getJobFromSupabase(id){
+  if(!supabase)return null;
+  const {data,error}=await supabase.from("content_jobs").select("*").eq("id",id).maybeSingle();
+  if(error)throw new Error("Supabase content_jobs read failed: "+error.message);
+  if(!data)return null;
+  return {id:data.id,status:data.status,topic:data.topic,category:data.category,language:data.language,format:data.format,notes:data.notes,sourceText:data.source_text,sources:data.sources||[],research:data.research,script:data.script,voice:data.voice,createdAt:data.created_at,updatedAt:data.updated_at};
+}
 async function youtube(){const tokens=loadTokens();if(!tokens)throw new Error("YouTube is not connected. Open Platforms and connect YouTube first.");const client=oauthClient();client.setCredentials(tokens);client.on("tokens",t=>saveTokens({...tokens,...t}));return google.youtube({version:"v3",auth:client});}
 async function generateWithChatGPT(task,fields){if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT API is not configured. Add OPENAI_API_KEY on the server.");const model=process.env.OPENAI_MODEL||"gpt-6-luna";const instructions="You are the Content Brain for a private AI Content Factory. Create original, useful, platform-safe content. Never invent factual claims when source material is provided. For current news or sports facts, use only supplied source material.";const prompt=["TASK: "+task,"","CONTENT INPUT:",JSON.stringify(fields||{},null,2),"","OUTPUT REQUIREMENTS:","Write for YouTube first. Avoid copyrighted song lyrics, copied scripts, or fabricated sources."].join("\n");const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,instructions,input:[{role:"user",content:prompt}],store:false})});const body=await response.json();if(!response.ok)throw new Error(body?.error?.message||"ChatGPT API request failed");return body.output_text||"";}
 app.get("/api/ai/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL||"gpt-6-luna"}));
@@ -62,11 +79,14 @@ app.post("/api/pipeline/research",requireAppKey,async(req,res)=>{
     const jobs=loadJobs();
     jobs[id]={id,status:"researching",topic,category,language,format,notes,sources,sourceText,createdAt:new Date().toISOString()};
     saveJobs(jobs);
+    await persistJob(jobs[id]);
     if(process.env.MAKE_RESEARCH_WEBHOOK_URL){
       const hook=await fetch(process.env.MAKE_RESEARCH_WEBHOOK_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jobId:id,topic,category,language,format,notes,sourceText,sources})});
       if(!hook.ok)throw new Error("Make research webhook returned HTTP "+hook.status);
       jobs[id].status="research_dispatched";
+      jobs[id].updatedAt=new Date().toISOString();
       saveJobs(jobs);
+      await persistJob(jobs[id]);
       return res.json({ok:true,jobId:id,status:jobs[id].status,message:"Research job sent to Make.com."});
     }
     const research=await generateWithChatGPT("research_plan",{topic,category,language,format,notes,sourceText,sources});
@@ -74,14 +94,18 @@ app.post("/api/pipeline/research",requireAppKey,async(req,res)=>{
     jobs[id].status="script_ready";
     jobs[id].script=await generateWithChatGPT("script",{topic,category,language,format,notes,sourceText,research,sources});
     jobs[id].status="script_ready";
+    jobs[id].updatedAt=new Date().toISOString();
     saveJobs(jobs);
+    await persistJob(jobs[id]);
     res.json({ok:true,jobId:id,status:jobs[id].status,research:jobs[id].research,script:jobs[id].script});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
-app.get("/api/pipeline/jobs/:id",requireAppKey,(req,res)=>{
-  const job=loadJobs()[req.params.id];
-  if(!job)return res.status(404).json({ok:false,error:"Job not found"});
-  res.json({ok:true,job});
+app.get("/api/pipeline/jobs/:id",requireAppKey,async(req,res)=>{
+  try{
+    const job=await getJobFromSupabase(req.params.id)||loadJobs()[req.params.id];
+    if(!job)return res.status(404).json({ok:false,error:"Job not found"});
+    res.json({ok:true,job});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 app.get("/api/pipeline/jobs/:id/voice",requireAppKey,(req,res)=>{
   const file=path.join(VOICE_DIR,req.params.id+".mp3");
@@ -101,7 +125,7 @@ app.post("/api/pipeline/research/callback",requireAppKey,async(req,res)=>{
     job.status="scripting";
     job.script=await generateWithChatGPT("script",{topic:job.topic,category:job.category,language:job.language,format:job.format,notes:job.notes,sourceText:job.sourceText,research:job.research,sources:job.sources});
     await runVoiceForJob(job);
-    job.updatedAt=new Date().toISOString(); saveJobs(jobs);
+    job.updatedAt=new Date().toISOString(); saveJobs(jobs); await persistJob(job);
     res.json({ok:true,jobId,status:job.status,script:job.script,voice:job.voice||null});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
@@ -110,7 +134,15 @@ app.post("/api/ai/generate",requireAppKey,async(req,res)=>{try{const {task="scri
 app.get("/api/voice/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.ELEVENLABS_API_KEY,voiceId:process.env.ELEVENLABS_VOICE_ID||null,model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2"}));
 app.get("/api/voice/voices",requireAppKey,async(req,res)=>{try{requireElevenLabs();const r=await fetch("https://api.elevenlabs.io/v2/voices",{headers:{"xi-api-key":process.env.ELEVENLABS_API_KEY}});const body=await r.json();if(!r.ok)throw new Error(body?.detail?.message||body?.detail||"ElevenLabs voices request failed");res.json({ok:true,voices:(body.voices||[]).map(v=>({voice_id:v.voice_id,name:v.name,category:v.category,labels:v.labels||{},description:v.description||""}))});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/voice/generate",requireAppKey,async(req,res)=>{try{requireElevenLabs();const {text,voiceId,modelId,languageCode,stability,similarityBoost,style}=req.body||{};if(!text||!String(text).trim())return res.status(400).json({ok:false,error:"text is required"});const voice=voiceId||process.env.ELEVENLABS_VOICE_ID;if(!voice)return res.status(400).json({ok:false,error:"voiceId is required. Set ELEVENLABS_VOICE_ID or choose a voice."});const model=modelId||process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2";const payload={text:String(text).trim(),model_id:model};if(languageCode)payload.language_code=languageCode;const voice_settings={};if(Number.isFinite(Number(stability)))voice_settings.stability=Number(stability);if(Number.isFinite(Number(similarityBoost)))voice_settings.similarity_boost=Number(similarityBoost);if(Number.isFinite(Number(style)))voice_settings.style=Number(style);if(Object.keys(voice_settings).length)payload.voice_settings=voice_settings;const url="https://api.elevenlabs.io/v1/text-to-speech/"+encodeURIComponent(voice)+"?output_format=mp3_44100_128";const r=await fetch(url,{method:"POST",headers:{"xi-api-key":process.env.ELEVENLABS_API_KEY,"Content-Type":"application/json","Accept":"audio/mpeg"},body:JSON.stringify(payload)});if(!r.ok){let body={};try{body=await r.json();}catch{}throw new Error(body?.detail?.message||body?.detail||"ElevenLabs voice generation failed");}const audio=Buffer.from(await r.arrayBuffer());res.setHeader("Content-Type","audio/mpeg");res.setHeader("Content-Disposition",'inline; filename="acf-voice.mp3"');res.setHeader("Cache-Control","no-store");res.send(audio);}catch(e){res.status(500).json({ok:false,error:e.message});}});
-app.get("/api/health",(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!loadTokens(),settings:loadSettings()}));
+app.get("/api/supabase/status",requireAppKey,async(req,res)=>{
+  try{
+    if(!supabase)return res.json({ok:true,configured:false,connected:false});
+    const {error}=await supabase.from("content_jobs").select("id",{count:"exact",head:true});
+    if(error)return res.json({ok:true,configured:true,connected:false,error:error.message});
+    res.json({ok:true,configured:true,connected:true,table:"content_jobs"});
+  }catch(e){res.json({ok:true,configured:true,connected:false,error:e.message});}
+});
+app.get("/api/health",(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!loadTokens(),supabase:!!supabase,settings:loadSettings()}));
 app.get("/auth/youtube",(req,res)=>{try{const client=oauthClient();res.redirect(client.generateAuthUrl({access_type:"offline",prompt:"consent",include_granted_scopes:true,scope:SCOPES}));}catch(e){res.status(500).send(e.message);}});
 app.get("/auth/youtube/callback",async(req,res)=>{try{if(req.query.error)return res.status(400).send("YouTube authorization denied: "+req.query.error);if(!req.query.code)return res.status(400).send("Missing OAuth authorization code.");const client=oauthClient();const {tokens}=await client.getToken(req.query.code);saveTokens(tokens);res.send("<h2>YouTube connected successfully.</h2><p>Credentials were saved on the server. You can close this tab.</p><script>setTimeout(()=>window.close(),1200)</script>");}catch(e){res.status(500).send("OAuth callback failed: "+e.message);}});
 app.get("/api/youtube/status",requireAppKey,async(req,res)=>{try{const yt=await youtube();const r=await yt.channels.list({part:"snippet,statistics",mine:true});const c=r.data.items?.[0];if(!c)return res.json({ok:false,connected:false,error:"No YouTube channel found"});res.json({ok:true,connected:true,channel:{id:c.id,title:c.snippet.title,subscribers:c.statistics?.subscriberCount||null}});}catch(e){res.status(400).json({ok:false,connected:false,error:e.message});}});

@@ -104,7 +104,13 @@ function renderAccounts(){
     <div class="platform"><div><div class="platform-name">Approval Gate</div><small>Keep this ON while testing. Public auto-publishing requires an approved job.</small></div><button class="switch ${data.settings.approval?"on":""}" onclick="toggleSetting('approval')"><i></i></button></div>
     <div class="platform"><div><div class="platform-name">Facebook</div><small>Meta publishing adapter</small></div><span class="badge">Not connected</span></div>
     <div class="platform"><div><div class="platform-name">Instagram</div><small>Publishing adapter</small></div><span class="badge">Not connected</span></div>
-    <div class="table-card" style="margin-top:14px"><div class="section-head"><div><h3>Upload handoff</h3><span class="muted">The production engine can call the same YouTube adapter with a rendered video URL.</span></div></div><p class="muted">For now, upload automation expects a server-accessible video asset URL. This avoids sending large MP4 files through the dashboard request.</p></div>
+    <div class="table-card" style="margin-top:14px">
+      <div class="section-head"><div><h3>YouTube Private Test Upload</h3><span class="muted">Connect Google once, then test a real MP4 upload without making it public.</span></div></div>
+      <label>Test video title<input id="ytTestTitle" value="AI Content Factory — Private Upload Test"></label>
+      <label style="margin-top:10px">Choose MP4<input id="ytTestFile" type="file" accept="video/mp4,video/*"></label>
+      <button class="primary full" style="margin-top:12px" onclick="uploadYouTubeTest()">📤 Upload as Private</button>
+      <div id="ytUploadResult" class="muted" style="margin-top:10px">First connect YouTube above.</div>
+    </div>
   </div>`;
   youtubeStatus().then(s=>{
     const badge=document.getElementById("ytBadge"), textEl=document.getElementById("ytStatusText");

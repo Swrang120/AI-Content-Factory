@@ -182,6 +182,63 @@ function useAIResult(){
   if(notes)notes.value=t;
 }
 
+async function renderVoice(){
+  title.textContent="Voice Studio";
+  view.innerHTML=`
+  <div class="two-col">
+    <div class="table-card">
+      <div class="section-head"><div><h3>ElevenLabs Voice</h3><span class="muted">Generate narration audio for the production pipeline.</span></div><span id="voiceBadge" class="badge">Checking</span></div>
+      <label>Voice<select id="voiceId"><option value="">Loading voices…</option></select></label>
+      <label>Script / Text<textarea id="voiceText" rows="10" placeholder="Paste the narration or script here…"></textarea></label>
+      <div class="form-grid">
+        <label>Model<select id="voiceModel"><option value="eleven_multilingual_v2">Multilingual v2</option><option value="eleven_v3">Eleven v3</option><option value="eleven_flash_v2_5">Flash v2.5</option></select></label>
+        <label>Language<select id="voiceLanguage"><option value="">Auto</option><option value="en">English</option><option value="hi">Hindi</option><option value="as">Assamese</option><option value="bn">Bengali</option></select></label>
+      </div>
+      <div class="form-grid">
+        <label>Stability<input id="voiceStability" type="number" min="0" max="1" step="0.05" value="0.5"></label>
+        <label>Similarity<input id="voiceSimilarity" type="number" min="0" max="1" step="0.05" value="0.75"></label>
+      </div>
+      <button class="primary full" onclick="generateVoice()">🎙️ Generate Voice</button>
+    </div>
+    <div class="table-card">
+      <div class="section-head"><div><h3>Audio Preview</h3><span class="muted">Preview the generated narration before sending it to the editor.</span></div></div>
+      <audio id="voiceAudio" controls style="width:100%;margin:12px 0"></audio>
+      <a id="voiceDownload" class="small-btn full" style="display:none;text-align:center;text-decoration:none" download="acf-voice.mp3">Download MP3</a>
+      <pre id="voiceResult" class="ai-result">No voice generated yet.</pre>
+    </div>
+  </div>`;
+  try{
+    const s=await (await fetch(apiUrl("/api/voice/status"))).json();
+    const b=document.getElementById("voiceBadge");
+    if(s.configured){b.textContent="ElevenLabs Ready";b.className="badge ready";}
+    else {b.textContent="API key needed";b.className="badge";}
+    const select=document.getElementById("voiceId");
+    const vr=await (await fetch(apiUrl("/api/voice/voices"))).json();
+    if(vr.ok&&vr.voices?.length){
+      select.innerHTML=vr.voices.map(v=>`<option value="${esc(v.voice_id)}" ${v.voice_id===s.voiceId?"selected":""}>${esc(v.name)} · ${esc(v.category||"voice")}</option>`).join("");
+    }else if(s.voiceId){select.innerHTML=`<option value="${esc(s.voiceId)}">${esc(s.voiceId)}</option>`;}
+    else select.innerHTML="<option value=''>No voices available</option>";
+    if(s.model)document.getElementById("voiceModel").value=s.model;
+  }catch(e){document.getElementById("voiceBadge").textContent="Backend unavailable";}
+}
+async function generateVoice(){
+  const out=document.getElementById("voiceResult"), audio=document.getElementById("voiceAudio"), dl=document.getElementById("voiceDownload");
+  out.textContent="Generating voice…"; dl.style.display="none"; audio.removeAttribute("src"); audio.load();
+  try{
+    const r=await fetch(apiUrl("/api/voice/generate"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+      text:document.getElementById("voiceText").value,
+      voiceId:document.getElementById("voiceId").value,
+      modelId:document.getElementById("voiceModel").value,
+      languageCode:document.getElementById("voiceLanguage").value||undefined,
+      stability:document.getElementById("voiceStability").value,
+      similarityBoost:document.getElementById("voiceSimilarity").value
+    })});
+    if(!r.ok){let e={};try{e=await r.json();}catch{}throw new Error(e.error||"Voice generation failed");}
+    const blob=await r.blob(), url=URL.createObjectURL(blob);
+    audio.src=url; audio.load(); dl.href=url; dl.style.display="block"; out.textContent="Voice generated successfully.";
+  }catch(e){out.textContent="Error: "+e.message;}
+}
+
 function renderSettings(){
   title.textContent="Settings";
   view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">These switches control the future generation and publishing workers.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically after QA when YouTube is connected.")}</div></div>`;
@@ -194,7 +251,7 @@ async function loadServerSettings(){
     if(s.ok&&s.settings){data.settings=s.settings;save();}
   }catch(e){}
 }
-function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,ai:renderAI,robots:renderRobots,settings:renderSettings}[v]||renderDashboard)();}
+function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,ai:renderAI,voice:renderVoice,robots:renderRobots,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings}[v]||renderDashboard)();}
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
 function openModal(){document.getElementById("categorySelect").innerHTML=data.categories.filter(c=>c.enabled).map(c=>`<option>${esc(c.name)}</option>`).join("");document.getElementById("contentModal").classList.remove("hidden");}
 function closeModal(){document.getElementById("contentModal").classList.add("hidden")}

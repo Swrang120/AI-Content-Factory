@@ -119,7 +119,7 @@ function renderAccounts(){
     else {badge.textContent="Not connected";textEl.textContent=s.error||"Connect your YouTube channel";}
   });
 }
-function connectYouTube(){window.location.href=apiUrl("/auth/youtube");}
+function connectYouTube(){const target=API_BASE+"/auth/youtube";window.location.assign(target);}
 async function uploadYouTubeTest(){
   const file=document.getElementById("ytTestFile")?.files?.[0];
   const titleInput=document.getElementById("ytTestTitle");

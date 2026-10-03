@@ -1,94 +1,81 @@
 # AI Content Factory
 
-Private, single-owner content automation workspace for planning, producing and eventually publishing videos across supported platforms.
+Private, single-owner content automation workspace for planning, researching, producing and eventually publishing videos across supported platforms.
 
-## Current phase — Foundation
-
-This repository intentionally starts **without external API credentials**.
-
-Included:
-- Responsive private-style dashboard
-- Dashboard overview and production pipeline
-- Content queue
-- Content creation modal
-- Category management
-- Scheduling area
-- Platform connection placeholders
-- Automation settings
-- Local browser persistence with localStorage
-- Mobile-friendly layout
-- Clear separation for future API adapters
-
-## Planned architecture
+## Current pipeline
 
 ```
-Dashboard
-  ├── Content Planner
-  ├── Category Engine
-  ├── Research Worker
-  ├── Script Worker
-  ├── Voice Worker
-  ├── Visual/Video Worker
-  ├── QA & Rights Gate
-  ├── Approval Gate
-  ├── Scheduler
-  └── Platform Publishers
-        ├── YouTube
-        ├── Facebook
-        ├── Instagram
-        └── Other supported platforms
+Idea
+  ↓
+Research Job
+  ↓
+Make.com / research provider (optional)
+  ↓
+Research + Sources
+  ↓
+ChatGPT Script
+  ↓
+ElevenLabs Voice
+  ↓
+Video Production
+  ↓
+QA / Approval
+  ↓
+YouTube Publisher
 ```
 
-## Content categories
+## Automatic Research → Script API
 
-Music Promotion, News & Updates, Product Promotion, Sports Information, Editing Knowledge, AI & Technology.
+Start a job with:
 
-More categories can be added later.
+`POST /api/pipeline/research`
 
-## Important design rule
+Required:
+- `topic`
 
-API credentials, OAuth tokens and private account data must **not** be committed to this repository. Future integrations should use server-side environment secrets or an appropriate secret manager.
+Optional:
+- `category`
+- `language`
+- `format`
+- `notes`
+- `sourceText`
+- `sources`
 
-Generated content should also keep source/licensing/provenance information so publishing decisions remain reviewable.
+If `MAKE_RESEARCH_WEBHOOK_URL` is configured, the job is sent to Make.com. Make should return the researched material and source list to:
+
+`POST /api/pipeline/research/callback`
+
+The callback then automatically sends the research to the script worker.
+
+Check a job with:
+
+`GET /api/pipeline/jobs/:id`
+
+## Security
+
+Keep API keys, OAuth tokens, Make webhook URLs and private account data out of GitHub. Configure them as server/Vercel environment variables.
+
+Veryfi's Make app is a document OCR/data-extraction integration, not a general web-research engine, so it should only be added where document extraction is actually needed.
+
+## Existing integrations
+
+- ChatGPT/OpenAI content generation
+- ElevenLabs voice generation
+- YouTube OAuth/upload adapter
+- Approval and Auto Publish controls
+- AI Robot Control Room
 
 ## Roadmap
 
-### Phase 1 — Foundation
-- [x] Dashboard shell
-- [x] Content queue
-- [x] Categories
-- [x] Scheduling UI
-- [x] Platform placeholders
-- [x] Automation controls
-
-### Phase 2 — Local production engine
-- [ ] Job/state model
-- [ ] Project folders and media manifest
-- [ ] Render pipeline interface
-- [ ] Caption/subtitle interface
-- [ ] Thumbnail workflow
-- [ ] QA checklist
-
-### Phase 3 — AI adapters
-- [ ] LLM provider
-- [ ] Research/search provider
-- [ ] TTS provider
-- [ ] Image/video provider
-- [ ] Speech-to-text provider
-
-### Phase 4 — Publishing adapters
-- [ ] YouTube OAuth/upload
-- [ ] Meta publishing
-- [ ] Other supported platforms
-
-### Phase 5 — Automation
-- [ ] Background jobs
-- [ ] Daily/weekly schedules
-- [ ] Retry/failure handling
-- [ ] Analytics ingestion
-
-## Running
-
-The current foundation is static and can be opened directly or hosted with GitHub Pages/Vercel.
-
-No API key is required for the current phase.
+### Production
+- [x] Job/state model foundation
+- [x] Research → Script pipeline endpoint
+- [x] Make.com research webhook bridge
+- [x] ElevenLabs voice adapter
+- [ ] Persistent production database
+- [ ] Background worker/queue
+- [ ] Video renderer
+- [ ] Thumbnail generation
+- [ ] QA/copyright automation
+- [ ] Scheduler
+- [ ] Analytics worker

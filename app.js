@@ -106,9 +106,18 @@ function renderCategories(){
   title.textContent="Categories";
   view.innerHTML=`<div class="grid">${data.categories.map(c=>`<div class="category-card"><div class="category-icon">${c.icon}</div><h3>${esc(c.name)}</h3><p>${esc(c.desc)}</p><div class="category-actions"><span class="badge ${c.enabled?"ready":""}">${c.enabled?"Active":"Disabled"}</span><button class="small-btn" onclick="toggleCategory('${c.id}')">${c.enabled?"Disable":"Enable"}</button></div></div>`).join("")}</div>`;
 }
-function renderSchedule(){
+async function renderSchedule(){
   title.textContent="Schedule";
-  view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Publishing Schedule</h3><span class="muted">Schedules will be handed to the publishing worker.</span></div></div>${data.schedule.length?data.schedule.map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.title)}</div><div class="queue-meta">${esc(x.platform)} · ${esc(x.time)}</div></div><span class="badge">Scheduled</span></div>`).join(""):'<div class="empty">No schedules yet.<br><button class="small-btn" onclick="openModal()">Create content first</button></div>'}</div>`;
+  view.innerHTML=`<div class="hero"><p class="eyebrow">AUTOMATIC PUBLISHING</p><h2>Daily content runs automatically.</h2><p>India time (Asia/Kolkata). The worker creates the next category job, generates the production assets and sends approved content to YouTube.</p></div>
+  <div class="table-card"><div class="section-head"><div><h3>Factory Schedule</h3><span class="muted">Default daily category slots</span></div><span id="scheduleBadge" class="badge">Loading…</span></div><div id="factorySchedule"><div class="empty">Loading schedule…</div></div></div>`;
+  try{
+    const r=await fetch(apiUrl("/api/factory/automation-schedule"));
+    const s=await r.json();
+    const box=document.getElementById("factorySchedule"),badge=document.getElementById("scheduleBadge");
+    if(!s.ok)throw new Error(s.error||"Schedule unavailable");
+    if(badge){badge.textContent=s.settings?.autoGenerate?"Auto Generate ON":"Auto Generate OFF";badge.className="badge "+(s.settings?.autoGenerate?"ready":"");}
+    box.innerHTML=(s.schedules||[]).map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.icon||"")} ${esc(x.category)}</div><div class="queue-meta">${esc(x.time)} IST · ${esc(x.format)} · ${esc(x.language)}</div></div><span class="badge ready">Daily</span></div>`).join("");
+  }catch(e){document.getElementById("factorySchedule").innerHTML='<div class="empty">Could not load automatic schedule: '+esc(e.message)+'</div>';}
 }
 async function youtubeStatus(){
   try{

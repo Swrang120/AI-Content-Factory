@@ -16,7 +16,7 @@ const defaultData={
     {id:3,title:"Product Promotion Template",category:"Product Promotion",format:"Promo",language:"Hindi",status:"Idea",notes:"Connect product research later."}
   ],
   schedule:[],
-  settings:{autoGenerate:true,approval:true,autoPublish:true}
+  settings:{automationOnline:true,autoGenerate:true,approval:false,autoPublish:true}
 };
 let data=JSON.parse(localStorage.getItem(KEY)||"null")||defaultData;
 const save=()=>localStorage.setItem(KEY,JSON.stringify(data));
@@ -456,7 +456,7 @@ async function generateVoice(){
 
 function renderSettings(){
   title.textContent="Settings";
-  view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">Auto Generate + Auto Publish control scheduled AI jobs. Require Approval applies to manual publishing.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before manual publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically after QA when YouTube is connected.")}</div></div><div class="settings-card" style="margin-top:16px"><div class="section-head"><div><h3>🛡️ AI Self-Heal</h3><span class="muted">ChatGPT + Google Gemini diagnose runtime failures; the server uses bounded retry/fallback instead of blindly changing code.</span></div><span id="selfHealBadge" class="badge">Checking…</span></div><div id="selfHealInfo" class="queue-meta">Checking reliability layer…</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="small-btn" onclick="checkSelfHeal()">↻ Scan Now</button><button class="small-btn" onclick="fixSelfHealNow()">🛠️ FIX NOW — ChatGPT + Gemini</button></div><pre id="selfHealResult" class="ai-result" style="margin-top:12px">No incident test run yet.</pre></div>`;
+  view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">One master Online / Offline control. When Online, the AI factory can generate and upload scheduled videos. When Offline, content automation and video uploads stop.</span></div></div><div class="settings-list">${setting("automationOnline","Automation Online","ON = AI workers can run and upload scheduled videos. OFF = workers stay idle and no video upload/publishing runs.",true)}</div></div><div class="settings-card" style="margin-top:16px"><div class="section-head"><div><h3>🛡️ AI Self-Heal</h3><span class="muted">ChatGPT + Google Gemini diagnose runtime failures; the server uses bounded retry/fallback instead of blindly changing code.</span></div><span id="selfHealBadge" class="badge">Checking…</span></div><div id="selfHealInfo" class="queue-meta">Checking reliability layer…</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="small-btn" onclick="checkSelfHeal()">↻ Scan Now</button><button class="small-btn" onclick="fixSelfHealNow()">🛠️ FIX NOW — ChatGPT + Gemini</button></div><pre id="selfHealResult" class="ai-result" style="margin-top:12px">No incident test run yet.</pre></div>`;
 }
 async function checkSelfHeal(){
   const badge=document.getElementById("selfHealBadge"),info=document.getElementById("selfHealInfo"),out=document.getElementById("selfHealResult");
@@ -494,7 +494,7 @@ async function testSelfHeal(){
     if(out)out.textContent="Incident "+s.incident.id+"\n\nChatGPT:\n"+(s.diagnosis?.chatgpt||"Unavailable")+"\n\nGemini:\n"+(s.diagnosis?.gemini||"Unavailable");
   }catch(e){if(out)out.textContent="Self-heal test error: "+e.message;}
 }
-function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button aria-label="${label}" class="switch premium-switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
+function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button aria-label="${label}" class="switch premium-switch ${on?"on":""}" onclick="toggleAutomationOnline()" title="${on?"Automation Online":"Automation Offline"}"><i></i></button><span class="automation-state ${on?"online":"offline"}">${on?"ONLINE":"OFFLINE"}</span></div>`;}
 async function loadServerSettings(){
   try{
     const r=await fetch(apiUrl("/api/factory/settings"),{credentials:"include"});
@@ -511,58 +511,34 @@ document.getElementById("closeModal").onclick=closeModal;
 document.getElementById("contentModal").addEventListener("click",e=>{if(e.target.id==="contentModal")closeModal()});
 document.getElementById("contentForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.target);data.content.push({id:Date.now(),title:f.get("title"),category:f.get("category"),format:f.get("format"),language:f.get("language"),status:f.get("status"),notes:f.get("notes")});save();e.target.reset();closeModal();setView("content")});
 function toggleCategory(id){const c=data.categories.find(x=>x.id===id);if(c)c.enabled=!c.enabled;save();renderCategories();}
-async function toggleSetting(k){
-  const previous=!!data.settings[k];
-  data.settings[k]=!previous;
+async function toggleAutomationOnline(){
+  const previous=data.settings.automationOnline!==false;
+  data.settings.automationOnline=!previous;
+  data.settings.autoGenerate=true;
+  data.settings.approval=false;
+  data.settings.autoPublish=true;
   save();
   const activeView=document.querySelector('.nav-item.active')?.dataset.view;
   if(activeView==="accounts") renderAccounts(); else renderSettings();
   try{
-    const r=await fetch(apiUrl("/api/factory/settings"),{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      credentials:"include",
-      body:JSON.stringify({...data.settings,version:2})
-    });
-    const raw=await r.text();
-    let s=null;
-    try{s=raw?JSON.parse(raw):null;}catch(_){
-      throw new Error(`Server returned HTTP ${r.status} instead of JSON`);
-    }
+    const r=await fetch(apiUrl("/api/factory/settings"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({...data.settings,version:2})});
+    const raw=await r.text(); let s=null; try{s=raw?JSON.parse(raw):null;}catch(_){throw new Error(`Server returned HTTP ${r.status} instead of JSON`);}
     if(!r.ok||!s?.ok){
-      // Some Vercel rollouts may temporarily expose GET while POST is still
-      // routed to an older function. Fall back to the JSON GET compatibility
-      // save path so the switches remain usable during deployment rollout.
       if(r.status===404){
-        const params=new URLSearchParams({save:"1",version:"2",
-          autoGenerate:String(!!data.settings.autoGenerate),
-          approval:String(data.settings.approval!==false),
-          autoPublish:String(!!data.settings.autoPublish),
-          liveAutomation:String(!!data.settings.liveAutomation),
-          liveApproval:String(data.settings.liveApproval!==false),
-          liveDurationMinutes:String(data.settings.liveDurationMinutes||120)
-        });
+        const params=new URLSearchParams({save:"1",version:"2",automationOnline:String(!!data.settings.automationOnline)});
         const fallback=await fetch(apiUrl("/api/factory/settings?")+params.toString(),{credentials:"include",cache:"no-store"});
-        const fallbackRaw=await fallback.text();
-        let fs=null; try{fs=fallbackRaw?JSON.parse(fallbackRaw):null;}catch(_){}
-        if(fallback.ok&&fs?.ok){
-          data.settings={...data.settings,...fs.settings};
-          save();
-          if(activeView==="accounts") renderAccounts(); else renderSettings();
-          return;
-        }
+        const fallbackRaw=await fallback.text(); let fs=null; try{fs=fallbackRaw?JSON.parse(fallbackRaw):null;}catch(_){ }
+        if(fallback.ok&&fs?.ok){data.settings={...data.settings,...fs.settings};save();if(activeView==="accounts")renderAccounts();else renderSettings();return;}
         throw new Error(`Settings save endpoint returned HTTP ${r.status}; fallback returned HTTP ${fallback.status}`);
       }
       throw new Error(s?.error||`Settings save failed (HTTP ${r.status})`);
     }
-    data.settings={...data.settings,...s.settings};
-    save();
+    data.settings={...data.settings,...s.settings}; save();
     if(activeView==="accounts") renderAccounts(); else renderSettings();
   }catch(e){
-    data.settings[k]=previous;
-    save();
+    data.settings.automationOnline=previous; data.settings.autoGenerate=true; data.settings.approval=false; data.settings.autoPublish=true; save();
     if(activeView==="accounts") renderAccounts(); else renderSettings();
-    alert("Settings save failed: "+e.message);
+    alert("Automation control save failed: "+e.message);
   }
 }
 document.getElementById("themeBtn").onclick=()=>document.body.classList.toggle("light");

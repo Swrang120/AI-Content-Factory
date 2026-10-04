@@ -88,7 +88,7 @@ async function saveTokens(tokens){
     fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
   }catch{}
 }
-function loadSettings(){try{return JSON.parse(fs.readFileSync(SETTINGS_FILE,"utf8"));}catch{return {autoGenerate:false,approval:true,autoPublish:false};}}
+function loadSettings(){try{return JSON.parse(fs.readFileSync(SETTINGS_FILE,"utf8"));}catch{return {autoGenerate:false,approval:true,autoPublish:false,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]};}}
 function saveSettings(settings){fs.mkdirSync(path.dirname(SETTINGS_FILE),{recursive:true});fs.writeFileSync(SETTINGS_FILE,JSON.stringify(settings,null,2));}
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
 function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}
@@ -232,6 +232,19 @@ function autoScheduleForToday(now=new Date()){
   const day=now.toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
   return AUTO_SCHEDULES.map(x=>({...x,date:day,slot:day+"T"+x.time+":00+05:30"}));
 }
+const WEEKLY_LIVE_SCHEDULE=[
+{id:"music_monday",day:"Monday",dayIndex:1,icon:"🎵",category:"Music Live",title:"Original Romantic & Sad Music Promotion",prompt:"Promote only original music from the configured artist channels.",sourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]},
+{id:"editing_tuesday",day:"Tuesday",dayIndex:2,icon:"🎬",category:"Editing Live",title:"Editing Tips & Tutorial",prompt:"Original practical editing tutorials."},
+{id:"news_wednesday",day:"Wednesday",dayIndex:3,icon:"📰",category:"News Live",title:"Verified Current-News Bulletin",prompt:"Use verified current sources only."},
+{id:"sports_thursday",day:"Thursday",dayIndex:4,icon:"⚽",category:"Sports Live",title:"Verified Sports Update",prompt:"Use verified current sources only."},
+{id:"product_friday",day:"Friday",dayIndex:5,icon:"🛍️",category:"Product Live",title:"Product Information & Promotion",prompt:"Use verified product information."},
+{id:"cartoon_saturday",day:"Saturday",dayIndex:6,icon:"👤",category:"Cartoon Live",title:"Original Cartoon Content",prompt:"Original animated/cartoon content."},
+{id:"funny_romantic_sunday",day:"Sunday",dayIndex:0,icon:"😂💙",category:"Funny + Romantic Live",title:"Funny & Romantic",prompt:"Original funny and romantic content."}
+];
+function weeklyLiveSchedule(){
+ return WEEKLY_LIVE_SCHEDULE.map(x=>({...x,startTime:"14:00",endTime:"16:00",durationMinutes:120,timeZone:"Asia/Kolkata"}));
+}
+
 function autoSlotId(item){return "auto_"+item.id+"_"+item.date+"_"+item.time.replace(":","");}
 async function autoJobExists(id){
   if(supabase){
@@ -634,6 +647,7 @@ app.get("/api/cron/factory",async(req,res)=>{
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 app.get("/api/factory/automation-schedule",(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",schedules:AUTO_SCHEDULES,settings:loadSettings()}));
+app.get("/api/live/weekly-schedule",(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",startTime:"14:00",endTime:"16:00",durationMinutes:120,schedules:weeklyLiveSchedule(),musicSourceChannels:loadSettings().musicSourceChannels,settings:loadSettings()}));
 
 app.post("/api/factory/settings",requireAppKey,(req,res)=>{try{const next={...loadSettings(),...(req.body||{})};next.autoGenerate=!!next.autoGenerate;next.approval=next.approval!==false;next.autoPublish=!!next.autoPublish;saveSettings(next);res.json({ok:true,settings:next});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{

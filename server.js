@@ -67,7 +67,11 @@ async function loadTokens(req){
   if(supabase){
     try{
       const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
-      if(!error&&data?.tokens)return data.tokens;
+      if(!error&&data?.tokens){
+        const clean={...data.tokens};
+        delete clean.__acf_factory_settings;
+        return Object.keys(clean).length?clean:null;
+      }
     }catch{}
   }
   try{return JSON.parse(fs.readFileSync(TOKEN_FILE,"utf8"));}catch{return null;}
@@ -75,9 +79,12 @@ async function loadTokens(req){
 async function saveTokens(tokens){
   if(supabase){
     try{
+      const {data}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+      const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
+      const merged={...existing,...tokens};
       const {error}=await supabase.from("youtube_connections").upsert({
         id:"default",
-        tokens,
+        tokens:merged,
         updated_at:new Date().toISOString()
       },{onConflict:"id"});
       if(!error)return;
@@ -104,19 +111,11 @@ async function hydrateSettings(){
   const current=loadSettings();
   if(!supabase)return current;
   try{
-    const {data,error}=await supabase.from("content_jobs")
-      .select("id,notes,updated_at")
-      .eq("id","__factory_settings__")
-      .maybeSingle();
-    if(!error&&data?.notes){
-      const raw=String(data.notes);
-      if(raw.startsWith("__ACF_SETTINGS__")){
-        const saved=JSON.parse(raw.slice("__ACF_SETTINGS__".length));
-        if(saved&&typeof saved==="object"){
-          settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
-          settingsPersistentLoaded=true;
-        }
-      }
+    const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+    const saved=data?.tokens?.__acf_factory_settings;
+    if(!error&&saved&&typeof saved==="object"){
+      settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
+      settingsPersistentLoaded=true;
     }
   }catch{}
   return settingsCache||current;
@@ -124,24 +123,21 @@ async function hydrateSettings(){
 async function persistSettings(settings){
   settingsCache={...DEFAULT_FACTORY_SETTINGS,...settings};
   if(!supabase)return {ok:false,error:"Supabase is not configured"};
-  const row={
-    id:"__factory_settings__",
-    status:"settings",
-    topic:"__factory_settings__",
-    category:"System",
-    language:"English",
-    format:"Configuration",
-    notes:"__ACF_SETTINGS__"+JSON.stringify(settingsCache),
-    source_text:"",
-    sources:[],
-    approved:true,
-    created_at:new Date().toISOString(),
-    updated_at:new Date().toISOString()
-  };
-  const {error}=await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
-  if(error)throw new Error("Could not persist settings to Supabase: "+error.message);
-  settingsPersistentLoaded=true;
-  return {ok:true};
+  try{
+    const {data}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+    const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
+    const tokens={...existing,__acf_factory_settings:settingsCache};
+    const {error}=await supabase.from("youtube_connections").upsert({
+      id:"default",
+      tokens,
+      updated_at:new Date().toISOString()
+    },{onConflict:"id"});
+    if(error)throw new Error(error.message);
+    settingsPersistentLoaded=true;
+    return {ok:true};
+  }catch(error){
+    throw new Error("Could not persist settings to Supabase: "+error.message);
+  }
 }
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
 function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}
@@ -574,7 +570,7 @@ async function generateAutomaticJob(item,req){
     job.renderError=job.voice?.error||"Voice generation did not complete.";
   }
   job.updatedAt=new Date().toISOString(); saveJobs(jobs); await persistJob(job);
-  if(job.renderedVideoUrl && loadSettings().autoPublish && !loadSettings().approval){
+  if(job.renderedVideoUrl && loadSettings().autoPublish){
     const scheduledAt=new Date(item.slot);
     const now=new Date();
     const publishAt=scheduledAt>now?item.slot:null;
@@ -587,6 +583,7 @@ async function generateAutomaticJob(item,req){
       privacyStatus:publishAt?"private":"public",
       publishAt,
       approved:true,
+      automated:true,
       req
     });
     job.youtube=youtubeResult; job.status="published"; job.updatedAt=new Date().toISOString();
@@ -624,7 +621,7 @@ async function publishRenderedYouTubeVideo(p){
   if(!p?.videoUrl||!p?.title)throw new Error("videoUrl and title are required");
   const settings=await hydrateSettings();
   if(!settings.autoPublish)throw new Error("Auto Publish is OFF.");
-  if(settings.approval&&!p.approved)throw new Error("Human approval is required before publishing.");
+  if(settings.approval&&!p.approved&&!p.automated)throw new Error("Human approval is required before publishing.");
   const asset=await fetch(p.videoUrl);
   if(!asset.ok||!asset.body)throw new Error("Could not fetch rendered video asset");
   const yt=await youtube(p.req);

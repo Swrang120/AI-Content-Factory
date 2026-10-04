@@ -60,7 +60,9 @@ function getCookie(req,name){
   const hit=raw.split(";").map(x=>x.trim()).find(x=>x.startsWith(name+"="));
   return hit?decodeURIComponent(hit.slice(name.length+1)):"";
 }
-async function loadTokens(){
+async function loadTokens(req){
+  const browserRefresh=getCookie(req||{headers:{}}, "acf_youtube_refresh");
+  if(browserRefresh)return {refresh_token:browserRefresh};
   if(process.env.YOUTUBE_REFRESH_TOKEN)return {refresh_token:process.env.YOUTUBE_REFRESH_TOKEN};
   if(supabase){
     try{
@@ -104,8 +106,8 @@ async function getJobFromSupabase(id){
   if(!data)return null;
   return {id:data.id,status:data.status,topic:data.topic,category:data.category,language:data.language,format:data.format,notes:data.notes,sourceText:data.source_text,sources:data.sources||[],research:data.research,script:data.script,voice:data.voice,renderedVideoUrl:data.rendered_video_url||null,approved:!!data.approved,youtube:data.youtube||null,createdAt:data.created_at,updatedAt:data.updated_at};
 }
-async function youtube(){
-  const tokens=await loadTokens();
+async function youtube(req){
+  const tokens=await loadTokens(req);
   if(!tokens)throw new Error("YouTube is not connected. Open Platforms and connect YouTube first.");
   const client=oauthClient();
   client.setCredentials(tokens);
@@ -470,7 +472,7 @@ app.get("/api/supabase/status",requireAppKey,async(req,res)=>{
     res.json({ok:true,configured:true,connected:true,table:"content_jobs"});
   }catch(e){res.json({ok:true,configured:true,connected:false,error:e.message});}
 });
-app.get("/api/health",async(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!(await loadTokens()),supabase:!!supabase,settings:loadSettings()}));
+app.get("/api/health",async(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!(await loadTokens(req)),supabase:!!supabase,settings:loadSettings()}));
 app.get("/auth/youtube",(req,res)=>{
   try{
     const client=oauthClient();
@@ -496,9 +498,12 @@ app.get("/auth/youtube/callback",async(req,res)=>{
     if(!expected||expected!==String(req.query.state||""))return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
     const client=oauthClient();
     const {tokens}=await client.getToken(req.query.code);
-    const existing=await loadTokens();
+    const existing=await loadTokens(req);
     await saveTokens({...existing,...tokens});
-    res.setHeader("Set-Cookie","acf_youtube_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax");
+    const refresh=tokens.refresh_token||existing?.refresh_token;
+    const cookies=["acf_youtube_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"];
+    if(refresh)cookies.push("acf_youtube_refresh="+encodeURIComponent(refresh)+"; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None");
+    res.setHeader("Set-Cookie",cookies);
     res.redirect("https://swrang120.github.io/AI-Content-Factory/?youtube=connected");
   }catch(e){
     res.status(500).send("OAuth callback failed: "+e.message);
@@ -519,7 +524,7 @@ app.get("/api/youtube/config",(req,res)=>{
 });
 app.get("/api/youtube/status",async(req,res)=>{
   try{
-    const yt=await youtube();
+    const yt=await youtube(req);
     const r=await yt.channels.list({part:"snippet,statistics",mine:true});
     const c=r.data.items?.[0];
     if(!c)return res.json({ok:false,connected:false,error:"No YouTube channel found for the authorized Google account."});
@@ -537,7 +542,7 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
     if(!req.body||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({ok:false,error:"MP4 file body is required"});
     const selectedPrivacy=privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private";
     if(selectedPrivacy==="public"&&loadSettings().approval)return res.status(409).json({ok:false,error:"Approval is required before public publishing."});
-    const yt=await youtube();
+    const yt=await youtube(req);
     const status={privacyStatus:selectedPrivacy};
     if(publishAt)status.publishAt=publishAt;
     const response=await yt.videos.insert({
@@ -548,7 +553,7 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
     res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||selectedPrivacy});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
-app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube();const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
+app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube(req);const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishRenderedYouTubeVideo(p);res.json({ok:true,published:true,...result});}catch(e){const code=e.message==="Auto Publish is OFF."||e.message==="Human approval is required before publishing."?409:500;res.status(code).json({ok:false,published:false,error:e.message});}});
 app.get("*",(req,res)=>{
   // Never return index.html for missing files/assets. Browsers need a real

@@ -290,7 +290,12 @@ async function runAutomaticFactory(req){
   const now=new Date();
   const items=autoScheduleForToday(now);
   const hourMinute=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now);
-  const due=items.filter(x=>x.time===hourMinute);
+  const [nowH,nowM]=hourMinute.split(":").map(Number);
+  const due=items.filter(x=>{
+    const [h,m]=x.time.split(":").map(Number);
+    const diff=Math.abs((nowH*60+nowM)-(h*60+m));
+    return diff<=30;
+  }).sort((a,b)=>a.time.localeCompare(b.time)).slice(0,1);
   if(!due.length)return {ok:true,enabled:true,due:[],message:"No category is scheduled for this minute."};
   const results=[];
   for(const item of due){

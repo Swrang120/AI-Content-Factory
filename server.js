@@ -158,7 +158,74 @@ async function youtube(req){
   client.on("tokens",t=>{saveTokens({...tokens,...t}).catch(()=>{});});
   return google.youtube({version:"v3",auth:client});
 }
-function needsLiveResearch(task,fields){
+// =========================
+ // SELF-HEAL AI LAYER
+ // ChatGPT + Gemini diagnose failures; remediation is limited to safe retries/fallbacks.
+ const SELF_HEAL_ENABLED=process.env.SELF_HEAL_ENABLED!=="false";
+ const SELF_HEAL_MAX_RETRIES=Math.max(0,Math.min(3,Number(process.env.SELF_HEAL_MAX_RETRIES||2)));
+ const selfHealIncidents=[];
+ function safeErrorMessage(err){
+   return String(err?.message||err||"Unknown error").replace(/(sk-[A-Za-z0-9_-]{12,}|AIza[A-Za-z0-9_-]{20,}|Bearer\\s+[A-Za-z0-9._-]+)/g,"[REDACTED]").slice(0,1200);
+ }
+ function rememberIncident(error,context={}){
+   const item={id:crypto.randomUUID(),at:new Date().toISOString(),route:context.route||"unknown",operation:context.operation||"unknown",message:safeErrorMessage(error),status:context.status||500,healed:false,diagnosis:null};
+   selfHealIncidents.unshift(item);
+   if(selfHealIncidents.length>50)selfHealIncidents.length=50;
+   return item;
+ }
+ function isTransientError(error){
+   const s=safeErrorMessage(error).toLowerCase();
+   return /timeout|timed out|econnreset|eai_again|fetch failed|429|rate limit|too many requests|502|503|504|temporar|network|socket hang up/.test(s);
+ }
+ async function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+ async function retryTransient(fn){
+   let last;
+   for(let attempt=0;attempt<=SELF_HEAL_MAX_RETRIES;attempt++){
+     try{return await fn();}
+     catch(error){
+       last=error;
+       if(!SELF_HEAL_ENABLED||attempt>=SELF_HEAL_MAX_RETRIES||!isTransientError(error))throw error;
+       await sleep(500*Math.pow(2,attempt));
+     }
+   }
+   throw last;
+ }
+ async function askGeminiToDiagnose(incident){
+   if(!process.env.GEMINI_API_KEY)return "Gemini not configured.";
+   const prompt=["You are the reliability engineer for a private AI Content Factory.","Diagnose this runtime incident and suggest only safe runtime remediation: retry, fallback provider, queue/skip the failed job, reconnect a dependency, or configuration check.","Never expose secrets, disable security, bypass authentication, or blindly rewrite source code.","Incident:",JSON.stringify(incident)].join("\\n");
+   const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
+   const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.1,maxOutputTokens:500}})});
+   const body=await response.json();
+   if(!response.ok)throw new Error(body?.error?.message||"Gemini diagnosis failed");
+   return body?.candidates?.[0]?.content?.parts?.map(x=>x.text||"").join(" ").trim()||"No Gemini diagnosis returned.";
+ }
+ async function askChatGPTToDiagnose(incident){
+   if(!process.env.OPENAI_API_KEY)return "ChatGPT not configured.";
+   const prompt=["You are the reliability engineer for a private AI Content Factory.","Diagnose this runtime incident and suggest only safe runtime remediation: retry, fallback provider, queue/skip the failed job, reconnect a dependency, or configuration check.","Never expose secrets, disable security, bypass authentication, or blindly rewrite source code.","Incident:",JSON.stringify(incident)].join("\\n");
+   const model=process.env.OPENAI_MODEL||"gpt-6-luna";
+   const response=await retryTransient(()=>fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,input:prompt,store:false})});
+   const body=await response.json();
+   if(!response.ok)throw new Error(body?.error?.message||"ChatGPT diagnosis failed");
+   return String(body.output_text||"No ChatGPT diagnosis returned.").slice(0,2500);
+ }
+ async function diagnoseIncident(incident){
+   const [chat,gemini]=await Promise.allSettled([askChatGPTToDiagnose(incident),askGeminiToDiagnose(incident)]);
+   incident.diagnosis={
+     chatgpt:chat.status==="fulfilled"?chat.value:"Unavailable: "+safeErrorMessage(chat.reason),
+     gemini:gemini.status==="fulfilled"?gemini.value:"Unavailable: "+safeErrorMessage(gemini.reason)
+   };
+   return incident.diagnosis;
+ }
+ async function fallbackTextGeneration(task,fields){
+   if(!process.env.GEMINI_API_KEY)throw new Error("No AI fallback is configured.");
+   const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
+   const prompt=["You are the fallback Content Brain for a private AI Content Factory.","Return original, useful content. Never invent facts. For current news/sports, do not generate if verified source material is missing.","TASK: "+task,"INPUT:",JSON.stringify(fields||{},null,2)].join("\\n");
+   const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:2500}})});
+   const body=await r.json();
+   if(!r.ok)throw new Error(body?.error?.message||"Gemini fallback generation failed");
+   return body?.candidates?.[0]?.content?.parts?.map(x=>x.text||"").join(" ").trim()||"";
+ }
+ function needsLiveResearch(task,fields){
   const s=(String(task||"")+" "+JSON.stringify(fields||{})).toLowerCase();
   return /news|sports|current|today|latest|breaking|live update|verified source/.test(s);
 }
@@ -191,16 +258,26 @@ async function generateWithChatGPT(task,fields){
     bodyInput.tools=[{
       type:"web_search",
       search_context_size:"high",
-      user_location:{type:"approximate",country:"IN",region:"Assam",city:"Dibrugarh",timezone:"Asia/Kolkata"}
+      user_location:{type:"approximate",country:"IN",timezone:"Asia/Kolkata"}
     }];
   }
   const response=await fetch("https://api.openai.com/v1/responses",{
     method:"POST",
     headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},
     body:JSON.stringify(bodyInput)
-  });
+  }));
   const body=await response.json();
-  if(!response.ok)throw new Error(body?.error?.message||"ChatGPT API request failed");
+  if(!response.ok){
+    const err=new Error(body?.error?.message||"ChatGPT API request failed");
+    if(SELF_HEAL_ENABLED&&process.env.GEMINI_API_KEY&&(response.status===429||response.status>=500)){
+      try{return await fallbackTextGeneration(task,fields);}
+      catch(fallbackError){
+        const incident=rememberIncident(fallbackError,{operation:"gemini_fallback_generation",route:"/api/ai/generate",status:response.status});
+        diagnoseIncident(incident).catch(()=>{});
+      }
+    }
+    throw err;
+  }
   return body.output_text||"";
 }
 async function generateThumbnailImage(prompt,size="1536x1024"){
@@ -233,6 +310,9 @@ app.post("/api/thumbnail/generate",requireAppKey,async(req,res)=>{
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 app.get("/api/ai/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL||"gpt-6-luna"}));
+app.get("/api/self-heal/status",requireAppKey,(req,res)=>res.json({ok:true,enabled:SELF_HEAL_ENABLED,providers:{chatgpt:{configured:!!process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL||"gpt-6-luna"},gemini:{configured:!!process.env.GEMINI_API_KEY,model:process.env.GEMINI_MODEL||"gemini-3.8-flash"}},retryLimit:SELF_HEAL_MAX_RETRIES,recentIncidents:selfHealIncidents.slice(0,10).map(x=>({id:x.id,at:x.at,route:x.route,operation:x.operation,message:x.message,healed:x.healed,diagnosis:x.diagnosis}))}));
+app.post("/api/self-heal/test",requireAppKey,async(req,res)=>{try{const incident=rememberIncident(new Error("Self-heal test incident"),{route:"/api/self-heal/test",operation:"diagnostic_test",status:503});const diagnosis=await diagnoseIncident(incident);res.json({ok:true,incident:{id:incident.id,message:incident.message},diagnosis});}catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}});
+
 function requireElevenLabs(){if(!process.env.ELEVENLABS_API_KEY)throw new Error("ElevenLabs is not configured. Add ELEVENLABS_API_KEY on the server.");}
 
 async function generateElevenLabsAudio(text,voiceId,modelId,languageCode){
@@ -830,6 +910,7 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
 });
 app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube(req);const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishRenderedYouTubeVideo(p);res.json({ok:true,published:true,...result});}catch(e){const code=e.message==="Auto Publish is OFF."||e.message==="Human approval is required before publishing."?409:500;res.status(code).json({ok:false,published:false,error:e.message});}});
+app.use((err,req,res,next)=>{const incident=rememberIncident(err,{route:req.originalUrl||req.url,operation:req.method+" "+(req.route?.path||"unknown"),status:500});diagnoseIncident(incident).catch(()=>{});if(res.headersSent)return next(err);res.status(500).json({ok:false,error:safeErrorMessage(err),selfHeal:{enabled:SELF_HEAL_ENABLED,incidentId:incident.id}});});
 app.get("*",(req,res)=>{
   // Never return index.html for missing files/assets. Browsers need a real
   // asset response (CSS/JS/image/etc.), not text/html.

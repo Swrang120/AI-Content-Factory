@@ -1071,13 +1071,36 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
 app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube(req);const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishRenderedYouTubeVideo(p);res.json({ok:true,published:true,...result});}catch(e){const code=e.message==="Auto Publish is OFF."||e.message==="Human approval is required before publishing."?409:500;res.status(code).json({ok:false,published:false,error:e.message});}});
 app.use((err,req,res,next)=>{const incident=rememberIncident(err,{route:req.originalUrl||req.url,operation:req.method+" "+(req.route?.path||"unknown"),status:500});diagnoseIncident(incident).catch(()=>{});if(res.headersSent)return next(err);res.status(500).json({ok:false,error:safeErrorMessage(err),selfHeal:{enabled:SELF_HEAL_ENABLED,incidentId:incident.id}});});
+app.get("/",(req,res)=>{
+  // Serve the dashboard explicitly. Using a synchronous read here avoids
+  // sendFile/file-descriptor failures in Vercel's serverless runtime.
+  try{
+    const file=path.resolve(ROOT,"index.html");
+    if(!fs.existsSync(file))return res.status(500).type("text").send("AI Content Factory: index.html is missing from the deployment.");
+    const html=fs.readFileSync(file,"utf8");
+    res.status(200);
+    res.setHeader("Content-Type","text/html; charset=utf-8");
+    res.setHeader("Cache-Control","no-store");
+    return res.send(html);
+  }catch(error){
+    console.error("Dashboard root failed:",error);
+    return res.status(500).type("text").send("AI Content Factory dashboard failed to load.");
+  }
+});
 app.get("*",(req,res)=>{
   // Never return index.html for missing files/assets. Browsers need a real
   // asset response (CSS/JS/image/etc.), not text/html.
   if(path.extname(req.path)){
     return res.status(404).type("text").send("Asset not found");
   }
-  res.sendFile(path.resolve(ROOT,"index.html"));
+  try{
+    const file=path.resolve(ROOT,"index.html");
+    if(!fs.existsSync(file))return res.status(500).type("text").send("AI Content Factory: index.html is missing from the deployment.");
+    return res.status(200).type("html").send(fs.readFileSync(file,"utf8"));
+  }catch(error){
+    console.error("SPA fallback failed:",error);
+    return res.status(500).type("text").send("AI Content Factory page failed to load.");
+  }
 });
 if (require.main === module) app.listen(PORT,()=>console.log("AI Content Factory running on http://localhost:"+PORT));
 module.exports = app;

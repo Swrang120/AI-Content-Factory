@@ -860,6 +860,21 @@ app.get("/api/factory/settings",requireAppKey,(req,res)=>{
   const cookieSettings=settingsFromRequest(req);
   res.json({ok:true,settings:cookieSettings||loadSettings(),source:cookieSettings?"browser-cookie":"server-default"});
 });
+app.get("/api/cron/self-heal",async(req,res)=>{
+  try{
+    const expected=process.env.CRON_SECRET||"";
+    const auth=req.headers.authorization||"";
+    if(!expected)return res.status(503).json({ok:false,error:"CRON_SECRET is not configured on the server."});
+    if(auth!=="Bearer "+expected)return res.status(401).json({ok:false,error:"Unauthorized cron request"});
+    const incidents=selfHealIncidents.filter(x=>!x.healed).slice(0,3);
+    const results=[];
+    for(const incident of incidents){
+      try{await diagnoseIncident(incident);results.push({id:incident.id,diagnosed:true});}
+      catch(e){results.push({id:incident.id,diagnosed:false,error:safeErrorMessage(e)});}
+    }
+    res.json({ok:true,checked:incidents.length,results,providers:{chatgpt:!!process.env.OPENAI_API_KEY,gemini:!!process.env.GEMINI_API_KEY}});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
 app.get("/api/cron/factory",async(req,res)=>{
   try{
     const expected=process.env.CRON_SECRET||"";

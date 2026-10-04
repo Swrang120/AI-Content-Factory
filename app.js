@@ -124,7 +124,9 @@ function renderDashboard(){
 async function uploadFactoryVideo(){
   const file=document.getElementById("factoryUploadFile")?.files?.[0], titleInput=document.getElementById("factoryUploadTitle"), result=document.getElementById("factoryUploadResult");
   if(!file){result.textContent="Choose a video file first.";return;}
-  if(!file.type.includes("video")){result.textContent="Please choose a video file.";return;}
+  // Accept video files even when the browser reports an empty/unknown MIME type. The backend validates the upload.
+  const isLikelyVideo=file.type.startsWith("video/")||/\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg|3gp|wmv|flv)$/i.test(file.name)||!file.type;
+  if(!isLikelyVideo){result.textContent="Please choose a video file.";return;}
   if(file.size>50*1024*1024){result.textContent="File is larger than 50 MB.";return;}
   result.textContent="Uploading video to the Factory media library…";
   try{
@@ -137,7 +139,7 @@ async function uploadFactoryVideo(){
 }
 function renderContent(){
   title.textContent="Content";
-  view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Content Queue</h3><span class="muted">Ideas, planned videos and future AI-generated assets.</span></div><button class="primary" onclick="openModal()">＋ Add Content</button></div><div class="table-card" style="margin:14px 0;background:#0a1726"><div class="section-head"><div><h3>📤 Upload Video to Factory</h3><span class="muted">Add your own video to the media library.</span></div><span class="badge">Max 50 MB</span></div><div class="form-grid"><label>Video title<input id="factoryUploadTitle" placeholder="My original video"></label><label>Video file<input id="factoryUploadFile" type="file" accept="video/mp4,video/*"></label></div><button class="primary full" onclick="uploadFactoryVideo()">📤 Upload to Factory</button><div id="factoryUploadResult" class="muted" style="margin-top:10px">Nothing uploaded yet.</div></div><table class="table"><thead><tr><th>Title</th><th>Category</th><th>Format</th><th>Language</th><th>Status</th></tr></thead><tbody>${data.content.map(x=>`<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.category)}</td><td>${esc(x.format)}</td><td>${esc(x.language)}</td><td><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></td></tr>`).join("")}</tbody></table></div>`;
+  view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Content Queue</h3><span class="muted">Ideas, planned videos and future AI-generated assets.</span></div><button class="primary" onclick="openModal()">＋ Add Content</button></div><div class="table-card" style="margin:14px 0;background:#0a1726"><div class="section-head"><div><h3>📤 Upload Video to Factory</h3><span class="muted">Add your own video to the media library.</span></div><span class="badge">Max 50 MB</span></div><div class="form-grid"><label>Video title<input id="factoryUploadTitle" placeholder="My original video"></label><label>Video file<input id="factoryUploadFile" type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.avi,.mkv,.mpeg,.mpg,.3gp,.wmv,.flv"></label></div><button class="primary full" onclick="uploadFactoryVideo()">📤 Upload to Factory</button><div id="factoryUploadResult" class="muted" style="margin-top:10px">Nothing uploaded yet.</div></div><table class="table"><thead><tr><th>Title</th><th>Category</th><th>Format</th><th>Language</th><th>Status</th></tr></thead><tbody>${data.content.map(x=>`<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.category)}</td><td>${esc(x.format)}</td><td>${esc(x.language)}</td><td><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></td></tr>`).join("")}</tbody></table></div>`;
 }
 function renderCategories(){
   title.textContent="Categories";
@@ -170,9 +172,9 @@ function renderAccounts(){
     <div class="platform"><div><div class="platform-name">Facebook</div><small>Meta publishing adapter</small></div><span class="badge">Not connected</span></div>
     <div class="platform"><div><div class="platform-name">Instagram</div><small>Publishing adapter</small></div><span class="badge">Not connected</span></div>
     <div class="table-card" style="margin-top:14px">
-      <div class="section-head"><div><h3>YouTube Private Test Upload</h3><span class="muted">Connect Google once, then test a real MP4 upload without making it public.</span></div></div>
+      <div class="section-head"><div><h3>YouTube Private Test Upload</h3><span class="muted">Connect Google once, then test a video upload without making it public.</span></div></div>
       <label>Test video title<input id="ytTestTitle" value="AI Content Factory — Private Upload Test"></label>
-      <label style="margin-top:10px">Choose MP4<input id="ytTestFile" type="file" accept="video/mp4,video/*"></label>
+      <label style="margin-top:10px">Choose video<input id="ytTestFile" type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.avi,.mkv,.mpeg,.mpg,.3gp,.wmv,.flv"></label>
       <button class="primary full" style="margin-top:12px" onclick="uploadYouTubeTest()">📤 Upload as Private</button>
       <div id="ytUploadResult" class="muted" style="margin-top:10px">First connect YouTube above.</div>
     </div>
@@ -189,8 +191,9 @@ async function uploadYouTubeTest(){
   const file=document.getElementById("ytTestFile")?.files?.[0];
   const titleInput=document.getElementById("ytTestTitle");
   const result=document.getElementById("ytUploadResult");
-  if(!file){result.textContent="Choose an MP4 file first.";return;}
-  if(!file.type.includes("video")){result.textContent="Please choose an MP4/video file.";return;}
+  if(!file){result.textContent="Choose a video file first.";return;}
+  const isLikelyVideo=file.type.startsWith("video/")||/\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg|3gp|wmv|flv)$/i.test(file.name)||!file.type;
+  if(!isLikelyVideo){result.textContent="Please choose a video file.";return;}
   result.textContent="Uploading to YouTube as PRIVATE…";
   try{
     const params=new URLSearchParams({

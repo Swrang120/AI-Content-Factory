@@ -10,16 +10,17 @@
     "node": ">=22"
   },
   "dependencies": {
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "googleapis": "^171.1.0",
-    "@supabase/supabase-js": "^2.57.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "remotion": "4.0.532",
     "@remotion/bundler": "4.0.532",
     "@remotion/renderer": "4.0.532",
     "@remotion/vercel": "4.0.532",
-    "@vercel/blob": "^2.0.0"
+    "@supabase/supabase-js": "^2.57.0",
+    "@vercel/blob": "^2.0.0",
+    "@vercel/speed-insights": "^2.0.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "googleapis": "^171.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "remotion": "4.0.532"
   }
 }

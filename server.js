@@ -1067,6 +1067,17 @@ app.get("/api/factory/settings",requireAppKey,async(req,res)=>{
     return res.status(500).json({ok:false,error:safeErrorMessage(error)});
   }
 });
+app.get("/api/agents/state",requireAppKey,async(req,res)=>{
+  try{return res.json({ok:true,agents:await getAgentState(),updatedAt:new Date().toISOString()});}
+  catch(error){return res.status(500).json({ok:false,error:safeErrorMessage(error)});}
+});
+app.post("/api/agents/state",requireAppKey,async(req,res)=>{
+  try{
+    const changes=req.body&&typeof req.body==="object"?req.body.agents:req.body;
+    if(!changes||typeof changes!=="object")return res.status(400).json({ok:false,error:"agents state object is required"});
+    return res.json({ok:true,agents:await setAgentStates(changes)});
+  }catch(error){return res.status(500).json({ok:false,error:safeErrorMessage(error)});}
+});
 app.get("/api/cron/self-heal",async(req,res)=>{
   try{
     const expected=process.env.CRON_SECRET||"";

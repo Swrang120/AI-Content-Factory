@@ -267,17 +267,19 @@ async function generateAutomaticJob(item,req){
     job.renderError=job.voice?.error||"Voice generation did not complete.";
   }
   job.updatedAt=new Date().toISOString(); saveJobs(jobs); await persistJob(job);
-  if(job.renderedVideoUrl && loadSettings().autoPublish){
-    const publishAt=item.slot;
+  if(job.renderedVideoUrl && loadSettings().autoPublish && !loadSettings().approval){
+    const scheduledAt=new Date(item.slot);
+    const now=new Date();
+    const publishAt=scheduledAt>now?item.slot:null;
     const youtubeResult=await publishRenderedYouTubeVideo({
       videoUrl:job.renderedVideoUrl,
       title:job.topic,
       description:"Created automatically by AI Content Factory. Category: "+item.category,
       tags:[item.category,"AI Content Factory"],
       categoryId:"22",
-      privacyStatus:loadSettings().approval?"private":"public",
-      publishAt:loadSettings().approval?null:publishAt,
-      approved:!loadSettings().approval,
+      privacyStatus:publishAt?"private":"public",
+      publishAt,
+      approved:true,
       req
     });
     job.youtube=youtubeResult; job.status="published"; job.updatedAt=new Date().toISOString();
@@ -293,8 +295,8 @@ async function runAutomaticFactory(req){
   const [nowH,nowM]=hourMinute.split(":").map(Number);
   const due=items.filter(x=>{
     const [h,m]=x.time.split(":").map(Number);
-    const diff=Math.abs((nowH*60+nowM)-(h*60+m));
-    return diff<=30;
+    const diff=(nowH*60+nowM)-(h*60+m);
+    return diff>=-15 && diff<=5;
   }).sort((a,b)=>a.time.localeCompare(b.time)).slice(0,1);
   if(!due.length)return {ok:true,enabled:true,due:[],message:"No category is scheduled for this minute."};
   const results=[];

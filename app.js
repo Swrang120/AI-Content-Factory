@@ -136,7 +136,7 @@ function renderAccounts(){
   youtubeStatus().then(s=>{
     const badge=document.getElementById("ytBadge"), textEl=document.getElementById("ytStatusText");
     if(!badge||!textEl)return;
-    if(s.connected){badge.textContent="Connected";badge.className="badge ready";textEl.textContent=`Channel: ${s.channel?.title||"Connected"}`;}
+    if(s.connected){badge.textContent="Connected";badge.className="badge ready";textEl.innerHTML=`<strong>Authorized YouTube channel:</strong> ${esc(s.channel?.title||"Unknown channel")}<br><small>Channel ID: ${esc(s.channel?.id||"Unavailable")}</small>`;}
     else {badge.textContent="Not connected";textEl.textContent=s.error||"Connect your YouTube channel";}
   });
 }

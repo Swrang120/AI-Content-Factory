@@ -71,7 +71,7 @@ function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});f
 function jobId(){return "job_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);}
 async function persistJob(job){
   if(!supabase)return;
-  const row={id:job.id,status:job.status,topic:job.topic||"",category:job.category||"",language:job.language||"English",format:job.format||"Long Video",notes:job.notes||"",source_text:job.sourceText||"",sources:job.sources||[],research:job.research||null,script:job.script||null,voice:job.voice||null,created_at:job.createdAt||new Date().toISOString(),updated_at:job.updatedAt||new Date().toISOString()};
+  const row={id:job.id,status:job.status,topic:job.topic||"",category:job.category||"",language:job.language||"English",format:job.format||"Long Video",notes:job.notes||"",source_text:job.sourceText||"",sources:job.sources||[],research:job.research||null,script:job.script||null,voice:job.voice||null,rendered_video_url:job.renderedVideoUrl||null,approved:!!job.approved,youtube:job.youtube||null,created_at:job.createdAt||new Date().toISOString(),updated_at:job.updatedAt||new Date().toISOString()};
   const {error}=await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
   if(error)throw new Error("Supabase content_jobs write failed: "+error.message);
 }
@@ -80,7 +80,7 @@ async function getJobFromSupabase(id){
   const {data,error}=await supabase.from("content_jobs").select("*").eq("id",id).maybeSingle();
   if(error)throw new Error("Supabase content_jobs read failed: "+error.message);
   if(!data)return null;
-  return {id:data.id,status:data.status,topic:data.topic,category:data.category,language:data.language,format:data.format,notes:data.notes,sourceText:data.source_text,sources:data.sources||[],research:data.research,script:data.script,voice:data.voice,createdAt:data.created_at,updatedAt:data.updated_at};
+  return {id:data.id,status:data.status,topic:data.topic,category:data.category,language:data.language,format:data.format,notes:data.notes,sourceText:data.source_text,sources:data.sources||[],research:data.research,script:data.script,voice:data.voice,renderedVideoUrl:data.rendered_video_url||null,approved:!!data.approved,youtube:data.youtube||null,createdAt:data.created_at,updatedAt:data.updated_at};
 }
 async function youtube(){
   const tokens=await loadTokens();
@@ -156,6 +156,25 @@ async function runVoiceForJob(job){
   return job.voice;
 }
 
+async function publishRenderedYouTubeVideo(p){
+  if(!p?.videoUrl||!p?.title)throw new Error("videoUrl and title are required");
+  const settings=loadSettings();
+  if(!settings.autoPublish)throw new Error("Auto Publish is OFF.");
+  if(settings.approval&&!p.approved)throw new Error("Human approval is required before publishing.");
+  const asset=await fetch(p.videoUrl);
+  if(!asset.ok||!asset.body)throw new Error("Could not fetch rendered video asset");
+  const yt=await youtube();
+  const privacyStatus=p.privacyStatus||"public";
+  const status={privacyStatus};
+  if(p.publishAt)status.publishAt=p.publishAt;
+  const response=await yt.videos.insert({
+    part:"snippet,status",
+    requestBody:{snippet:{title:p.title,description:p.description||"",tags:Array.isArray(p.tags)?p.tags:[],categoryId:p.categoryId||"22"},status},
+    media:{body:Readable.fromWeb(asset.body)}
+  });
+  return {videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||privacyStatus};
+}
+
 // Automatic Research → Script pipeline
 app.post("/api/pipeline/research",requireAppKey,async(req,res)=>{
   try{
@@ -193,6 +212,93 @@ app.get("/api/pipeline/jobs/:id",requireAppKey,async(req,res)=>{
     res.json({ok:true,job});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
+app.post("/api/pipeline/jobs/:id/rendered",requireAppKey,async(req,res)=>{
+  try{
+    const jobs=loadJobs();
+    const job=await getJobFromSupabase(req.params.id)||jobs[req.params.id];
+    if(!job)return res.status(404).json({ok:false,error:"Job not found"});
+    const {videoUrl,title,description="",tags=[],categoryId="22",privacyStatus="public",publishAt,approved=false}=req.body||{};
+    if(!videoUrl)return res.status(400).json({ok:false,error:"videoUrl is required"});
+    job.renderedVideoUrl=videoUrl;
+    job.title=title||job.title||job.topic||"AI Content Factory Video";
+    job.description=description;
+    job.tags=Array.isArray(tags)?tags:[];
+    job.categoryId=categoryId;
+    job.privacyStatus=privacyStatus;
+    job.publishAt=publishAt||null;
+    job.approved=!!approved;
+    job.status=job.approved?"approved":"rendered";
+    job.updatedAt=new Date().toISOString();
+    saveJobs(jobs);
+    await persistJob(job);
+
+    if(loadSettings().autoPublish && (!loadSettings().approval || job.approved)){
+      try{
+        const youtubeResult=await publishRenderedYouTubeVideo({videoUrl,title:job.title,description,tags:job.tags,categoryId,privacyStatus,publishAt,approved:job.approved});
+        job.youtube=youtubeResult;
+        job.status="published";
+        job.updatedAt=new Date().toISOString();
+        saveJobs(jobs);
+        await persistJob(job);
+        return res.json({ok:true,jobId:job.id,status:job.status,published:true,youtube:youtubeResult});
+      }catch(e){
+        job.status="publish_failed";
+        job.publishError=e.message;
+        job.updatedAt=new Date().toISOString();
+        saveJobs(jobs);
+        await persistJob(job);
+        return res.status(502).json({ok:false,jobId:job.id,status:job.status,published:false,error:e.message});
+      }
+    }
+    job.status=job.approved?"approved":"awaiting_approval";
+    saveJobs(jobs);
+    await persistJob(job);
+    res.json({ok:true,jobId:job.id,status:job.status,published:false,message:job.approved?"Auto Publish is OFF.":"Approval is required before publishing."});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
+app.post("/api/pipeline/jobs/:id/approve",requireAppKey,async(req,res)=>{
+  try{
+    const jobs=loadJobs();
+    const job=await getJobFromSupabase(req.params.id)||jobs[req.params.id];
+    if(!job)return res.status(404).json({ok:false,error:"Job not found"});
+    job.approved=true;
+    job.status="approved";
+    job.updatedAt=new Date().toISOString();
+    saveJobs(jobs);
+    await persistJob(job);
+
+    if(loadSettings().autoPublish && job.renderedVideoUrl){
+      try{
+        const youtubeResult=await publishRenderedYouTubeVideo({
+          videoUrl:job.renderedVideoUrl,
+          title:job.title||job.topic||"AI Content Factory Video",
+          description:job.description||"",
+          tags:job.tags||[],
+          categoryId:job.categoryId||"22",
+          privacyStatus:job.privacyStatus||"public",
+          publishAt:job.publishAt||null,
+          approved:true
+        });
+        job.youtube=youtubeResult;
+        job.status="published";
+        job.updatedAt=new Date().toISOString();
+        saveJobs(jobs);
+        await persistJob(job);
+        return res.json({ok:true,jobId:job.id,status:job.status,published:true,youtube:youtubeResult});
+      }catch(e){
+        job.status="publish_failed";
+        job.publishError=e.message;
+        job.updatedAt=new Date().toISOString();
+        saveJobs(jobs);
+        await persistJob(job);
+        return res.status(502).json({ok:false,jobId:job.id,status:job.status,published:false,error:e.message});
+      }
+    }
+    res.json({ok:true,jobId:job.id,status:job.status,published:false,message:job.renderedVideoUrl?"Auto Publish is OFF.":"Approved; waiting for rendered video."});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+
 app.get("/api/pipeline/jobs/:id/voice",requireAppKey,(req,res)=>{
   const file=path.join(VOICE_DIR,req.params.id+".mp3");
   if(!fs.existsSync(file))return res.status(404).json({ok:false,error:"Voice audio is not available for this job."});
@@ -307,7 +413,7 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube();const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
-app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const settings=loadSettings();if(!settings.autoPublish)return res.status(409).json({ok:false,published:false,error:"Auto Publish is OFF."});if(settings.approval&&!req.body?.approved)return res.status(409).json({ok:false,published:false,error:"Human approval is required before publishing."});const p=req.body||{};if(!p.videoUrl||!p.title)return res.status(400).json({ok:false,published:false,error:"videoUrl and title are required"});const asset=await fetch(p.videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch rendered video asset");const yt=await youtube();const status={privacyStatus:p.privacyStatus||"public"};if(p.publishAt)status.publishAt=p.publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title:p.title,description:p.description||"",tags:p.tags||[],categoryId:p.categoryId||"22"},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,published:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,published:false,error:e.message});}});
+app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishRenderedYouTubeVideo(p);res.json({ok:true,published:true,...result});}catch(e){const code=e.message==="Auto Publish is OFF."||e.message==="Human approval is required before publishing."?409:500;res.status(code).json({ok:false,published:false,error:e.message});}});
 app.get("*",(req,res)=>res.sendFile(path.join(ROOT,"index.html")));
 if (require.main === module) app.listen(PORT,()=>console.log("AI Content Factory running on http://localhost:"+PORT));
 module.exports = app;

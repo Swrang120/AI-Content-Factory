@@ -18,7 +18,29 @@ const SUPABASE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_P
 const supabase=(SUPABASE_URL&&SUPABASE_KEY)?createClient(SUPABASE_URL,SUPABASE_KEY):null;
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];
 app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
-app.use(express.json({limit:"1mb"})); app.use(express.static(ROOT));
+app.use(express.json({limit:"1mb"}));
+app.use(express.static(ROOT,{
+  index:false,
+  fallthrough:true,
+  redirect:false
+}));
+
+// Static assets must never fall through to the SPA HTML fallback.
+// This also makes MIME types explicit for Vercel/Express deployments.
+app.get("/styles.css",(req,res)=>{
+  const file=path.resolve(ROOT,"styles.css");
+  if(!fs.existsSync(file))return res.status(404).type("text").send("styles.css not found");
+  res.type("text/css");
+  res.setHeader("Cache-Control","public, max-age=3600");
+  res.sendFile(file);
+});
+app.get("/app.js",(req,res)=>{
+  const file=path.resolve(ROOT,"app.js");
+  if(!fs.existsSync(file))return res.status(404).type("text").send("app.js not found");
+  res.type("application/javascript");
+  res.setHeader("Cache-Control","public, max-age=3600");
+  res.sendFile(file);
+});
 function oauthClient(){
   if(!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET||!process.env.YOUTUBE_REDIRECT_URI){
     throw new Error("YouTube OAuth is not configured. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and YOUTUBE_REDIRECT_URI on Vercel.");
@@ -528,6 +550,13 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
 });
 app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube();const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishRenderedYouTubeVideo(p);res.json({ok:true,published:true,...result});}catch(e){const code=e.message==="Auto Publish is OFF."||e.message==="Human approval is required before publishing."?409:500;res.status(code).json({ok:false,published:false,error:e.message});}});
-app.get("*",(req,res)=>res.sendFile(path.join(ROOT,"index.html")));
+app.get("*",(req,res)=>{
+  // Never return index.html for missing files/assets. Browsers need a real
+  // asset response (CSS/JS/image/etc.), not text/html.
+  if(path.extname(req.path)){
+    return res.status(404).type("text").send("Asset not found");
+  }
+  res.sendFile(path.resolve(ROOT,"index.html"));
+});
 if (require.main === module) app.listen(PORT,()=>console.log("AI Content Factory running on http://localhost:"+PORT));
 module.exports = app;

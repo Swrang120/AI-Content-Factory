@@ -135,14 +135,22 @@ async function generateElevenLabsAudio(text,voiceId,modelId,languageCode){
   if(!r.ok){let body={};try{body=await r.json();}catch{}throw new Error(body?.detail?.message||body?.detail||"ElevenLabs voice generation failed");}
   return Buffer.from(await r.arrayBuffer());
 }
+function voiceForLanguage(language){
+  const value=String(language||"").toLowerCase();
+  if(value.includes("hindi"))return process.env.ELEVENLABS_HINDI_VOICE_ID||process.env.ELEVENLABS_VOICE_ID||"";
+  if(value.includes("english"))return process.env.ELEVENLABS_ENGLISH_VOICE_ID||process.env.ELEVENLABS_VOICE_ID||"";
+  return process.env.ELEVENLABS_VOICE_ID||process.env.ELEVENLABS_ENGLISH_VOICE_ID||"";
+}
 async function runVoiceForJob(job){
   if(!process.env.ELEVENLABS_API_KEY)return {status:"voice_waiting_api",error:"ElevenLabs API key is not configured."};
   if(!job.script)return {status:"voice_waiting_script",error:"Script is not ready."};
-  const audio=await generateElevenLabsAudio(job.script,process.env.ELEVENLABS_VOICE_ID,process.env.ELEVENLABS_MODEL_ID,job.language==="Assamese"?"as":job.language==="Hindi"?"hi":undefined);
+  const selectedVoice=voiceForLanguage(job.language);
+  if(!selectedVoice)return {status:"voice_waiting_voice",error:"No ElevenLabs voice ID is configured."};
+  const audio=await generateElevenLabsAudio(job.script,selectedVoice,process.env.ELEVENLABS_MODEL_ID,job.language==="Assamese"?"as":job.language==="Hindi"?"hi":undefined);
   fs.mkdirSync(VOICE_DIR,{recursive:true});
   const file=path.join(VOICE_DIR,job.id+".mp3");
   fs.writeFileSync(file,audio);
-  job.voice={status:"ready",file:"/api/pipeline/jobs/"+job.id+"/voice",model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voiceId:process.env.ELEVENLABS_VOICE_ID||null,generatedAt:new Date().toISOString()};
+  job.voice={status:"ready",file:"/api/pipeline/jobs/"+job.id+"/voice",model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voiceId:selectedVoice,generatedAt:new Date().toISOString()};
   job.status="voice_ready";
   job.updatedAt=new Date().toISOString();
   return job.voice;
@@ -209,7 +217,7 @@ app.post("/api/pipeline/research/callback",requireAppKey,async(req,res)=>{
 });
 
 app.post("/api/ai/generate",requireAppKey,async(req,res)=>{try{const {task="script",topic,category="",language="English",format="Long Video",notes="",sourceText=""}=req.body||{};if(!topic)return res.status(400).json({ok:false,error:"topic is required"});res.json({ok:true,task,output:await generateWithChatGPT(task,{topic,category,language,format,notes,sourceText})});}catch(e){res.status(500).json({ok:false,error:e.message});}});
-app.get("/api/voice/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.ELEVENLABS_API_KEY,voiceId:process.env.ELEVENLABS_VOICE_ID||null,model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2"}));
+app.get("/api/voice/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.ELEVENLABS_API_KEY,voiceId:process.env.ELEVENLABS_VOICE_ID||null,hindiVoiceId:process.env.ELEVENLABS_HINDI_VOICE_ID||null,englishVoiceId:process.env.ELEVENLABS_ENGLISH_VOICE_ID||null,model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2"}));
 app.get("/api/voice/voices",requireAppKey,async(req,res)=>{try{requireElevenLabs();const r=await fetch("https://api.elevenlabs.io/v2/voices",{headers:{"xi-api-key":process.env.ELEVENLABS_API_KEY}});const body=await r.json();if(!r.ok)throw new Error(body?.detail?.message||body?.detail||"ElevenLabs voices request failed");res.json({ok:true,voices:(body.voices||[]).map(v=>({voice_id:v.voice_id,name:v.name,category:v.category,labels:v.labels||{},description:v.description||""}))});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/voice/generate",requireAppKey,async(req,res)=>{try{requireElevenLabs();const {text,voiceId,modelId,languageCode,stability,similarityBoost,style}=req.body||{};if(!text||!String(text).trim())return res.status(400).json({ok:false,error:"text is required"});const voice=voiceId||process.env.ELEVENLABS_VOICE_ID;if(!voice)return res.status(400).json({ok:false,error:"voiceId is required. Set ELEVENLABS_VOICE_ID or choose a voice."});const model=modelId||process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2";const payload={text:String(text).trim(),model_id:model};if(languageCode)payload.language_code=languageCode;const voice_settings={};if(Number.isFinite(Number(stability)))voice_settings.stability=Number(stability);if(Number.isFinite(Number(similarityBoost)))voice_settings.similarity_boost=Number(similarityBoost);if(Number.isFinite(Number(style)))voice_settings.style=Number(style);if(Object.keys(voice_settings).length)payload.voice_settings=voice_settings;const url="https://api.elevenlabs.io/v1/text-to-speech/"+encodeURIComponent(voice)+"?output_format=mp3_44100_128";const r=await fetch(url,{method:"POST",headers:{"xi-api-key":process.env.ELEVENLABS_API_KEY,"Content-Type":"application/json","Accept":"audio/mpeg"},body:JSON.stringify(payload)});if(!r.ok){let body={};try{body=await r.json();}catch{}throw new Error(body?.detail?.message||body?.detail||"ElevenLabs voice generation failed");}const audio=Buffer.from(await r.arrayBuffer());res.setHeader("Content-Type","audio/mpeg");res.setHeader("Content-Disposition",'inline; filename="acf-voice.mp3"');res.setHeader("Cache-Control","no-store");res.send(audio);}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.get("/api/supabase/status",requireAppKey,async(req,res)=>{

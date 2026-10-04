@@ -156,6 +156,46 @@ async function runVoiceForJob(job){
   return job.voice;
 }
 
+let REMOTION_BUNDLE_PROMISE=null;
+async function getRemotionBundle(){
+  if(!REMOTION_BUNDLE_PROMISE){
+    REMOTION_BUNDLE_PROMISE=(async()=>{
+      const {bundle}=await import("@remotion/bundler");
+      return bundle({entryPoint:path.join(ROOT,"remotion","index.jsx"),webpackOverride:(config)=>config});
+    })();
+  }
+  return REMOTION_BUNDLE_PROMISE;
+}
+async function renderFactoryVideo(job,req){
+  if(!process.env.BLOB_READ_WRITE_TOKEN)throw new Error("Vercel Blob is not configured. Create a Blob store and connect it to this Vercel project.");
+  const {createSandbox,addBundleToSandbox,renderMediaOnVercel,uploadToVercelBlob}=await import("@remotion/vercel");
+  const bundleDir=await getRemotionBundle();
+  const sandbox=await createSandbox();
+  const serveUrl=await addBundleToSandbox({sandbox,bundleDir});
+  const origin=(process.env.FRONTEND_URL&&process.env.FRONTEND_URL.startsWith("http")?process.env.FRONTEND_URL:"https://"+req.get("host"));
+  const audioUrl=job.voice?.file?new URL(job.voice.file,origin).toString():"";
+  const script=typeof job.script==="string"?job.script:(job.script?.output||job.script?.text||JSON.stringify(job.script||""));
+  const title=job.title||job.topic||"AI Content Factory";
+  const {sandboxFilePath}=await renderMediaOnVercel({
+    sandbox,
+    serveUrl,
+    compositionId:"FactoryVideo",
+    inputProps:{title,script,audioUrl,durationSeconds:45},
+    codec:"h264",
+    outputFile:"/tmp/factory-video.mp4"
+  });
+  const uploaded=await uploadToVercelBlob({
+    sandbox,
+    sandboxFilePath,
+    contentType:"video/mp4",
+    blobToken:process.env.BLOB_READ_WRITE_TOKEN,
+    access:"public",
+    blobPath:"renders/"+job.id+".mp4"
+  });
+  try{await sandbox.stop();}catch{}
+  return uploaded.url;
+}
+
 async function publishRenderedYouTubeVideo(p){
   if(!p?.videoUrl||!p?.title)throw new Error("videoUrl and title are required");
   const settings=loadSettings();
@@ -212,6 +252,51 @@ app.get("/api/pipeline/jobs/:id",requireAppKey,async(req,res)=>{
     res.json({ok:true,job});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
+app.post("/api/pipeline/jobs/:id/render",requireAppKey,async(req,res)=>{
+  try{
+    const jobs=loadJobs();
+    const job=await getJobFromSupabase(req.params.id)||jobs[req.params.id];
+    if(!job)return res.status(404).json({ok:false,error:"Job not found"});
+    if(!job.script)return res.status(409).json({ok:false,error:"Script is not ready."});
+    if(!job.voice?.file)return res.status(409).json({ok:false,error:"Voice is not ready. Generate voice first."});
+    job.status="rendering";
+    job.updatedAt=new Date().toISOString();
+    saveJobs(jobs); await persistJob(job);
+    const videoUrl=await renderFactoryVideo(job,req);
+    job.renderedVideoUrl=videoUrl;
+    job.status="rendered";
+    job.updatedAt=new Date().toISOString();
+    saveJobs(jobs); await persistJob(job);
+    const settings=loadSettings();
+    if(settings.autoPublish && (!settings.approval || job.approved)){
+      const youtube=await publishRenderedYouTubeVideo({
+        videoUrl,
+        title:job.title||job.topic||"AI Content Factory",
+        description:job.description||job.notes||"",
+        tags:job.tags||[],
+        categoryId:job.categoryId||"22",
+        privacyStatus:job.privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private",
+        publishAt:job.publishAt||null,
+        approved:!!job.approved
+      });
+      job.youtube=youtube;
+      job.status="published";
+      job.updatedAt=new Date().toISOString();
+      saveJobs(jobs); await persistJob(job);
+      return res.json({ok:true,jobId:job.id,status:job.status,videoUrl,youtube});
+    }
+    job.status=job.approved?"approved":"awaiting_approval";
+    saveJobs(jobs); await persistJob(job);
+    res.json({ok:true,jobId:job.id,status:job.status,videoUrl,published:false});
+  }catch(e){
+    try{
+      const jobs=loadJobs(); const job=jobs[req.params.id];
+      if(job){job.status="render_failed";job.renderError=e.message;job.updatedAt=new Date().toISOString();saveJobs(jobs);await persistJob(job);}
+    }catch{}
+    res.status(500).json({ok:false,error:e.message});
+  }
+});
+
 app.post("/api/pipeline/jobs/:id/rendered",requireAppKey,async(req,res)=>{
   try{
     const jobs=loadJobs();
@@ -318,6 +403,20 @@ app.post("/api/pipeline/research/callback",requireAppKey,async(req,res)=>{
     job.script=await generateWithChatGPT("script",{topic:job.topic,category:job.category,language:job.language,format:job.format,notes:job.notes,sourceText:job.sourceText,research:job.research,sources:job.sources});
     await runVoiceForJob(job);
     job.updatedAt=new Date().toISOString(); saveJobs(jobs); await persistJob(job);
+    if(loadSettings().autoGenerate && job.voice?.status==="ready"){
+      try{
+        const videoUrl=await renderFactoryVideo(job,req);
+        job.renderedVideoUrl=videoUrl;
+        job.status=job.approved?"approved":"awaiting_approval";
+        job.updatedAt=new Date().toISOString();
+        saveJobs(jobs); await persistJob(job);
+      }catch(renderError){
+        job.status="render_failed";
+        job.renderError=renderError.message;
+        job.updatedAt=new Date().toISOString();
+        saveJobs(jobs); await persistJob(job);
+      }
+    }
     res.json({ok:true,jobId:jobId, status:job.status,script:job.script,voice:job.voice||null});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });

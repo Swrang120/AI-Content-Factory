@@ -110,19 +110,19 @@ async function bossCommandRun(){
 
 function renderRobots(){
  title.textContent="AI Robots";
- const active=AI_ROBOTS.filter(r=>r.status==="Active").length;
- view.innerHTML=`<div class="hero"><p class="eyebrow">AI CONTROL ROOM</p><h2>Every robot has one clear job.</h2><p>Monitor the production agents from one place. Statuses shown here are the factory's current control-state UI; real worker execution will update them when the background pipeline is connected.</p></div>
- <div class="cards"><div class="card"><div class="metric-label">AI Robots</div><div class="metric">${AI_ROBOTS.length}</div><div class="metric-note">Configured roles</div></div><div class="card"><div class="metric-label">Active</div><div class="metric">${active}</div><div class="metric-note">Currently marked active</div></div><div class="card"><div class="metric-label">Standby</div><div class="metric">${AI_ROBOTS.length-active}</div><div class="metric-note">Waiting for jobs</div></div><div class="card"><div class="metric-label">Pipeline</div><div class="metric">10</div><div class="metric-note">Production roles</div></div></div>
+ const active=AI_ROBOTS.filter(r=>{const a=agentStateFor(r);return a.status==="WORKING"||a.status==="MEETING";}).length;
+ view.innerHTML=`<div class="hero"><p class="eyebrow">AI CONTROL ROOM</p><h2>Every robot has one clear job.</h2><p>Live worker state is synchronized with the production backend. Working agents appear at their desks; idle agents sleep.</p></div>
+ <div class="cards"><div class="card"><div class="metric-label">AI Robots</div><div class="metric">${AI_ROBOTS.length}</div><div class="metric-note">Configured roles</div></div><div class="card"><div class="metric-label">Active</div><div class="metric robot-metric-active">${active}</div><div class="metric-note">Working right now</div></div><div class="card"><div class="metric-label">Sleeping</div><div class="metric">${AI_ROBOTS.length-active}</div><div class="metric-note">Waiting for jobs</div></div><div class="card"><div class="metric-label">Pipeline</div><div class="metric">10</div><div class="metric-note">Production roles</div></div></div>
  <div class="robot-summary">${AI_ROBOTS.map(robotCard).join("")}</div>
- <div class="robot-grid"><div class="robot-panel"><div class="robot-header"><h3>Live Activity</h3><small>Latest control events</small></div>
- <div class="robot-log"><b>NOW</b><span>Factory Manager → Script Bot: content job assigned</span></div>
- <div class="robot-log"><b>NOW</b><span>QA & Rights Bot → waiting for source/originality checks</span></div>
- <div class="robot-log"><b>READY</b><span>Publisher Bot → waiting for approved rendered video</span></div></div>
+ <div class="robot-grid"><div class="robot-panel"><div class="robot-header"><h3>Live Activity</h3><small>Backend worker events</small></div>
+ <div class="robot-log"><b>LIVE</b><span>Factory Manager assigns work as the pipeline runs.</span></div>
+ <div class="robot-log"><b>SYNC</b><span>Research → Script → Voice → Editor → QA → Publisher.</span></div>
+ <div class="robot-log"><b>READY</b><span>When no job is active, employees return to sleep.</span></div></div>
  <div class="robot-panel"><div class="robot-header"><h3>Production Chain</h3><small>Idea → Publish</small></div>
  <div class="pipeline"><div class="stage"><strong>01</strong><span>RESEARCH</span></div><div class="stage"><strong>02</strong><span>SCRIPT</span></div><div class="stage"><strong>03</strong><span>VOICE</span></div><div class="stage"><strong>04</strong><span>VIDEO</span></div><div class="stage"><strong>05</strong><span>PUBLISH</span></div></div></div></div>`;
+ loadAgentStates();
+ startAgentPolling();
 }
-
-
 function renderDashboard(){
   title.textContent="Dashboard";
   const counts={Idea:0,Planned:0,Ready:0,Approval:0};

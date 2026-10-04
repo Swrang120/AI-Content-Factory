@@ -654,12 +654,17 @@ async function runAutomaticFactory(req){
    const items=autoScheduleForToday(now);
   const hourMinute=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now);
   const [nowH,nowM]=hourMinute.split(":").map(Number);
-  const due=items.filter(x=>{
+  // Vercel Hobby cron may execute anywhere inside its scheduled hour.
+  // Choose the nearest upcoming slot instead of requiring an exact minute.
+  let due=items.filter(x=>{
     const [h,m]=x.time.split(":").map(Number);
-    const diff=(nowH*60+nowM)-(h*60+m);
-    return diff>=-15 && diff<=5;
+    const slotMinutes=h*60+m;
+    const nowMinutes=nowH*60+nowM;
+    return slotMinutes>=nowMinutes-90;
   }).sort((a,b)=>a.time.localeCompare(b.time)).slice(0,1);
-  if(!due.length)return {ok:true,enabled:true,due:[],message:"No category is scheduled for this minute."};
+  if(!due.length){
+    due=items.slice().sort((a,b)=>a.time.localeCompare(b.time)).slice(-1);
+  }
   const results=[];
   for(const item of due){
     try{results.push(await generateAutomaticJob(item,req));}

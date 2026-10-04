@@ -108,16 +108,14 @@ function renderCategories(){
 }
 async function renderSchedule(){
   title.textContent="Schedule";
-  view.innerHTML=`<div class="hero"><p class="eyebrow">AUTOMATIC PUBLISHING</p><h2>Daily content runs automatically.</h2><p>India time (Asia/Kolkata). The worker creates the next category job, generates the production assets and sends approved content to YouTube.</p></div>
-  <div class="table-card"><div class="section-head"><div><h3>Factory Schedule</h3><span class="muted">Default daily category slots</span></div><span id="scheduleBadge" class="badge">Loading…</span></div><div id="factorySchedule"><div class="empty">Loading schedule…</div></div></div>`;
-  try{
-    const r=await fetch(apiUrl("/api/factory/automation-schedule"));
-    const s=await r.json();
-    const box=document.getElementById("factorySchedule"),badge=document.getElementById("scheduleBadge");
-    if(!s.ok)throw new Error(s.error||"Schedule unavailable");
-    if(badge){badge.textContent=s.settings?.autoGenerate?"Auto Generate ON":"Auto Generate OFF";badge.className="badge "+(s.settings?.autoGenerate?"ready":"");}
-    box.innerHTML=(s.schedules||[]).map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.icon||"")} ${esc(x.category)}</div><div class="queue-meta">${esc(x.time)} IST · ${esc(x.format)} · ${esc(x.language)}</div></div><span class="badge ready">Daily</span></div>`).join("");
-  }catch(e){document.getElementById("factorySchedule").innerHTML='<div class="empty">Could not load automatic schedule: '+esc(e.message)+'</div>';}
+  view.innerHTML=`<div class="hero"><p class="eyebrow">WEEKLY LIVE AUTOMATION</p><h2>7-day live schedule · 2:00 PM–4:00 PM IST</h2><p>Automatic weekly live plan. Monday uses only your configured original-music YouTube channels.</p></div>
+  <div class="table-card"><div class="section-head"><div><h3>Weekly Live</h3><span class="muted">Asia/Kolkata · 120 minutes daily</span></div><span id="liveBadge" class="badge">Loading…</span></div><div id="weeklyLiveSchedule"><div class="empty">Loading live schedule…</div></div></div>`;
+  fetch(apiUrl("/api/live/weekly-schedule")).then(r=>r.json()).then(s=>{
+    const box=document.getElementById("weeklyLiveSchedule"),badge=document.getElementById("liveBadge");
+    if(!s.ok)throw new Error(s.error||"Live schedule unavailable");
+    if(badge){badge.textContent=s.settings?.liveAutomation?"Live Automation ON":"Live Automation OFF";badge.className="badge "+(s.settings?.liveAutomation?"ready":"");}
+    box.innerHTML=(s.schedules||[]).map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.icon||"")} ${esc(x.day)} — ${esc(x.title)}</div><div class="queue-meta">2:00 PM–4:00 PM IST · ${esc(x.category)}</div>${x.sourceChannels?.length?`<div class="queue-meta">Original music sources: ${x.sourceChannels.map(esc).join(" · ")}</div>`:""}</div><span class="badge ready">Weekly</span></div>`).join("");
+  }).catch(e=>{document.getElementById("weeklyLiveSchedule").innerHTML='<div class="empty">Could not load live schedule: '+esc(e.message)+'</div>';});
 }
 async function youtubeStatus(){
   try{

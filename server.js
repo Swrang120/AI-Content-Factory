@@ -212,7 +212,7 @@ app.post("/api/pipeline/research/callback",requireAppKey,async(req,res)=>{
     job.script=await generateWithChatGPT("script",{topic:job.topic,category:job.category,language:job.language,format:job.format,notes:job.notes,sourceText:job.sourceText,research:job.research,sources:job.sources});
     await runVoiceForJob(job);
     job.updatedAt=new Date().toISOString(); saveJobs(jobs); await persistJob(job);
-    res.json({ok:true,jobId,status:job.status,script:job.script,voice:job.voice||null});
+    res.json({ok:true,jobId:jobId, status:job.status,script:job.script,voice:job.voice||null});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 

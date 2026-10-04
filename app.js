@@ -121,9 +121,23 @@ function renderDashboard(){
     }
   });
 }
+async function uploadFactoryVideo(){
+  const file=document.getElementById("factoryUploadFile")?.files?.[0], titleInput=document.getElementById("factoryUploadTitle"), result=document.getElementById("factoryUploadResult");
+  if(!file){result.textContent="Choose a video file first.";return;}
+  if(!file.type.includes("video")){result.textContent="Please choose a video file.";return;}
+  if(file.size>50*1024*1024){result.textContent="File is larger than 50 MB.";return;}
+  result.textContent="Uploading video to the Factory media library…";
+  try{
+    const params=new URLSearchParams({filename:file.name,title:(titleInput?.value||file.name).trim()});
+    const r=await fetch(apiUrl("/api/media/upload-file?"+params.toString()),{method:"POST",headers:{"Content-Type":file.type||"video/mp4"},credentials:"include",body:file});
+    const body=await r.json();
+    if(!r.ok||!body.ok)throw new Error(body.error||"Factory upload failed");
+    result.innerHTML='<span style="color:var(--accent)">✓ Uploaded to Factory.</span><br><small>'+esc(body.title)+' · '+Math.round((body.size||0)/1024/1024*10)/10+' MB</small><br><a href="'+esc(body.url)+'" target="_blank" rel="noopener">Open uploaded video</a>';
+  }catch(e){result.textContent="Upload failed: "+e.message;}
+}
 function renderContent(){
   title.textContent="Content";
-  view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Content Queue</h3><span class="muted">Ideas, planned videos and future AI-generated assets.</span></div><button class="primary" onclick="openModal()">＋ Add Content</button></div><table class="table"><thead><tr><th>Title</th><th>Category</th><th>Format</th><th>Language</th><th>Status</th></tr></thead><tbody>${data.content.map(x=>`<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.category)}</td><td>${esc(x.format)}</td><td>${esc(x.language)}</td><td><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></td></tr>`).join("")}</tbody></table></div>`;
+  view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Content Queue</h3><span class="muted">Ideas, planned videos and future AI-generated assets.</span></div><button class="primary" onclick="openModal()">＋ Add Content</button></div><div class="table-card" style="margin:14px 0;background:#0a1726"><div class="section-head"><div><h3>📤 Upload Video to Factory</h3><span class="muted">Add your own video to the media library.</span></div><span class="badge">Max 50 MB</span></div><div class="form-grid"><label>Video title<input id="factoryUploadTitle" placeholder="My original video"></label><label>Video file<input id="factoryUploadFile" type="file" accept="video/mp4,video/*"></label></div><button class="primary full" onclick="uploadFactoryVideo()">📤 Upload to Factory</button><div id="factoryUploadResult" class="muted" style="margin-top:10px">Nothing uploaded yet.</div></div><table class="table"><thead><tr><th>Title</th><th>Category</th><th>Format</th><th>Language</th><th>Status</th></tr></thead><tbody>${data.content.map(x=>`<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.category)}</td><td>${esc(x.format)}</td><td>${esc(x.language)}</td><td><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></td></tr>`).join("")}</tbody></table></div>`;
 }
 function renderCategories(){
   title.textContent="Categories";

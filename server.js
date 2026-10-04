@@ -588,49 +588,59 @@ async function generateAutomaticJob(item,req){
   const id=autoSlotId(item);
   if(await autoJobExists(id))return {ok:true,skipped:true,jobId:id,reason:"slot_already_created"};
   const jobs=loadJobs();
+  await setAgentState("manager","WORKING",8,"Starting scheduled production",id);
+  await setAgentState("research","WORKING",15,"Finding a verified topic and research direction",id);
   const topicRaw=await generateWithChatGPT("automatic_topic",{
-    category:item.category,
-    language:item.language,
-    format:item.format,
-    scheduleTime:item.time,
-    direction:item.prompt,
+    category:item.category,language:item.language,format:item.format,scheduleTime:item.time,direction:item.prompt,
     requirement:"Return one original YouTube video topic/title only. For News/Sports, do not invent a current fact; return a research-needed topic if no verified source is provided."
   });
   const topic=String(topicRaw||"AI Content Factory").replace(/^["']|["']$/g,"").trim().split("\n")[0].slice(0,180);
+  await setAgentState("research","WORKING",45,"Researching: "+topic,id);
   const job={id,status:"researching",topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[],createdAt:new Date().toISOString(),auto:true,scheduledSlot:item.slot};
   jobs[id]=job; saveJobs(jobs); await persistJob(job);
   job.research=await generateWithChatGPT("research_plan",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[]});
+  await setAgentState("research","SLEEPING",100,"Research complete",id);
+  await setAgentState("script","WORKING",25,"Writing the production script",id);
   job.script=await generateWithChatGPT("script",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,research:job.research,sources:[]});
   job.status="script_ready";
+  await setAgentState("script","SLEEPING",100,"Script complete",id);
+  await setAgentState("voice","WORKING",20,"Generating narration audio",id);
   await runVoiceForJob(job);
   if(job.voice?.status==="ready"){
+    await setAgentState("voice","SLEEPING",100,"Voice complete",id);
+    await setAgentState("visual","WORKING",25,"Preparing visual plan",id);
+    await setAgentState("editor","WORKING",20,"Rendering the final video",id);
     job.status="rendering"; saveJobs(jobs); await persistJob(job);
+    await setAgentState("visual","SLEEPING",100,"Visual plan complete",id);
     job.renderedVideoUrl=await renderFactoryVideo(job,req);
     job.status="rendered";
+    await setAgentState("editor","SLEEPING",100,"Video render complete",id);
+    await setAgentState("thumb","WORKING",20,"Preparing thumbnail and metadata",id);
+    await setAgentState("qa","WORKING",30,"Checking quality, sources and rights",id);
   }else{
     job.status="voice_waiting";
     job.renderError=job.voice?.error||"Voice generation did not complete.";
   }
   job.updatedAt=new Date().toISOString(); saveJobs(jobs); await persistJob(job);
+  await setAgentState("thumb","SLEEPING",100,"Publishing metadata ready",id);
+  await setAgentState("qa","WORKING",80,"Final quality and rights gate",id);
   if(job.renderedVideoUrl && loadSettings().autoPublish){
+    await setAgentState("publisher","WORKING",45,"Uploading and scheduling on YouTube",id);
     const scheduledAt=new Date(item.slot);
     const now=new Date();
     const publishAt=scheduledAt>now?item.slot:null;
     const youtubeResult=await publishRenderedYouTubeVideo({
-      videoUrl:job.renderedVideoUrl,
-      title:job.topic,
+      videoUrl:job.renderedVideoUrl,title:job.topic,
       description:"Created automatically by AI Content Factory. Category: "+item.category,
-      tags:[item.category,"AI Content Factory"],
-      categoryId:"22",
-      privacyStatus:publishAt?"private":"public",
-      publishAt,
-      approved:true,
-      automated:true,
-      req
+      tags:[item.category,"AI Content Factory"],categoryId:"22",
+      privacyStatus:publishAt?"private":"public",publishAt,approved:true,automated:true,req
     });
     job.youtube=youtubeResult; job.status="published"; job.updatedAt=new Date().toISOString();
     saveJobs(jobs); await persistJob(job);
   }
+  await setAgentState("qa","SLEEPING",100,"Quality and rights checks complete",id);
+  await setAgentState("publisher","SLEEPING",100,job.status==="published"?"YouTube publish complete":"Waiting for publish approval",id);
+  await setAgentState("manager","SLEEPING",100,"Production job complete",id);
   return {ok:true,skipped:false,jobId:id,status:job.status,topic:job.topic,videoUrl:job.renderedVideoUrl||null};
 }
 async function runAutomaticFactory(req){

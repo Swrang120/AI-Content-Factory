@@ -285,8 +285,7 @@ function renderAccounts(){
   view.innerHTML=`<div class="table-card">
     <div class="section-head"><div><h3>Connected Platforms</h3><span class="muted">YouTube uses OAuth; secrets stay server-side.</span></div></div>
     <div class="platform"><div><div class="platform-name">YouTube</div><small id="ytStatusText">Checking connection…</small></div><div class="platform-actions"><span id="ytBadge" class="badge">Checking</span><button class="small-btn" onclick="connectYouTube()">Connect</button></div></div>
-    <div class="platform"><div><div class="platform-name">Automatic Publishing</div><small>Publisher Bot can publish a rendered video automatically after the configured QA/approval gate passes.</small></div><button class="switch ${data.settings.autoPublish?"on":""}" onclick="toggleSetting('autoPublish')"><i></i></button></div>
-    <div class="platform"><div><div class="platform-name">Approval Gate</div><small>Keep this ON while testing. Public auto-publishing requires an approved job.</small></div><button class="switch ${data.settings.approval?"on":""}" onclick="toggleSetting('approval')"><i></i></button></div>
+    <div class="platform"><div><div class="platform-name">Automation</div><small>Master control for scheduled AI workers and video uploads.</small></div><span class="badge ${data.settings.automationOnline!==false?"ready":""}">${data.settings.automationOnline!==false?"ONLINE":"OFFLINE"}</span></div>
     <div class="platform"><div><div class="platform-name">Facebook</div><small>Meta publishing adapter</small></div><span class="badge">Not connected</span></div>
     <div class="platform"><div><div class="platform-name">Instagram</div><small>Publishing adapter</small></div><span class="badge">Not connected</span></div>
     <div class="table-card" style="margin-top:14px">

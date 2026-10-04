@@ -277,7 +277,8 @@ async function generateAutomaticJob(item,req){
       categoryId:"22",
       privacyStatus:loadSettings().approval?"private":"public",
       publishAt:loadSettings().approval?null:publishAt,
-      approved:!loadSettings().approval
+      approved:!loadSettings().approval,
+      req
     });
     job.youtube=youtubeResult; job.status="published"; job.updatedAt=new Date().toISOString();
     saveJobs(jobs); await persistJob(job);
@@ -619,7 +620,8 @@ app.get("/api/cron/factory",async(req,res)=>{
   try{
     const expected=process.env.CRON_SECRET||"";
     const auth=req.headers.authorization||"";
-    if(expected && auth!=="Bearer "+expected)return res.status(401).json({ok:false,error:"Unauthorized cron request"});
+    if(!expected)return res.status(503).json({ok:false,error:"CRON_SECRET is not configured on the server."});
+    if(auth!=="Bearer "+expected)return res.status(401).json({ok:false,error:"Unauthorized cron request"});
     const result=await runAutomaticFactory(req);
     res.json(result);
   }catch(e){res.status(500).json({ok:false,error:e.message});}

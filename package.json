@@ -19,6 +19,7 @@
     "remotion": "4.0.532",
     "@remotion/bundler": "4.0.532",
     "@remotion/renderer": "4.0.532",
-    "@remotion/vercel": "4.0.532"
+    "@remotion/vercel": "4.0.532",
+    "@vercel/blob": "^2.0.0"
   }
 }

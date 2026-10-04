@@ -139,6 +139,48 @@ async function persistSettings(settings){
     throw new Error("Could not persist settings to Supabase: "+error.message);
   }
 }
+const AGENT_IDS=["manager","research","script","voice","visual","editor","thumb","qa","publisher","analytics"];
+const AGENT_DEFAULTS=Object.fromEntries(AGENT_IDS.map(id=>[id,{id,status:"SLEEPING",progress:0,task:"Waiting for a job",jobId:null,updatedAt:new Date().toISOString()}]));
+let agentStateCache=null;
+function normalizeAgentState(input={}){
+  const out={};
+  for(const id of AGENT_IDS){
+    const raw=input[id]&&typeof input[id]==="object"?input[id]:{};
+    const status=["WORKING","SLEEPING","MEETING","ERROR"].includes(String(raw.status||"").toUpperCase())?String(raw.status).toUpperCase():"SLEEPING";
+    out[id]={id,status,progress:Math.max(0,Math.min(100,Number(raw.progress)||0)),task:String(raw.task||"Waiting for a job").slice(0,240),jobId:raw.jobId?String(raw.jobId).slice(0,120):null,updatedAt:raw.updatedAt||new Date().toISOString()};
+  }
+  return out;
+}
+async function getAgentState(){
+  if(agentStateCache)return agentStateCache;
+  agentStateCache=normalizeAgentState();
+  if(!supabase)return agentStateCache;
+  try{
+    const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+    const saved=data?.tokens?.__acf_agent_state;
+    if(!error&&saved&&typeof saved==="object")agentStateCache=normalizeAgentState(saved);
+  }catch{}
+  return agentStateCache;
+}
+async function setAgentStates(changes={}){
+  const current=await getAgentState();
+  for(const [id,value] of Object.entries(changes)){
+    if(!AGENT_IDS.includes(id))continue;
+    current[id]={...current[id],...value,id,updatedAt:new Date().toISOString()};
+  }
+  agentStateCache=normalizeAgentState(current);
+  if(!supabase)return agentStateCache;
+  try{
+    const {data}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+    const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
+    const tokens={...existing,__acf_agent_state:agentStateCache};
+    await supabase.from("youtube_connections").upsert({id:"default",tokens,updated_at:new Date().toISOString()},{onConflict:"id"});
+  }catch(error){console.error("Agent state persistence warning:",safeErrorMessage(error));}
+  return agentStateCache;
+}
+async function setAgentState(id,status,progress,task,jobId=null){
+  return setAgentStates({[id]:{status,progress,task,jobId}});
+}
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
 function saveJobs(jobs){try{fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}catch{ /* Vercel filesystem is ephemeral/read-only; Supabase is the persistent store. */ }}
 function jobId(){return "job_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);}

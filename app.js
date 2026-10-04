@@ -87,10 +87,12 @@ function robotCard(r){
 }
 function renderBossRoom(){
  title.textContent="Boss Room";
- view.innerHTML=`<div class="boss-room"><div class="boss-header"><div><p class="eyebrow">COMMAND CENTER</p><h2>👔 Boss Room</h2><p>Boss gives the order. AI employees pick the right job and show their work live.</p></div><div class="boss-avatar"><div class="boss-face">👔</div><span>YOU · BOSS</span><i></i></div></div>
+ view.innerHTML=`<div class="boss-room"><div class="boss-header"><div><p class="eyebrow">COMMAND CENTER</p><h2>👔 Boss Room</h2><p>Boss gives the order. Employees wake only while they have work.</p></div><div class="boss-avatar"><div class="boss-face">👔</div><span>YOU · BOSS</span><i></i></div></div>
  <div class="boss-command"><div class="command-label">QUICK COMMAND</div><div class="command-row"><input id="bossCommand" placeholder="Tell your AI employees what to do…" onkeydown="if(event.key==='Enter')bossCommandRun()"><button class="primary" onclick="bossCommandRun()">⚡ Execute</button></div>
  <div class="quick-actions"><button class="small-btn" onclick="bossQuick('Create a new video idea')">🎬 New Video</button><button class="small-btn" onclick="bossQuick('Write a YouTube script')">✍️ Script</button><button class="small-btn" onclick="bossQuick('Create a thumbnail brief')">🎨 Thumbnail</button><button class="small-btn" onclick="bossQuick('Prepare a music promotion')">🎵 Music Promo</button></div><div id="bossResult" class="boss-result">Waiting for the Boss order…</div></div>
- <div class="employee-room"><div class="room-title"><h3>AI Employees</h3><span id="bossLiveBadge" class="badge ready">SYSTEM READY</span></div><div class="employee-grid">${AI_ROBOTS.map(r=>`<div class="employee-card" id="employee-${r.id}"><div class="employee-character ${r.status==="Active"?"working":""}"><div class="employee-head">${r.icon}</div><div class="employee-body"></div><div class="employee-shadow"></div></div><div class="employee-info"><strong>${r.name}</strong><small>${r.role}</small><span class="employee-state">${r.status==="Active"?"Working":"Standby"}</span></div></div>`).join("")}</div></div></div>`;
+ <div class="employee-room"><div class="room-title"><h3>AI Employees</h3><span id="bossLiveBadge" class="badge robot-live-badge">SYNCING…</span></div><div class="employee-grid">${AI_ROBOTS.map(r=>`<div class="employee-card" id="employee-${r.id}"><div class="employee-character"><div class="employee-head">${r.icon}</div><div class="employee-body"></div><div class="employee-shadow"></div></div><div class="employee-info"><strong>${r.name}</strong><small>${r.role}</small><span class="employee-state">Sleeping</span></div></div>`).join("")}</div></div></div>`;
+ loadAgentStates();
+ startAgentPolling();
 }
 function bossQuick(c){const i=document.getElementById("bossCommand");if(i){i.value=c;bossCommandRun();}}
 async function bossCommandRun(){
@@ -102,12 +104,22 @@ async function bossCommandRun(){
  if(w.includes("video")||w.includes("edit")||w.includes("reel"))ids.push("visual","editor");
  if(w.includes("thumbnail")||w.includes("poster"))ids.push("thumb");
  if(w.includes("publish")||w.includes("youtube")||w.includes("upload"))ids.push("qa","publisher");
- ids=[...new Set(ids)];document.querySelectorAll(".employee-card").forEach(x=>x.classList.remove("employee-working"));ids.forEach(id=>document.getElementById("employee-"+id)?.classList.add("employee-working"));
- if(badge){badge.textContent="EMPLOYEES WORKING";badge.className="badge ready";}if(result)result.innerHTML="<b>Boss order:</b> "+esc(command)+"<br><span>Assigned: "+ids.map(id=>AI_ROBOTS.find(r=>r.id===id)?.name||id).join(" → ")+"</span>";
- try{if(w.includes("script")||w.includes("idea")||w.includes("content")||w.includes("video")){const r=await fetch(apiUrl("/api/ai/generate"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({task:"boss_command",topic:command,category:"AI Content Factory",language:"English",format:"Short Video",notes:"Boss command. Return a concise actionable production brief; do not invent current facts."})});const s=await r.json();if(s.ok&&result)result.innerHTML+="<br><span class='boss-output'>AI Manager result: "+esc(s.output).replace(/\n/g,"<br>")+"</span>";}}catch(e){if(result)result.innerHTML+="<br><span class='boss-output'>Command queued. Backend response unavailable.</span>";}
- setTimeout(()=>{ids.forEach(id=>document.getElementById("employee-"+id)?.classList.remove("employee-working"));if(badge){badge.textContent="SYSTEM READY";badge.className="badge ready";}},7000);
+ ids=[...new Set(ids)];
+ const changes={};ids.forEach(id=>changes[id]={status:"WORKING",progress:10,task:"Working on Boss order: "+command.slice(0,150),jobId:null});
+ liveAgents={...liveAgents,...changes};
+ AI_ROBOTS.forEach(applyAgentToDom);
+ if(badge){badge.textContent="EMPLOYEES WORKING";badge.className="badge ready robot-live-badge";}
+ if(result)result.innerHTML="<b>Boss order:</b> "+esc(command)+"<br><span>Assigned: "+ids.map(id=>AI_ROBOTS.find(r=>r.id===id)?.name||id).join(" → ")+"</span>";
+ try{await fetch(apiUrl("/api/agents/state"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({agents:changes})});}catch(_){}
+ try{
+   if(w.includes("script")||w.includes("idea")||w.includes("content")||w.includes("video")){
+     const r=await fetch(apiUrl("/api/ai/generate"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({task:"boss_command",topic:command,category:"AI Content Factory",language:"English",format:"Short Video",notes:"Boss command. Return a concise actionable production brief; do not invent current facts."})});
+     const s=await r.json();
+     if(s.ok&&result)result.innerHTML+="<br><span class='boss-output'>AI Manager result: "+esc(s.output).replace(/\n/g,"<br>")+"</span>";
+   }
+ }catch(e){if(result)result.innerHTML+="<br><span class='boss-output'>Command queued. Backend response unavailable.</span>";}
+ setTimeout(async()=>{try{await fetch(apiUrl("/api/agents/state"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({agents:Object.fromEntries(ids.map(id=>[id,{status:"SLEEPING",progress:100,task:"Waiting for a job",jobId:null}]))})});}catch(_){}loadAgentStates();},7000);
 }
-
 function renderRobots(){
  title.textContent="AI Robots";
  const active=AI_ROBOTS.filter(r=>{const a=agentStateFor(r);return a.status==="WORKING"||a.status==="MEETING";}).length;

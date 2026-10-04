@@ -643,7 +643,8 @@ app.get("/api/youtube/status",async(req,res)=>{
     res.status(400).json({ok:false,connected:false,error:e.message});
   }
 });
-app.get("/api/factory/settings",requireAppKey,(req,res)=>res.json({ok:true,settings:loadSettings()}));
+function settingsFromRequest(req){try{const raw=(req.headers.cookie||"").split(";").map(x=>x.trim()).find(x=>x.startsWith("acf_factory_settings="));if(!raw)return null;const parsed=JSON.parse(decodeURIComponent(raw.slice("acf_factory_settings=".length)));if(!parsed||typeof parsed!=="object")return null;return {...loadSettings(),...parsed};}catch{return null;}}
+app.get("/api/factory/settings",requireAppKey,(req,res)=>res.json({ok:true,settings:settingsFromRequest(req)||loadSettings()}));
 app.get("/api/cron/factory",async(req,res)=>{
   try{
     const expected=process.env.CRON_SECRET||"";
@@ -657,7 +658,7 @@ app.get("/api/cron/factory",async(req,res)=>{
 app.get("/api/factory/automation-schedule",(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",schedules:AUTO_SCHEDULES,settings:loadSettings()}));
 app.get("/api/live/weekly-schedule",(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",startTime:"14:00",endTime:"16:00",durationMinutes:120,schedules:weeklyLiveSchedule(),musicSourceChannels:loadSettings().musicSourceChannels,settings:loadSettings()}));
 
-app.post("/api/factory/settings",requireAppKey,(req,res)=>{try{const next={...loadSettings(),...(req.body||{})};next.autoGenerate=!!next.autoGenerate;next.approval=next.approval!==false;next.autoPublish=!!next.autoPublish;saveSettings(next);res.json({ok:true,settings:next});}catch(e){res.status(500).json({ok:false,error:e.message});}});
+app.post("/api/factory/settings",requireAppKey,(req,res)=>{try{const next={...loadSettings(),...(req.body||{})};next.autoGenerate=!!next.autoGenerate;next.approval=next.approval!==false;next.autoPublish=!!next.autoPublish;saveSettings(next);res.setHeader("Set-Cookie",`acf_factory_settings=${encodeURIComponent(JSON.stringify(next))}; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None`);res.json({ok:true,settings:next});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
   try{
     if(!process.env.BLOB_READ_WRITE_TOKEN)return res.status(503).json({ok:false,error:"Vercel Blob is not configured."});

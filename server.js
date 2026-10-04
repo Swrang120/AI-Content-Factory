@@ -991,11 +991,9 @@ app.get("/api/youtube/status",async(req,res)=>{
 });
 function settingsFromRequest(req){try{const raw=(req.headers.cookie||"").split(";").map(x=>x.trim()).find(x=>x.startsWith("acf_factory_settings="));if(!raw)return null;const parsed=JSON.parse(decodeURIComponent(raw.slice("acf_factory_settings=".length)));if(!parsed||typeof parsed!=="object"||parsed.version!==2)return null;return {...loadSettings(),...parsed};}catch{return null;}}
 app.get("/api/factory/settings",requireAppKey,async(req,res)=>{
-  const serverSettings=await hydrateSettings();
-  const cookieSettings=settingsFromRequest(req);
-  const settings=cookieSettings||serverSettings;
+  const settings=await hydrateSettings();
   res.setHeader("Cache-Control","private, no-store");
-  res.json({ok:true,settings,source:cookieSettings?"browser-cookie":"persistent-server"});
+  res.json({ok:true,settings,source:"persistent-server"});
 });
 app.get("/api/cron/self-heal",async(req,res)=>{
   try{

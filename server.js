@@ -88,8 +88,71 @@ async function saveTokens(tokens){
     fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
   }catch{}
 }
-function loadSettings(){const defaults={autoGenerate:true,approval:true,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]};try{const saved=JSON.parse(fs.readFileSync(SETTINGS_FILE,"utf8"));return {...defaults,...saved};}catch{return defaults;}}
-function saveSettings(settings){fs.mkdirSync(path.dirname(SETTINGS_FILE),{recursive:true});fs.writeFileSync(SETTINGS_FILE,JSON.stringify(settings,null,2));}
+const DEFAULT_FACTORY_SETTINGS={autoGenerate:true,approval:true,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]};
+let settingsCache=null;
+function loadSettings(){
+  if(settingsCache)return settingsCache;
+  try{
+    const saved=JSON.parse(fs.readFileSync(SETTINGS_FILE,"utf8"));
+    settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
+    return settingsCache;
+  }catch{
+    settingsCache={...DEFAULT_FACTORY_SETTINGS};
+    return settingsCache;
+  }
+}
+function saveSettings(settings){
+  settingsCache={...DEFAULT_FACTORY_SETTINGS,...settings};
+  try{
+    fs.mkdirSync(path.dirname(SETTINGS_FILE),{recursive:true});
+    fs.writeFileSync(SETTINGS_FILE,JSON.stringify(settingsCache,null,2));
+  }catch{}
+}
+async function hydrateSettings(){
+  const current=loadSettings();
+  if(!supabase)return current;
+  try{
+    const {data,error}=await supabase.from("content_jobs")
+      .select("id,notes,updated_at")
+      .eq("id","__factory_settings__")
+      .maybeSingle();
+    if(!error&&data?.notes){
+      const raw=String(data.notes);
+      if(raw.startsWith("__ACF_SETTINGS__")){
+        const saved=JSON.parse(raw.slice("__ACF_SETTINGS__".length));
+        if(saved&&typeof saved==="object"){
+          settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
+          try{
+            fs.mkdirSync(path.dirname(SETTINGS_FILE),{recursive:true});
+            fs.writeFileSync(SETTINGS_FILE,JSON.stringify(settingsCache,null,2));
+          }catch{}
+        }
+      }
+    }
+  }catch{}
+  return settingsCache||current;
+}
+async function persistSettings(settings){
+  saveSettings(settings);
+  if(!supabase)return;
+  try{
+    const row={
+      id:"__factory_settings__",
+      status:"settings",
+      topic:"__factory_settings__",
+      category:"System",
+      language:"English",
+      format:"Configuration",
+      notes:"__ACF_SETTINGS__"+JSON.stringify(settingsCache||settings),
+      source_text:"",
+      sources:[],
+      approved:true,
+      created_at:new Date().toISOString(),
+      updated_at:new Date().toISOString()
+    };
+    await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
+  }catch{}
+}
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
 function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}
 function jobId(){return "job_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);}
@@ -143,7 +206,7 @@ async function loadPersistentJobs(){
   const jobs=loadJobs();
   if(!supabase)return jobs;
   try{
-    const {data,error}=await supabase.from("content_jobs").select("*").order("updated_at",{ascending:false}).limit(200);
+    const {data,error}=await supabase.from("content_jobs").select("*").neq("id","__factory_settings__").order("updated_at",{ascending:false}).limit(200);
     if(!error&&Array.isArray(data)){
       for(const row of data)jobs[row.id]=decodeJobRow(row);
     }
@@ -542,7 +605,7 @@ async function generateAutomaticJob(item,req){
   return {ok:true,skipped:false,jobId:id,status:job.status,topic:job.topic,videoUrl:job.renderedVideoUrl||null};
 }
 async function runAutomaticFactory(req){
-  const settings=loadSettings();
+  const settings=await hydrateSettings();
   const jobs=await loadPersistentJobs();
   const now=new Date();
   const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
@@ -569,7 +632,7 @@ async function runAutomaticFactory(req){
 
 async function publishRenderedYouTubeVideo(p){
   if(!p?.videoUrl||!p?.title)throw new Error("videoUrl and title are required");
-  const settings=loadSettings();
+  const settings=await hydrateSettings();
   if(!settings.autoPublish)throw new Error("Auto Publish is OFF.");
   if(settings.approval&&!p.approved)throw new Error("Human approval is required before publishing.");
   const asset=await fetch(p.videoUrl);
@@ -821,7 +884,7 @@ app.get("/api/supabase/status",requireAppKey,async(req,res)=>{
     res.json({ok:true,configured:true,connected:true,table:"content_jobs"});
   }catch(e){res.json({ok:true,configured:true,connected:false,error:e.message});}
 });
-app.get("/api/health",async(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!(await loadTokens(req)),supabase:!!supabase,settings:loadSettings()}));
+app.get("/api/health",async(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!(await loadTokens(req)),supabase:!!supabase,settings:await hydrateSettings()}));
 app.get("/auth/youtube",(req,res)=>{
   try{
     const client=oauthClient();
@@ -927,11 +990,12 @@ app.get("/api/youtube/status",async(req,res)=>{
   }
 });
 function settingsFromRequest(req){try{const raw=(req.headers.cookie||"").split(";").map(x=>x.trim()).find(x=>x.startsWith("acf_factory_settings="));if(!raw)return null;const parsed=JSON.parse(decodeURIComponent(raw.slice("acf_factory_settings=".length)));if(!parsed||typeof parsed!=="object"||parsed.version!==2)return null;return {...loadSettings(),...parsed};}catch{return null;}}
-app.get("/api/factory/settings",requireAppKey,(req,res)=>{
+app.get("/api/factory/settings",requireAppKey,async(req,res)=>{
+  const serverSettings=await hydrateSettings();
   const cookieSettings=settingsFromRequest(req);
-  const settings=cookieSettings||loadSettings();
+  const settings=cookieSettings||serverSettings;
   res.setHeader("Cache-Control","private, no-store");
-  res.json({ok:true,settings,source:cookieSettings?"browser-cookie":"server-default"});
+  res.json({ok:true,settings,source:cookieSettings?"browser-cookie":"persistent-server"});
 });
 app.get("/api/cron/self-heal",async(req,res)=>{
   try{
@@ -964,19 +1028,24 @@ app.get("/api/cron/factory",async(req,res)=>{
     res.json(result);
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
-app.get("/api/factory/automation-schedule",(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",schedules:AUTO_SCHEDULES,settings:loadSettings()}));
-app.get("/api/live/weekly-schedule",(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",startTime:"14:00",endTime:"16:00",durationMinutes:120,schedules:weeklyLiveSchedule(),musicSourceChannels:loadSettings().musicSourceChannels,settings:loadSettings()}));
+app.get("/api/factory/automation-schedule",async(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",schedules:AUTO_SCHEDULES,settings:await hydrateSettings()}));
+app.get("/api/live/weekly-schedule",async(req,res)=>{const settings=await hydrateSettings();res.json({ok:true,timeZone:"Asia/Kolkata",startTime:"14:00",endTime:"16:00",durationMinutes:120,schedules:weeklyLiveSchedule(),musicSourceChannels:settings.musicSourceChannels,settings});});
 
-app.post("/api/factory/settings",requireAppKey,(req,res)=>{try{
-  const next={...loadSettings(),...(req.body||{})};
+app.post("/api/factory/settings",requireAppKey,async(req,res)=>{try{
+  const current=await hydrateSettings();
+  const next={...current,...(req.body||{})};
   next.version=2;
   next.autoGenerate=!!next.autoGenerate;
   next.approval=next.approval!==false;
   next.autoPublish=!!next.autoPublish;
-  saveSettings(next);
+  next.liveAutomation=!!next.liveAutomation;
+  next.liveApproval=next.liveApproval!==false;
+  next.liveDurationMinutes=Math.max(1,Math.min(1440,Number(next.liveDurationMinutes)||120));
+  next.musicSourceChannels=Array.isArray(next.musicSourceChannels)?next.musicSourceChannels:DEFAULT_FACTORY_SETTINGS.musicSourceChannels;
+  await persistSettings(next);
   res.setHeader("Cache-Control","private, no-store");
   res.setHeader("Set-Cookie",`acf_factory_settings=${encodeURIComponent(JSON.stringify(next))}; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None`);
-  res.json({ok:true,settings:next,source:"browser-cookie"});
+  res.json({ok:true,settings:next,source:"persistent-server"});
 }catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
   try{

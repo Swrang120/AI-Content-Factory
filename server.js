@@ -220,6 +220,85 @@ async function renderFactoryVideo(job,req){
   return uploaded.url;
 }
 
+const AUTO_SCHEDULES=[
+  {id:"editing_morning",category:"Editing Knowledge",icon:"🎬",time:"09:00",format:"Short Video",language:"English",prompt:"Trending video editing tutorial, creator editing tip, CapCut/VN/Alight Motion/Premiere Pro workflow. Make it practical and original."},
+  {id:"music_promo",category:"Music Promotion",icon:"🎵",time:"12:00",format:"Promo",language:"Hindi + Bodo",prompt:"Promote an original romantic/sad music release or artist story. Do not reproduce copyrighted lyrics. Focus on original promotional storytelling."},
+  {id:"product_promo",category:"Product Promotion",icon:"🛍️",time:"15:00",format:"Promo",language:"Hindi",prompt:"Useful product information or promotion. Clearly distinguish facts from opinions and do not invent specifications, prices or claims."},
+  {id:"news_evening",category:"News & Updates",icon:"📰",time:"17:00",format:"Short Video",language:"English",prompt:"Current news explainer. ONLY use verified source material supplied to the job; never invent current events or statistics."},
+  {id:"sports_evening",category:"Sports Information",icon:"⚽",time:"19:00",format:"Short Video",language:"English",prompt:"Current sports information/explainer. ONLY use verified source material supplied to the job; never invent scores, schedules or player facts."},
+  {id:"romantic_night",category:"Music Promotion",icon:"💙",time:"21:00",format:"Long Video",language:"Hindi + Bodo",prompt:"Original romantic/sad music story or visual-video concept. Use original text only; no copyrighted song lyrics."}
+];
+function autoScheduleForToday(now=new Date()){
+  const day=now.toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
+  return AUTO_SCHEDULES.map(x=>({...x,date:day,slot:day+"T"+x.time+":00+05:30"}));
+}
+function autoSlotId(item){return "auto_"+item.id+"_"+item.date+"_"+item.time.replace(":","");}
+async function autoJobExists(id){
+  if(supabase){
+    try{const {data,error}=await supabase.from("content_jobs").select("id").eq("id",id).maybeSingle();if(!error&&data)return true;}catch{}
+  }
+  return !!loadJobs()[id];
+}
+async function generateAutomaticJob(item,req){
+  const id=autoSlotId(item);
+  if(await autoJobExists(id))return {ok:true,skipped:true,jobId:id,reason:"slot_already_created"};
+  const jobs=loadJobs();
+  const topicRaw=await generateWithChatGPT("automatic_topic",{
+    category:item.category,
+    language:item.language,
+    format:item.format,
+    scheduleTime:item.time,
+    direction:item.prompt,
+    requirement:"Return one original YouTube video topic/title only. For News/Sports, do not invent a current fact; return a research-needed topic if no verified source is provided."
+  });
+  const topic=String(topicRaw||"AI Content Factory").replace(/^["']|["']$/g,"").trim().split("\n")[0].slice(0,180);
+  const job={id,status:"researching",topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[],createdAt:new Date().toISOString(),auto:true,scheduledSlot:item.slot};
+  jobs[id]=job; saveJobs(jobs); await persistJob(job);
+  job.research=await generateWithChatGPT("research_plan",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[]});
+  job.script=await generateWithChatGPT("script",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,research:job.research,sources:[]});
+  job.status="script_ready";
+  await runVoiceForJob(job);
+  if(job.voice?.status==="ready"){
+    job.status="rendering"; saveJobs(jobs); await persistJob(job);
+    job.renderedVideoUrl=await renderFactoryVideo(job,req);
+    job.status="rendered";
+  }else{
+    job.status="voice_waiting";
+    job.renderError=job.voice?.error||"Voice generation did not complete.";
+  }
+  job.updatedAt=new Date().toISOString(); saveJobs(jobs); await persistJob(job);
+  if(job.renderedVideoUrl && loadSettings().autoPublish){
+    const publishAt=item.slot;
+    const youtubeResult=await publishRenderedYouTubeVideo({
+      videoUrl:job.renderedVideoUrl,
+      title:job.topic,
+      description:"Created automatically by AI Content Factory. Category: "+item.category,
+      tags:[item.category,"AI Content Factory"],
+      categoryId:"22",
+      privacyStatus:loadSettings().approval?"private":"public",
+      publishAt:loadSettings().approval?null:publishAt,
+      approved:!loadSettings().approval
+    });
+    job.youtube=youtubeResult; job.status="published"; job.updatedAt=new Date().toISOString();
+    saveJobs(jobs); await persistJob(job);
+  }
+  return {ok:true,skipped:false,jobId:id,status:job.status,topic:job.topic,videoUrl:job.renderedVideoUrl||null};
+}
+async function runAutomaticFactory(req){
+  if(!loadSettings().autoGenerate)return {ok:true,enabled:false,message:"Auto Generate is OFF."};
+  const now=new Date();
+  const items=autoScheduleForToday(now);
+  const hourMinute=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now);
+  const due=items.filter(x=>x.time===hourMinute);
+  if(!due.length)return {ok:true,enabled:true,due:[],message:"No category is scheduled for this minute."};
+  const results=[];
+  for(const item of due){
+    try{results.push(await generateAutomaticJob(item,req));}
+    catch(e){results.push({ok:false,category:item.category,time:item.time,error:e.message});}
+  }
+  return {ok:true,enabled:true,due:due.map(x=>x.category),results};
+}
+
 async function publishRenderedYouTubeVideo(p){
   if(!p?.videoUrl||!p?.title)throw new Error("videoUrl and title are required");
   const settings=loadSettings();
@@ -227,7 +306,7 @@ async function publishRenderedYouTubeVideo(p){
   if(settings.approval&&!p.approved)throw new Error("Human approval is required before publishing.");
   const asset=await fetch(p.videoUrl);
   if(!asset.ok||!asset.body)throw new Error("Could not fetch rendered video asset");
-  const yt=await youtube();
+  const yt=await youtube(p.req);
   const privacyStatus=p.privacyStatus||"public";
   const status={privacyStatus};
   if(p.publishAt)status.publishAt=p.publishAt;
@@ -316,7 +395,8 @@ app.post("/api/pipeline/jobs/:id/render",requireAppKey,async(req,res)=>{
         categoryId:job.categoryId||"22",
         privacyStatus:job.privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private",
         publishAt:job.publishAt||null,
-        approved:!!job.approved
+        approved:!!job.approved,
+        req
       });
       job.youtube=youtube;
       job.status="published";
@@ -358,7 +438,7 @@ app.post("/api/pipeline/jobs/:id/rendered",requireAppKey,async(req,res)=>{
 
     if(loadSettings().autoPublish && (!loadSettings().approval || job.approved)){
       try{
-        const youtubeResult=await publishRenderedYouTubeVideo({videoUrl,title:job.title,description,tags:job.tags,categoryId,privacyStatus,publishAt,approved:job.approved});
+        const youtubeResult=await publishRenderedYouTubeVideo({videoUrl,title:job.title,description,tags:job.tags,categoryId,privacyStatus,publishAt,approved:job.approved,req});
         job.youtube=youtubeResult;
         job.status="published";
         job.updatedAt=new Date().toISOString();
@@ -402,7 +482,8 @@ app.post("/api/pipeline/jobs/:id/approve",requireAppKey,async(req,res)=>{
           categoryId:job.categoryId||"22",
           privacyStatus:job.privacyStatus||"public",
           publishAt:job.publishAt||null,
-          approved:true
+          approved:true,
+          req
         });
         job.youtube=youtubeResult;
         job.status="published";
@@ -534,6 +615,17 @@ app.get("/api/youtube/status",async(req,res)=>{
   }
 });
 app.get("/api/factory/settings",requireAppKey,(req,res)=>res.json({ok:true,settings:loadSettings()}));
+app.get("/api/cron/factory",async(req,res)=>{
+  try{
+    const expected=process.env.CRON_SECRET||"";
+    const auth=req.headers.authorization||"";
+    if(expected && auth!=="Bearer "+expected)return res.status(401).json({ok:false,error:"Unauthorized cron request"});
+    const result=await runAutomaticFactory(req);
+    res.json(result);
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
+app.get("/api/factory/automation-schedule",(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",schedules:AUTO_SCHEDULES,settings:loadSettings()}));
+
 app.post("/api/factory/settings",requireAppKey,(req,res)=>{try{const next={...loadSettings(),...(req.body||{})};next.autoGenerate=!!next.autoGenerate;next.approval=next.approval!==false;next.autoPublish=!!next.autoPublish;saveSettings(next);res.json({ok:true,settings:next});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
   try{

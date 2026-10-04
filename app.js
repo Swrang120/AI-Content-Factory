@@ -16,7 +16,7 @@ const defaultData={
     {id:3,title:"Product Promotion Template",category:"Product Promotion",format:"Promo",language:"Hindi",status:"Idea",notes:"Connect product research later."}
   ],
   schedule:[],
-  settings:{autoGenerate:false,approval:true,autoPublish:false}
+  settings:{autoGenerate:true,approval:true,autoPublish:true}
 };
 let data=JSON.parse(localStorage.getItem(KEY)||"null")||defaultData;
 const save=()=>localStorage.setItem(KEY,JSON.stringify(data));
@@ -398,7 +398,7 @@ async function testSelfHeal(){
     if(out)out.textContent="Incident "+s.incident.id+"\n\nChatGPT:\n"+(s.diagnosis?.chatgpt||"Unavailable")+"\n\nGemini:\n"+(s.diagnosis?.gemini||"Unavailable");
   }catch(e){if(out)out.textContent="Self-heal test error: "+e.message;}
 }
-function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button class="switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
+function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button aria-label="${label}" class="switch premium-switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
 async function loadServerSettings(){
   try{
     const r=await fetch(apiUrl("/api/factory/settings"),{credentials:"include"});
@@ -416,15 +416,29 @@ document.getElementById("contentModal").addEventListener("click",e=>{if(e.target
 document.getElementById("contentForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.target);data.content.push({id:Date.now(),title:f.get("title"),category:f.get("category"),format:f.get("format"),language:f.get("language"),status:f.get("status"),notes:f.get("notes")});save();e.target.reset();closeModal();setView("content")});
 function toggleCategory(id){const c=data.categories.find(x=>x.id===id);if(c)c.enabled=!c.enabled;save();renderCategories();}
 async function toggleSetting(k){
-  data.settings[k]=!data.settings[k];
+  const previous=!!data.settings[k];
+  data.settings[k]=!previous;
   save();
+  const activeView=document.querySelector('.nav-item.active')?.dataset.view;
+  if(activeView==="accounts") renderAccounts(); else renderSettings();
   try{
-    const r=await fetch(apiUrl("/api/factory/settings"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(data.settings)});
+    const r=await fetch(apiUrl("/api/factory/settings"),{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      credentials:"include",
+      body:JSON.stringify({...data.settings,version:2})
+    });
     const s=await r.json();
-    if(s.ok&&s.settings){data.settings=s.settings;save();}
-  }catch(e){}
-  if(document.querySelector('.nav-item.active')?.dataset.view==="accounts") renderAccounts();
-  else renderSettings();
+    if(!r.ok||!s.ok)throw new Error(s.error||"Settings save failed");
+    data.settings={...data.settings,...s.settings};
+    save();
+    if(activeView==="accounts") renderAccounts(); else renderSettings();
+  }catch(e){
+    data.settings[k]=previous;
+    save();
+    if(activeView==="accounts") renderAccounts(); else renderSettings();
+    alert("Settings save failed: "+e.message);
+  }
 }
 document.getElementById("themeBtn").onclick=()=>document.body.classList.toggle("light");
 loadServerSettings().finally(()=>{setView("dashboard");setTimeout(loadCreatorLearning,500);});

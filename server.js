@@ -3,6 +3,7 @@ const express=require("express");
 const path=require("path");
 const fs=require("fs");
 const {Readable}=require("stream");
+const crypto=require("crypto");
 const {google}=require("googleapis");
 const {createClient}=require("@supabase/supabase-js");
 const app=express();
@@ -18,10 +19,51 @@ const supabase=(SUPABASE_URL&&SUPABASE_KEY)?createClient(SUPABASE_URL,SUPABASE_K
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];
 app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
 app.use(express.json({limit:"1mb"})); app.use(express.static(ROOT));
-function oauthClient(){if(!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET||!process.env.YOUTUBE_REDIRECT_URI)throw new Error("YouTube OAuth is not configured. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and YOUTUBE_REDIRECT_URI.");return new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID,process.env.GOOGLE_CLIENT_SECRET,process.env.YOUTUBE_REDIRECT_URI);}
-function requireAppKey(req,res,next){if(!process.env.APP_API_KEY)return next();if(req.headers["x-api-key"]!==process.env.APP_API_KEY)return res.status(401).json({ok:false,error:"Unauthorized"});next();}
-function loadTokens(){if(process.env.YOUTUBE_REFRESH_TOKEN)return {refresh_token:process.env.YOUTUBE_REFRESH_TOKEN};try{return JSON.parse(fs.readFileSync(TOKEN_FILE,"utf8"));}catch{return null;}}
-function saveTokens(tokens){fs.mkdirSync(path.dirname(TOKEN_FILE),{recursive:true});fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));}
+function oauthClient(){
+  if(!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET||!process.env.YOUTUBE_REDIRECT_URI){
+    throw new Error("YouTube OAuth is not configured. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and YOUTUBE_REDIRECT_URI on Vercel.");
+  }
+  return new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID,process.env.GOOGLE_CLIENT_SECRET,process.env.YOUTUBE_REDIRECT_URI);
+}
+function requireAppKey(req,res,next){
+  if(!process.env.APP_API_KEY)return next();
+  if(req.headers["x-api-key"]!==process.env.APP_API_KEY)return res.status(401).json({ok:false,error:"Unauthorized"});
+  next();
+}
+function setCookie(res,name,value,maxAge=600){
+  res.setHeader("Set-Cookie",`${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Lax`);
+}
+function getCookie(req,name){
+  const raw=req.headers.cookie||"";
+  const hit=raw.split(";").map(x=>x.trim()).find(x=>x.startsWith(name+"="));
+  return hit?decodeURIComponent(hit.slice(name.length+1)):"";
+}
+async function loadTokens(){
+  if(process.env.YOUTUBE_REFRESH_TOKEN)return {refresh_token:process.env.YOUTUBE_REFRESH_TOKEN};
+  if(supabase){
+    try{
+      const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+      if(!error&&data?.tokens)return data.tokens;
+    }catch{}
+  }
+  try{return JSON.parse(fs.readFileSync(TOKEN_FILE,"utf8"));}catch{return null;}
+}
+async function saveTokens(tokens){
+  if(supabase){
+    try{
+      const {error}=await supabase.from("youtube_connections").upsert({
+        id:"default",
+        tokens,
+        updated_at:new Date().toISOString()
+      },{onConflict:"id"});
+      if(!error)return;
+    }catch{}
+  }
+  try{
+    fs.mkdirSync(path.dirname(TOKEN_FILE),{recursive:true});
+    fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
+  }catch{}
+}
 function loadSettings(){try{return JSON.parse(fs.readFileSync(SETTINGS_FILE,"utf8"));}catch{return {autoGenerate:false,approval:true,autoPublish:false};}}
 function saveSettings(settings){fs.mkdirSync(path.dirname(SETTINGS_FILE),{recursive:true});fs.writeFileSync(SETTINGS_FILE,JSON.stringify(settings,null,2));}
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
@@ -40,7 +82,14 @@ async function getJobFromSupabase(id){
   if(!data)return null;
   return {id:data.id,status:data.status,topic:data.topic,category:data.category,language:data.language,format:data.format,notes:data.notes,sourceText:data.source_text,sources:data.sources||[],research:data.research,script:data.script,voice:data.voice,createdAt:data.created_at,updatedAt:data.updated_at};
 }
-async function youtube(){const tokens=loadTokens();if(!tokens)throw new Error("YouTube is not connected. Open Platforms and connect YouTube first.");const client=oauthClient();client.setCredentials(tokens);client.on("tokens",t=>saveTokens({...tokens,...t}));return google.youtube({version:"v3",auth:client});}
+async function youtube(){
+  const tokens=await loadTokens();
+  if(!tokens)throw new Error("YouTube is not connected. Open Platforms and connect YouTube first.");
+  const client=oauthClient();
+  client.setCredentials(tokens);
+  client.on("tokens",t=>{saveTokens({...tokens,...t}).catch(()=>{});});
+  return google.youtube({version:"v3",auth:client});
+}
 async function generateWithChatGPT(task,fields){if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT API is not configured. Add OPENAI_API_KEY on the server.");const model=process.env.OPENAI_MODEL||"gpt-6-luna";const instructions="You are the Content Brain for a private AI Content Factory. Create original, useful, platform-safe content. Never invent factual claims when source material is provided. For current news or sports facts, use only supplied source material.";const prompt=["TASK: "+task,"","CONTENT INPUT:",JSON.stringify(fields||{},null,2),"","OUTPUT REQUIREMENTS:","Write for YouTube first. Avoid copyrighted song lyrics, copied scripts, or fabricated sources."].join("\n");const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,instructions,input:[{role:"user",content:prompt}],store:false})});const body=await response.json();if(!response.ok)throw new Error(body?.error?.message||"ChatGPT API request failed");return body.output_text||"";}
 async function generateThumbnailImage(prompt,size="1536x1024"){
   if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT/OpenAI API is not configured. Add OPENAI_API_KEY on the server.");
@@ -171,10 +220,64 @@ app.get("/api/supabase/status",requireAppKey,async(req,res)=>{
     res.json({ok:true,configured:true,connected:true,table:"content_jobs"});
   }catch(e){res.json({ok:true,configured:true,connected:false,error:e.message});}
 });
-app.get("/api/health",(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!loadTokens(),supabase:!!supabase,settings:loadSettings()}));
-app.get("/auth/youtube",(req,res)=>{try{const client=oauthClient();res.redirect(client.generateAuthUrl({access_type:"offline",prompt:"consent",include_granted_scopes:true,scope:SCOPES}));}catch(e){res.status(500).send(e.message);}});
-app.get("/auth/youtube/callback",async(req,res)=>{try{if(req.query.error)return res.status(400).send("YouTube authorization denied: "+req.query.error);if(!req.query.code)return res.status(400).send("Missing OAuth authorization code.");const client=oauthClient();const {tokens}=await client.getToken(req.query.code);saveTokens(tokens);res.send("<h2>YouTube connected successfully.</h2><p>Credentials were saved on the server. You can close this tab.</p><script>setTimeout(()=>window.close(),1200)</script>");}catch(e){res.status(500).send("OAuth callback failed: "+e.message);}});
-app.get("/api/youtube/status",requireAppKey,async(req,res)=>{try{const yt=await youtube();const r=await yt.channels.list({part:"snippet,statistics",mine:true});const c=r.data.items?.[0];if(!c)return res.json({ok:false,connected:false,error:"No YouTube channel found"});res.json({ok:true,connected:true,channel:{id:c.id,title:c.snippet.title,subscribers:c.statistics?.subscriberCount||null}});}catch(e){res.status(400).json({ok:false,connected:false,error:e.message});}});
+app.get("/api/health",async(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!(await loadTokens()),supabase:!!supabase,settings:loadSettings()}));
+app.get("/auth/youtube",(req,res)=>{
+  try{
+    const client=oauthClient();
+    const state=crypto.randomBytes(32).toString("hex");
+    setCookie(res,"acf_youtube_state",state,600);
+    const url=client.generateAuthUrl({
+      access_type:"offline",
+      prompt:"consent",
+      include_granted_scopes:true,
+      state,
+      scope:SCOPES
+    });
+    res.redirect(url);
+  }catch(e){
+    res.status(500).send("YouTube OAuth configuration error: "+e.message);
+  }
+});
+app.get("/auth/youtube/callback",async(req,res)=>{
+  try{
+    if(req.query.error)return res.status(400).send("YouTube authorization denied: "+req.query.error);
+    if(!req.query.code)return res.status(400).send("Missing OAuth authorization code.");
+    const expected=getCookie(req,"acf_youtube_state");
+    if(!expected||expected!==String(req.query.state||""))return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
+    const client=oauthClient();
+    const {tokens}=await client.getToken(req.query.code);
+    const existing=await loadTokens();
+    await saveTokens({...existing,...tokens});
+    res.setHeader("Set-Cookie","acf_youtube_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax");
+    res.send("<h2>YouTube connected successfully.</h2><p>Your YouTube authorization was saved securely on the server.</p><p>You can close this tab and return to AI Content Factory.</p><script>setTimeout(()=>window.close(),1200)</script>");
+  }catch(e){
+    res.status(500).send("OAuth callback failed: "+e.message);
+  }
+});
+app.get("/api/youtube/config",(req,res)=>{
+  const missing=[];
+  if(!process.env.GOOGLE_CLIENT_ID)missing.push("GOOGLE_CLIENT_ID");
+  if(!process.env.GOOGLE_CLIENT_SECRET)missing.push("GOOGLE_CLIENT_SECRET");
+  if(!process.env.YOUTUBE_REDIRECT_URI)missing.push("YOUTUBE_REDIRECT_URI");
+  res.json({
+    ok:missing.length===0,
+    configured:missing.length===0,
+    missing,
+    redirectUri:process.env.YOUTUBE_REDIRECT_URI||null,
+    callback:"/auth/youtube/callback"
+  });
+});
+app.get("/api/youtube/status",async(req,res)=>{
+  try{
+    const yt=await youtube();
+    const r=await yt.channels.list({part:"snippet,statistics",mine:true});
+    const c=r.data.items?.[0];
+    if(!c)return res.json({ok:false,connected:false,error:"No YouTube channel found for the authorized Google account."});
+    res.json({ok:true,connected:true,channel:{id:c.id,title:c.snippet.title,subscribers:c.statistics?.subscriberCount||null}});
+  }catch(e){
+    res.status(400).json({ok:false,connected:false,error:e.message});
+  }
+});
 app.get("/api/factory/settings",requireAppKey,(req,res)=>res.json({ok:true,settings:loadSettings()}));
 app.post("/api/factory/settings",requireAppKey,(req,res)=>{try{const next={...loadSettings(),...(req.body||{})};next.autoGenerate=!!next.autoGenerate;next.approval=next.approval!==false;next.autoPublish=!!next.autoPublish;saveSettings(next);res.json({ok:true,settings:next});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{

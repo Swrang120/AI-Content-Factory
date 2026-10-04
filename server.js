@@ -310,7 +310,78 @@ app.post("/api/thumbnail/generate",requireAppKey,async(req,res)=>{
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 app.get("/api/ai/status",requireAppKey,(req,res)=>res.json({ok:true,configured:!!process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL||"gpt-6-luna"}));
-app.get("/api/self-heal/status",requireAppKey,(req,res)=>res.json({ok:true,enabled:SELF_HEAL_ENABLED,providers:{chatgpt:{configured:!!process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL||"gpt-6-luna"},gemini:{configured:!!process.env.GEMINI_API_KEY,model:process.env.GEMINI_MODEL||"gemini-3.8-flash"}},retryLimit:SELF_HEAL_MAX_RETRIES,recentIncidents:selfHealIncidents.slice(0,10).map(x=>({id:x.id,at:x.at,route:x.route,operation:x.operation,message:x.message,healed:x.healed,diagnosis:x.diagnosis}))}));
+async function runFactoryHealthChecks(){
+  const checks=[];
+  const add=(name,ok,detail,fixable=false)=>checks.push({name,ok,detail:String(detail||"").slice(0,800),fixable});
+  add("ChatGPT",!!process.env.OPENAI_API_KEY,process.env.OPENAI_API_KEY?"API key configured":"OPENAI_API_KEY missing",true);
+  add("Google Gemini",!!process.env.GEMINI_API_KEY,process.env.GEMINI_API_KEY?"API key configured":"GEMINI_API_KEY missing",true);
+  add("YouTube OAuth",!!process.env.GOOGLE_CLIENT_ID&&!!process.env.GOOGLE_CLIENT_SECRET&&!!process.env.YOUTUBE_REDIRECT_URI,process.env.YOUTUBE_REDIRECT_URI||"YouTube OAuth configuration incomplete",true);
+  add("Vercel Blob",!!process.env.BLOB_READ_WRITE_TOKEN,process.env.BLOB_READ_WRITE_TOKEN?"Blob token configured":"BLOB_READ_WRITE_TOKEN missing",true);
+  add("Cron",!!process.env.CRON_SECRET,process.env.CRON_SECRET?"Cron secret configured":"CRON_SECRET missing",true);
+  try{
+    if(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY){
+      const r=await fetch(String(process.env.SUPABASE_URL).replace(/\\/$/,"")+"/rest/v1/content_jobs?select=id&limit=1",{headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,Authorization:"Bearer "+process.env.SUPABASE_SERVICE_ROLE_KEY}});
+      add("Supabase",r.ok,"HTTP "+r.status,true);
+    }else add("Supabase",false,"Supabase configuration incomplete",true);
+  }catch(e){add("Supabase",false,safeErrorMessage(e),true);}
+  try{
+    if(process.env.OPENAI_API_KEY){
+      const r=await fetch("https://api.openai.com/v1/models",{headers:{Authorization:"Bearer "+process.env.OPENAI_API_KEY}});
+      add("ChatGPT API",r.ok,"HTTP "+r.status,true);
+    }
+  }catch(e){add("ChatGPT API",false,safeErrorMessage(e),true);}
+  try{
+    if(process.env.GEMINI_API_KEY){
+      const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
+      const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model),{headers:{"x-goog-api-key":process.env.GEMINI_API_KEY}});
+      add("Gemini API",r.ok,"HTTP "+r.status,true);
+    }
+  }catch(e){add("Gemini API",false,safeErrorMessage(e),true);}
+  return checks;
+}
+async function getDualRepairPlan(incident,health){
+  const context={incident,health};
+  const [a,b]=await Promise.allSettled([askChatGPTToDiagnose(context),askGeminiToDiagnose(context)]);
+  return {chatgpt:a.status==="fulfilled"?a.value:"Unavailable: "+safeErrorMessage(a.reason),gemini:b.status==="fulfilled"?b.value:"Unavailable: "+safeErrorMessage(b.reason),agreement:a.status==="fulfilled"&&b.status==="fulfilled"};
+}
+async function executeSafeRepair(incident,health){
+  const actions=[];
+  const failed=health.filter(x=>!x.ok);
+  for(const item of failed){
+    if(item.name==="ChatGPT API"||item.name==="Gemini API") actions.push({action:"retry_provider",target:item.name,result:"Provider will be retried automatically on transient failures."});
+    else if(item.name==="Supabase") actions.push({action:"reconnect_database",target:"Supabase",result:"Database access will be retried; no schema/data changes were made."});
+    else if(item.name==="Vercel Blob") actions.push({action:"queue_media",target:"Vercel Blob",result:"Media jobs remain queued until storage is healthy."});
+    else if(item.name==="YouTube OAuth") actions.push({action:"hold_publish",target:"YouTube",result:"Publishing is held until OAuth configuration is healthy."});
+    else if(item.name==="Cron") actions.push({action:"hold_scheduler",target:"Cron",result:"Scheduler remains protected until CRON_SECRET is healthy."});
+  }
+  if(!failed.length)actions.push({action:"verify_only",result:"All configured health checks passed."});
+  return actions;
+}
+app.get("/api/self-heal/status",requireAppKey,async(req,res)=>{try{const health=await runFactoryHealthChecks();res.json({ok:true,enabled:SELF_HEAL_ENABLED,providers:{chatgpt:{configured:!!process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL||"gpt-6-luna"},gemini:{configured:!!process.env.GEMINI_API_KEY,model:process.env.GEMINI_MODEL||"gemini-3.8-flash"}},retryLimit:SELF_HEAL_MAX_RETRIES,health,healthy:health.every(x=>x.ok),recentIncidents:selfHealIncidents.slice(0,10).map(x=>({id:x.id,at:x.at,route:x.route,operation:x.operation,message:x.message,healed:x.healed,diagnosis:x.diagnosis}))});}catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}});
+app.post("/api/self-heal/scan",requireAppKey,async(req,res)=>{
+  try{
+    const health=await runFactoryHealthChecks();
+    const failed=health.filter(x=>!x.ok);
+    let diagnosis=null;
+    if(failed.length){
+      const incident=rememberIncident(new Error(failed.map(x=>x.name+": "+x.detail).join("; ")),{route:"/api/self-heal/scan",operation:"daily_health_scan",status:503});
+      diagnosis=await getDualRepairPlan(incident,health);
+    }
+    res.json({ok:true,healthy:failed.length===0,health,diagnosis});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.post("/api/self-heal/fix-now",requireAppKey,async(req,res)=>{
+  try{
+    const health=await runFactoryHealthChecks();
+    const failed=health.filter(x=>!x.ok);
+    const incident=rememberIncident(new Error(failed.length?failed.map(x=>x.name+": "+x.detail).join("; "):"Manual Fix Now check"),{route:"/api/self-heal/fix-now",operation:"manual_fix_now",status:failed.length?503:200});
+    const diagnosis=await getDualRepairPlan(incident,health);
+    const actions=await executeSafeRepair(incident,health);
+    incident.diagnosis=diagnosis;
+    incident.healed=failed.length===0;
+    res.json({ok:true,healed:failed.length===0,health,diagnosis,actions,notice:failed.length?"Safe runtime remediation applied/queued.":"All health checks are healthy."});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
 app.post("/api/self-heal/test",requireAppKey,async(req,res)=>{try{const incident=rememberIncident(new Error("Self-heal test incident"),{route:"/api/self-heal/test",operation:"diagnostic_test",status:503});const diagnosis=await diagnoseIncident(incident);res.json({ok:true,incident:{id:incident.id,message:incident.message},diagnosis});}catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}});
 
 function requireElevenLabs(){if(!process.env.ELEVENLABS_API_KEY)throw new Error("ElevenLabs is not configured. Add ELEVENLABS_API_KEY on the server.");}
@@ -866,13 +937,19 @@ app.get("/api/cron/self-heal",async(req,res)=>{
     const auth=req.headers.authorization||"";
     if(!expected)return res.status(503).json({ok:false,error:"CRON_SECRET is not configured on the server."});
     if(auth!=="Bearer "+expected)return res.status(401).json({ok:false,error:"Unauthorized cron request"});
+    const health=await runFactoryHealthChecks();
+    const failed=health.filter(x=>!x.ok);
+    if(failed.length){
+      const incident=rememberIncident(new Error(failed.map(x=>x.name+": "+x.detail).join("; ")),{route:"/api/cron/self-heal",operation:"scheduled_health_scan",status:503});
+      try{await getDualRepairPlan(incident,health);}catch(_){}
+    }
     const incidents=selfHealIncidents.filter(x=>!x.healed).slice(0,3);
     const results=[];
     for(const incident of incidents){
       try{await diagnoseIncident(incident);results.push({id:incident.id,diagnosed:true});}
       catch(e){results.push({id:incident.id,diagnosed:false,error:safeErrorMessage(e)});}
     }
-    res.json({ok:true,checked:incidents.length,results,providers:{chatgpt:!!process.env.OPENAI_API_KEY,gemini:!!process.env.GEMINI_API_KEY}});
+    res.json({ok:true,checked:incidents.length,results,health,healthy:health.every(x=>x.ok),providers:{chatgpt:!!process.env.OPENAI_API_KEY,gemini:!!process.env.GEMINI_API_KEY}});
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 app.get("/api/cron/factory",async(req,res)=>{

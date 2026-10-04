@@ -112,7 +112,7 @@ function renderSchedule(){
 }
 async function youtubeStatus(){
   try{
-    const r=await fetch(apiUrl("/api/youtube/status"));
+    const r=await fetch(apiUrl("/api/youtube/status"),{credentials:"include"});
     return await r.json();
   }catch(e){return {ok:false,connected:false,error:"Backend is not running"};}
 }
@@ -156,6 +156,7 @@ async function uploadYouTubeTest(){
     const r=await fetch(apiUrl("/api/youtube/upload-file?"+params.toString()),{
       method:"POST",
       headers:{"Content-Type":file.type||"video/mp4"},
+      credentials:"include",
       body:file
     });
     const body=await r.json();

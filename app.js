@@ -36,6 +36,51 @@ const AI_ROBOTS=[
  {id:"publisher",icon:"📤",name:"Publisher Bot",role:"Platform Publisher",task:"Queues approved videos for connected platforms.",status:"Standby",progress:0},
  {id:"analytics",icon:"📊",name:"Analytics Bot",role:"Performance Monitor",task:"Tracks published content and reports performance.",status:"Standby",progress:0}
 ];
+let liveAgents={};
+let agentPollTimer=null;
+function agentStateFor(r){
+  const a=liveAgents[r.id]||{};
+  return {...r,status:String(a.status||r.status).toUpperCase(),progress:Number(a.progress??r.progress)||0,task:a.task||r.task,jobId:a.jobId||null};
+}
+function applyAgentToDom(r){
+  const a=agentStateFor(r), working=a.status==="WORKING"||a.status==="MEETING";
+  const card=document.getElementById("employee-"+r.id);
+  if(card){
+    card.classList.toggle("employee-working",working);
+    card.classList.toggle("employee-sleeping",a.status==="SLEEPING");
+    const state=card.querySelector(".employee-state"); if(state)state.textContent=working?"Working":a.status==="ERROR"?"Error":"Sleeping";
+    const char=card.querySelector(".employee-character"); if(char)char.classList.toggle("working",working);
+  }
+  const summary=document.getElementById("robot-summary-"+r.id);
+  if(summary){
+    summary.className="robot-card "+(working?"live-working":"live-sleeping");
+    const st=summary.querySelector(".robot-status"); if(st){st.className="robot-status "+(working?"":"idle");st.innerHTML="<i></i>"+(working?"Working":a.status==="ERROR"?"Error":"Sleeping");}
+    const task=summary.querySelector(".robot-task"); if(task)task.textContent=a.task;
+    const bar=summary.querySelector(".robot-bar i"); if(bar)bar.style.width=a.progress+"%";
+    const meta=summary.querySelector(".robot-meta"); if(meta)meta.innerHTML="<span>"+(working?"Working":"Sleeping")+"</span><span>"+a.progress+"%</span>";
+  }
+}
+async function loadAgentStates(){
+  try{
+    const r=await fetch(apiUrl("/api/agents/state"),{credentials:"include",cache:"no-store"});
+    const s=await r.json();
+    if(s.ok&&s.agents){
+      liveAgents=s.agents;
+      AI_ROBOTS.forEach(applyAgentToDom);
+      const active=Object.values(liveAgents).filter(x=>x.status==="WORKING"||x.status==="MEETING").length;
+      document.querySelectorAll(".robot-metric-active").forEach(x=>x.textContent=active);
+      document.querySelectorAll(".robot-live-badge").forEach(x=>{x.textContent=active?"LIVE · "+active+" WORKING":"ALL EMPLOYEES SLEEPING";x.className="badge "+(active?"ready":"")});
+    }
+  }catch(_){}
+}
+function startAgentPolling(){
+  if(agentPollTimer)clearInterval(agentPollTimer);
+  loadAgentStates();
+  agentPollTimer=setInterval(()=>{
+    const activeView=document.querySelector(".nav-item.active")?.dataset.view;
+    if(activeView==="robots"||activeView==="boss")loadAgentStates();
+  },3000);
+}
 function robotCard(r){
  const active=r.status==="Active";
  return `<div class="robot-card"><div class="robot-top"><div class="robot-avatar">${r.icon}</div><div><div class="robot-name">${r.name}</div><div class="robot-role">${r.role}</div></div><div class="robot-status ${active?"":"idle"}"><i></i>${r.status}</div></div><div class="robot-task">${r.task}</div><div class="robot-bar"><i style="width:${r.progress}%"></i></div><div class="robot-meta"><span>${active?"Working":"Waiting for job"}</span><span>${r.progress}%</span></div></div>`;

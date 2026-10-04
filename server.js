@@ -977,10 +977,53 @@ app.get("/api/youtube/status",async(req,res)=>{
   }
 });
 function settingsFromRequest(req){try{const raw=(req.headers.cookie||"").split(";").map(x=>x.trim()).find(x=>x.startsWith("acf_factory_settings="));if(!raw)return null;const parsed=JSON.parse(decodeURIComponent(raw.slice("acf_factory_settings=".length)));if(!parsed||typeof parsed!=="object"||parsed.version!==2)return null;return {...loadSettings(),...parsed};}catch{return null;}}
+async function normalizeAndPersistFactorySettings(input){
+  const body=input&&typeof input==="object"?input:{};
+  const current=await hydrateSettings();
+  const next={...current,...body};
+  next.version=2;
+  next.autoGenerate=!!next.autoGenerate;
+  next.approval=next.approval!==false;
+  next.autoPublish=!!next.autoPublish;
+  next.liveAutomation=!!next.liveAutomation;
+  next.liveApproval=next.liveApproval!==false;
+  next.liveDurationMinutes=Math.max(1,Math.min(1440,Number(next.liveDurationMinutes)||120));
+  next.musicSourceChannels=Array.isArray(next.musicSourceChannels)?next.musicSourceChannels:DEFAULT_FACTORY_SETTINGS.musicSourceChannels;
+  let source="memory-only";
+  try{
+    const persisted=await persistSettings(next);
+    if(persisted&&persisted.ok)source="persistent-supabase";
+  }catch(error){
+    console.error("Settings persistence warning:",safeErrorMessage(error));
+    settingsCache={...DEFAULT_FACTORY_SETTINGS,...next};
+  }
+  return {settings:next,source};
+}
 app.get("/api/factory/settings",requireAppKey,async(req,res)=>{
-  const settings=await hydrateSettings();
   res.setHeader("Cache-Control","private, no-store");
-  res.json({ok:true,settings,source:settingsPersistentLoaded?"persistent-supabase":"default"});
+  try{
+    // GET is also a compatibility save path because some Vercel deployments
+    // can serve the Express GET route while an older deployment still returns
+    // 404 for POST during rollout.
+    if(String(req.query.save||"") === "1"){
+      const allowed=["autoGenerate","approval","autoPublish","liveAutomation","liveApproval","liveDurationMinutes","version"];
+      const input={};
+      for(const key of allowed){
+        if(req.query[key]!==undefined)input[key]=req.query[key];
+      }
+      if(req.query.autoGenerate!==undefined)input.autoGenerate=req.query.autoGenerate==="true"||req.query.autoGenerate==="1";
+      if(req.query.approval!==undefined)input.approval=req.query.approval!=="false"&&req.query.approval!=="0";
+      if(req.query.autoPublish!==undefined)input.autoPublish=req.query.autoPublish==="true"||req.query.autoPublish==="1";
+      const saved=await normalizeAndPersistFactorySettings(input);
+      res.setHeader("Set-Cookie",`acf_factory_settings=${encodeURIComponent(JSON.stringify(saved.settings))}; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None`);
+      return res.status(200).json({ok:true,...saved});
+    }
+    const settings=await hydrateSettings();
+    return res.json({ok:true,settings,source:settingsPersistentLoaded?"persistent-supabase":"default"});
+  }catch(error){
+    console.error("Factory settings GET failed:",error);
+    return res.status(500).json({ok:false,error:safeErrorMessage(error)});
+  }
 });
 app.get("/api/cron/self-heal",async(req,res)=>{
   try{

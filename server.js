@@ -93,9 +93,42 @@ function saveSettings(settings){fs.mkdirSync(path.dirname(SETTINGS_FILE),{recurs
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
 function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}
 function jobId(){return "job_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);}
+function encodeJobNotes(job){
+  const meta={
+    manualUpload:!!job.manualUpload,
+    auto:!!job.auto,
+    autoPublish:job.autoPublish!==false,
+    scheduledSlot:job.scheduledSlot||null,
+    publishAt:job.publishAt||null,
+    title:job.title||null,
+    description:job.description||null,
+    tags:Array.isArray(job.tags)?job.tags:[],
+    categoryId:job.categoryId||null,
+    privacyStatus:job.privacyStatus||null,
+    renderError:job.renderError||null,
+    publishError:job.publishError||null
+  };
+  return "__ACF_META__"+JSON.stringify(meta)+"\\n"+String(job.notes||"");
+}
+function decodeJobRow(data){
+  let notes=String(data.notes||"");
+  let meta={};
+  if(notes.startsWith("__ACF_META__")){
+    const nl=notes.indexOf("\\n");
+    const raw=nl>=0?notes.slice(11,nl):notes.slice(11);
+    try{meta=JSON.parse(raw)||{};}catch{}
+    notes=nl>=0?notes.slice(nl+1):"";
+  }
+  return {
+    id:data.id,status:data.status,topic:data.topic,category:data.category,language:data.language,
+    format:data.format,notes,sourceText:data.source_text,sources:data.sources||[],research:data.research,
+    script:data.script,voice:data.voice,renderedVideoUrl:data.rendered_video_url||null,approved:!!data.approved,
+    youtube:data.youtube||null,createdAt:data.created_at,updatedAt:data.updated_at,...meta
+  };
+}
 async function persistJob(job){
   if(!supabase)return;
-  const row={id:job.id,status:job.status,topic:job.topic||"",category:job.category||"",language:job.language||"English",format:job.format||"Long Video",notes:job.notes||"",source_text:job.sourceText||"",sources:job.sources||[],research:job.research||null,script:job.script||null,voice:job.voice||null,rendered_video_url:job.renderedVideoUrl||null,approved:!!job.approved,youtube:job.youtube||null,created_at:job.createdAt||new Date().toISOString(),updated_at:job.updatedAt||new Date().toISOString()};
+  const row={id:job.id,status:job.status,topic:job.topic||"",category:job.category||"",language:job.language||"English",format:job.format||"Long Video",notes:encodeJobNotes(job),source_text:job.sourceText||"",sources:job.sources||[],research:job.research||null,script:job.script||null,voice:job.voice||null,rendered_video_url:job.renderedVideoUrl||null,approved:!!job.approved,youtube:job.youtube||null,created_at:job.createdAt||new Date().toISOString(),updated_at:job.updatedAt||new Date().toISOString()};
   const {error}=await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
   if(error)throw new Error("Supabase content_jobs write failed: "+error.message);
 }
@@ -104,7 +137,18 @@ async function getJobFromSupabase(id){
   const {data,error}=await supabase.from("content_jobs").select("*").eq("id",id).maybeSingle();
   if(error)throw new Error("Supabase content_jobs read failed: "+error.message);
   if(!data)return null;
-  return {id:data.id,status:data.status,topic:data.topic,category:data.category,language:data.language,format:data.format,notes:data.notes,sourceText:data.source_text,sources:data.sources||[],research:data.research,script:data.script,voice:data.voice,renderedVideoUrl:data.rendered_video_url||null,approved:!!data.approved,youtube:data.youtube||null,createdAt:data.created_at,updatedAt:data.updated_at};
+  return decodeJobRow(data);
+}
+async function loadPersistentJobs(){
+  const jobs=loadJobs();
+  if(!supabase)return jobs;
+  try{
+    const {data,error}=await supabase.from("content_jobs").select("*").order("updated_at",{ascending:false}).limit(200);
+    if(!error&&Array.isArray(data)){
+      for(const row of data)jobs[row.id]=decodeJobRow(row);
+    }
+  }catch{}
+  return jobs;
 }
 async function youtube(req){
   const tokens=await loadTokens(req);
@@ -304,9 +348,9 @@ async function generateAutomaticJob(item,req){
 }
 async function runAutomaticFactory(req){
   const settings=loadSettings();
-  const jobs=loadJobs();
+  const jobs=await loadPersistentJobs();
   const now=new Date();
-  const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&j.status==="approved"&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).slice(0,1);
+  const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
   const bossResults=[];
   for(const job of bossDue){try{const youtubeResult=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:job.topic,description:"Uploaded by Boss in AI Content Factory.",tags:["Boss Upload","AI Content Factory"],categoryId:"22",privacyStatus:"public",approved:true,req});job.youtube=youtubeResult;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,videoId:youtubeResult.videoId});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
   if(!settings.autoGenerate)return {ok:true,enabled:false,bossUploads:bossResults,message:"Auto Generate is OFF."};
@@ -632,6 +676,50 @@ app.get("/api/youtube/config",(req,res)=>{
     callback:"/auth/youtube/callback"
   });
 });
+async function getYouTubeAnalytics(req){
+  const client=oauthClient();
+  const tokens=await loadTokens(req);
+  if(!tokens)throw new Error("YouTube is not connected.");
+  client.setCredentials(tokens);
+  const analytics=google.youtubeAnalytics({version:"v2",auth:client});
+  const end=new Date();
+  const start=new Date(end.getTime()-27*86400000);
+  const iso=d=>d.toISOString().slice(0,10);
+  const report=await analytics.reports.query({
+    ids:"channel==MINE",
+    startDate:iso(start),
+    endDate:iso(end),
+    metrics:"views,likes,comments,shares,subscribersGained,subscribersLost,estimatedMinutesWatched,averageViewDuration",
+    dimensions:"video",
+    sort:"-views",
+    maxResults:25
+  });
+  const headers=(report.data.columnHeaders||[]).map(x=>x.name);
+  const rows=(report.data.rows||[]).map(row=>Object.fromEntries(headers.map((h,i)=>[h,row[i]])));
+  const total=rows.reduce((a,r)=>({
+    views:a.views+Number(r.views||0),
+    likes:a.likes+Number(r.likes||0),
+    comments:a.comments+Number(r.comments||0),
+    shares:a.shares+Number(r.shares||0),
+    subscribersGained:a.subscribersGained+Number(r.subscribersGained||0),
+    subscribersLost:a.subscribersLost+Number(r.subscribersLost||0),
+    estimatedMinutesWatched:a.estimatedMinutesWatched+Number(r.estimatedMinutesWatched||0)
+  }),{views:0,likes:0,comments:0,shares:0,subscribersGained:0,subscribersLost:0,estimatedMinutesWatched:0});
+  const recent=rows.slice(0,10);
+  return {startDate:iso(start),endDate:iso(end),processedData:true,total,topVideos:recent,latencyNote:"YouTube Analytics reports can lag 48–72 hours; use Data API video statistics for real-time counts."};
+}
+app.get("/api/youtube/analytics",async(req,res)=>{
+  try{res.json({ok:true,analytics:await getYouTubeAnalytics(req)});}
+  catch(e){res.status(400).json({ok:false,error:e.message});}
+});
+app.get("/api/youtube/learning",async(req,res)=>{
+  try{
+    const analytics=await getYouTubeAnalytics(req);
+    const prompt="Analyze this creator's recent YouTube performance and produce a practical next-content strategy. Use only the supplied metrics. Identify the strongest topics/formats based on evidence, useful patterns to test, weak patterns to avoid, title/packaging experiments, audience-retention hypotheses, and 5 next video ideas. Do not claim causation from correlation. Do not copy other creators or copyrighted content. Return concise JSON with keys: winners,patterns,experiments,avoid,nextIdeas.";
+    const response=await generateWithChatGPT("youtube_learning_engine",{analytics,prompt});
+    res.json({ok:true,analyticsSummary:analytics,total:analytics.total,strategy:response});
+  }catch(e){res.status(400).json({ok:false,error:e.message});}
+});
 app.get("/api/youtube/status",async(req,res)=>{
   try{
     const yt=await youtube(req);
@@ -644,7 +732,10 @@ app.get("/api/youtube/status",async(req,res)=>{
   }
 });
 function settingsFromRequest(req){try{const raw=(req.headers.cookie||"").split(";").map(x=>x.trim()).find(x=>x.startsWith("acf_factory_settings="));if(!raw)return null;const parsed=JSON.parse(decodeURIComponent(raw.slice("acf_factory_settings=".length)));if(!parsed||typeof parsed!=="object")return null;return {...loadSettings(),...parsed};}catch{return null;}}
-app.get("/api/factory/settings",requireAppKey,(req,res)=>res.json({ok:true,settings:settingsFromRequest(req)||loadSettings()}));
+app.get("/api/factory/settings",requireAppKey,(req,res)=>{
+  const cookieSettings=settingsFromRequest(req);
+  res.json({ok:true,settings:cookieSettings||loadSettings(),source:cookieSettings?"browser-cookie":"server-default"});
+});
 app.get("/api/cron/factory",async(req,res)=>{
   try{
     const expected=process.env.CRON_SECRET||"";

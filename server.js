@@ -172,7 +172,7 @@ async function renderFactoryVideo(job,req){
   const bundleDir=await getRemotionBundle();
   const sandbox=await createSandbox();
   const serveUrl=await addBundleToSandbox({sandbox,bundleDir});
-  const origin=(process.env.FRONTEND_URL&&process.env.FRONTEND_URL.startsWith("http")?process.env.FRONTEND_URL:"https://"+req.get("host"));
+  const origin=((req.headers["x-forwarded-proto"]||req.protocol)+"//"+req.get("host"));
   const audioUrl=job.voice?.file?new URL(job.voice.file,origin).toString():"";
   const script=typeof job.script==="string"?job.script:(job.script?.output||job.script?.text||JSON.stringify(job.script||""));
   const title=job.title||job.topic||"AI Content Factory";
@@ -239,10 +239,25 @@ app.post("/api/pipeline/research",requireAppKey,async(req,res)=>{
     jobs[id].status="script_ready";
     jobs[id].script=await generateWithChatGPT("script",{topic,category,language,format,notes,sourceText,research,sources});
     jobs[id].status="script_ready";
+    if(loadSettings().autoGenerate){
+      await runVoiceForJob(jobs[id]);
+      if(jobs[id].voice?.status==="ready"){
+        try{
+          jobs[id].status="rendering";
+          jobs[id].updatedAt=new Date().toISOString();
+          saveJobs(jobs); await persistJob(jobs[id]);
+          jobs[id].renderedVideoUrl=await renderFactoryVideo(jobs[id],req);
+          jobs[id].status=jobs[id].approved?"approved":"awaiting_approval";
+        }catch(renderError){
+          jobs[id].status="render_failed";
+          jobs[id].renderError=renderError.message;
+        }
+      }
+    }
     jobs[id].updatedAt=new Date().toISOString();
     saveJobs(jobs);
     await persistJob(jobs[id]);
-    res.json({ok:true,jobId:id,status:jobs[id].status,research:jobs[id].research,script:jobs[id].script});
+    res.json({ok:true,jobId:id,status:jobs[id].status,research:jobs[id].research,script:jobs[id].script,voice:jobs[id].voice||null,videoUrl:jobs[id].renderedVideoUrl||null});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 app.get("/api/pipeline/jobs/:id",requireAppKey,async(req,res)=>{

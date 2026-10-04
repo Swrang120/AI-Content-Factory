@@ -95,7 +95,7 @@ async function saveTokens(tokens){
     fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
   }catch{}
 }
-const DEFAULT_FACTORY_SETTINGS={autoGenerate:true,approval:true,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]};
+const DEFAULT_FACTORY_SETTINGS={automationOnline:true,autoGenerate:true,approval:false,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]};
 let settingsCache=null;
 let settingsPersistentLoaded=false;
 function loadSettings(){
@@ -114,7 +114,14 @@ async function hydrateSettings(){
     const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
     const saved=data?.tokens?.__acf_factory_settings;
     if(!error&&saved&&typeof saved==="object"){
-      settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
+      settingsCache={
+        ...DEFAULT_FACTORY_SETTINGS,
+        ...saved,
+        automationOnline:saved.automationOnline!==false,
+        autoGenerate:true,
+        approval:false,
+        autoPublish:true
+      };
       settingsPersistentLoaded=true;
     }
   }catch{}
@@ -645,6 +652,10 @@ async function generateAutomaticJob(item,req){
 }
 async function runAutomaticFactory(req){
   const settings=await hydrateSettings();
+  if(settings.automationOnline===false){
+    try{await setAgentStates(Object.fromEntries(AGENT_IDS.map(id=>[id,{status:"SLEEPING",progress:0,task:"Automation Offline",jobId:null}])));}catch(_){}
+    return {ok:true,online:false,enabled:false,due:[],bossUploads:[],message:"Automation is OFFLINE. No AI content generation or video upload will run."};
+  }
   const jobs=await loadPersistentJobs();
   const now=new Date();
   const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
@@ -672,6 +683,7 @@ async function runAutomaticFactory(req){
 async function publishRenderedYouTubeVideo(p){
   if(!p?.videoUrl||!p?.title)throw new Error("videoUrl and title are required");
   const settings=await hydrateSettings();
+  if(settings.automationOnline===false)throw new Error("Automation is OFFLINE.");
   if(!settings.autoPublish)throw new Error("Auto Publish is OFF.");
   if(settings.approval&&!p.approved&&!p.automated)throw new Error("Human approval is required before publishing.");
   const asset=await fetch(p.videoUrl);
@@ -1034,9 +1046,11 @@ async function normalizeAndPersistFactorySettings(input){
   const current=await hydrateSettings();
   const next={...current,...body};
   next.version=2;
-  next.autoGenerate=!!next.autoGenerate;
-  next.approval=next.approval!==false;
-  next.autoPublish=!!next.autoPublish;
+  // One master Online/Offline control now owns automation.
+  next.automationOnline=next.automationOnline!==false;
+  next.autoGenerate=true;
+  next.approval=false;
+  next.autoPublish=true;
   next.liveAutomation=!!next.liveAutomation;
   next.liveApproval=next.liveApproval!==false;
   next.liveDurationMinutes=Math.max(1,Math.min(1440,Number(next.liveDurationMinutes)||120));
@@ -1058,14 +1072,12 @@ app.get("/api/factory/settings",requireAppKey,async(req,res)=>{
     // can serve the Express GET route while an older deployment still returns
     // 404 for POST during rollout.
     if(String(req.query.save||"") === "1"){
-      const allowed=["autoGenerate","approval","autoPublish","liveAutomation","liveApproval","liveDurationMinutes","version"];
+      const allowed=["automationOnline","liveAutomation","liveApproval","liveDurationMinutes","version"];
       const input={};
       for(const key of allowed){
         if(req.query[key]!==undefined)input[key]=req.query[key];
       }
-      if(req.query.autoGenerate!==undefined)input.autoGenerate=req.query.autoGenerate==="true"||req.query.autoGenerate==="1";
-      if(req.query.approval!==undefined)input.approval=req.query.approval!=="false"&&req.query.approval!=="0";
-      if(req.query.autoPublish!==undefined)input.autoPublish=req.query.autoPublish==="true"||req.query.autoPublish==="1";
+      if(req.query.automationOnline!==undefined)input.automationOnline=req.query.automationOnline!=="false"&&req.query.automationOnline!=="0";
       const saved=await normalizeAndPersistFactorySettings(input);
       res.setHeader("Set-Cookie",`acf_factory_settings=${encodeURIComponent(JSON.stringify(saved.settings))}; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None`);
       return res.status(200).json({ok:true,...saved});
@@ -1131,9 +1143,10 @@ app.post("/api/factory/settings",requireAppKey,async(req,res)=>{
     const current=await hydrateSettings();
     const next={...current,...body};
     next.version=2;
-    next.autoGenerate=!!next.autoGenerate;
-    next.approval=next.approval!==false;
-    next.autoPublish=!!next.autoPublish;
+    next.automationOnline=next.automationOnline!==false;
+    next.autoGenerate=true;
+    next.approval=false;
+    next.autoPublish=true;
     next.liveAutomation=!!next.liveAutomation;
     next.liveApproval=next.liveApproval!==false;
     next.liveDurationMinutes=Math.max(1,Math.min(1440,Number(next.liveDurationMinutes)||120));
@@ -1158,6 +1171,7 @@ app.post("/api/factory/settings",requireAppKey,async(req,res)=>{
 });
 app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
   try{
+    if((await hydrateSettings()).automationOnline===false)return res.status(409).json({ok:false,error:"Automation is OFFLINE. Turn Automation Online on before queuing a video upload."});
     if(!process.env.BLOB_READ_WRITE_TOKEN)return res.status(503).json({ok:false,error:"Vercel Blob is not configured."});
     const filename=String(req.query.filename||"video.mp4").replace(/[^a-zA-Z0-9._-]/g,"_");
     const title=String(req.query.title||filename);
@@ -1177,6 +1191,7 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
     const {title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.query||{};
     if(!title)return res.status(400).json({ok:false,error:"title is required"});
     if(!req.body||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({ok:false,error:"MP4 file body is required"});
+    if((await hydrateSettings()).automationOnline===false)return res.status(409).json({ok:false,error:"Automation is OFFLINE. Turn Automation Online on before uploading a video."});
     const selectedPrivacy=privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private";
     if(selectedPrivacy==="public"&&loadSettings().approval)return res.status(409).json({ok:false,error:"Approval is required before public publishing."});
     const yt=await youtube(req);
@@ -1190,8 +1205,8 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
     res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||selectedPrivacy});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
-app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube(req);const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
-app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishRenderedYouTubeVideo(p);res.json({ok:true,published:true,...result});}catch(e){const code=e.message==="Auto Publish is OFF."||e.message==="Human approval is required before publishing."?409:500;res.status(code).json({ok:false,published:false,error:e.message});}});
+app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((await hydrateSettings()).automationOnline===false)throw new Error("Automation is OFFLINE.");if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube(req);const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
+app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishRenderedYouTubeVideo(p);res.json({ok:true,published:true,...result});}catch(e){const code=["Automation is OFFLINE.","Auto Publish is OFF.","Human approval is required before publishing."].includes(e.message)?409:500;res.status(code).json({ok:false,published:false,error:e.message});}});
 app.use((err,req,res,next)=>{const incident=rememberIncident(err,{route:req.originalUrl||req.url,operation:req.method+" "+(req.route?.path||"unknown"),status:500});diagnoseIncident(incident).catch(()=>{});if(res.headersSent)return next(err);res.status(500).json({ok:false,error:safeErrorMessage(err),selfHeal:{enabled:SELF_HEAL_ENABLED,incidentId:incident.id}});});
 app.get("/",(req,res)=>{
   // Serve the dashboard explicitly. Using a synchronous read here avoids

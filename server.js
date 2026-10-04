@@ -90,23 +90,15 @@ async function saveTokens(tokens){
 }
 const DEFAULT_FACTORY_SETTINGS={autoGenerate:true,approval:true,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]};
 let settingsCache=null;
+let settingsPersistentLoaded=false;
 function loadSettings(){
   if(settingsCache)return settingsCache;
-  try{
-    const saved=JSON.parse(fs.readFileSync(SETTINGS_FILE,"utf8"));
-    settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
-    return settingsCache;
-  }catch{
-    settingsCache={...DEFAULT_FACTORY_SETTINGS};
-    return settingsCache;
-  }
+  settingsCache={...DEFAULT_FACTORY_SETTINGS};
+  return settingsCache;
 }
 function saveSettings(settings){
+  // Vercel /var/task is read-only. Settings must never depend on local files.
   settingsCache={...DEFAULT_FACTORY_SETTINGS,...settings};
-  try{
-    fs.mkdirSync(path.dirname(SETTINGS_FILE),{recursive:true});
-    fs.writeFileSync(SETTINGS_FILE,JSON.stringify(settingsCache,null,2));
-  }catch{}
 }
 async function hydrateSettings(){
   const current=loadSettings();
@@ -122,10 +114,7 @@ async function hydrateSettings(){
         const saved=JSON.parse(raw.slice("__ACF_SETTINGS__".length));
         if(saved&&typeof saved==="object"){
           settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
-          try{
-            fs.mkdirSync(path.dirname(SETTINGS_FILE),{recursive:true});
-            fs.writeFileSync(SETTINGS_FILE,JSON.stringify(settingsCache,null,2));
-          }catch{}
+          settingsPersistentLoaded=true;
         }
       }
     }
@@ -133,25 +122,26 @@ async function hydrateSettings(){
   return settingsCache||current;
 }
 async function persistSettings(settings){
-  saveSettings(settings);
-  if(!supabase)return;
-  try{
-    const row={
-      id:"__factory_settings__",
-      status:"settings",
-      topic:"__factory_settings__",
-      category:"System",
-      language:"English",
-      format:"Configuration",
-      notes:"__ACF_SETTINGS__"+JSON.stringify(settingsCache||settings),
-      source_text:"",
-      sources:[],
-      approved:true,
-      created_at:new Date().toISOString(),
-      updated_at:new Date().toISOString()
-    };
-    await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
-  }catch{}
+  settingsCache={...DEFAULT_FACTORY_SETTINGS,...settings};
+  if(!supabase)return {ok:false,error:"Supabase is not configured"};
+  const row={
+    id:"__factory_settings__",
+    status:"settings",
+    topic:"__factory_settings__",
+    category:"System",
+    language:"English",
+    format:"Configuration",
+    notes:"__ACF_SETTINGS__"+JSON.stringify(settingsCache),
+    source_text:"",
+    sources:[],
+    approved:true,
+    created_at:new Date().toISOString(),
+    updated_at:new Date().toISOString()
+  };
+  const {error}=await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
+  if(error)throw new Error("Could not persist settings to Supabase: "+error.message);
+  settingsPersistentLoaded=true;
+  return {ok:true};
 }
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
 function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}
@@ -993,7 +983,7 @@ function settingsFromRequest(req){try{const raw=(req.headers.cookie||"").split("
 app.get("/api/factory/settings",requireAppKey,async(req,res)=>{
   const settings=await hydrateSettings();
   res.setHeader("Cache-Control","private, no-store");
-  res.json({ok:true,settings,source:"persistent-server"});
+  res.json({ok:true,settings,source:settingsPersistentLoaded?"persistent-supabase":"default"});
 });
 app.get("/api/cron/self-heal",async(req,res)=>{
   try{
@@ -1040,11 +1030,13 @@ app.post("/api/factory/settings",requireAppKey,async(req,res)=>{try{
   next.liveApproval=next.liveApproval!==false;
   next.liveDurationMinutes=Math.max(1,Math.min(1440,Number(next.liveDurationMinutes)||120));
   next.musicSourceChannels=Array.isArray(next.musicSourceChannels)?next.musicSourceChannels:DEFAULT_FACTORY_SETTINGS.musicSourceChannels;
-  await persistSettings(next);
+  const persisted=await persistSettings(next);
   res.setHeader("Cache-Control","private, no-store");
   res.setHeader("Set-Cookie",`acf_factory_settings=${encodeURIComponent(JSON.stringify(next))}; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None`);
-  res.json({ok:true,settings:next,source:"persistent-server"});
-}catch(e){res.status(500).json({ok:false,error:e.message});}});
+  res.json({ok:true,settings:next,source:persisted.ok?"persistent-supabase":"memory-only"});
+}catch(e){
+  res.status(500).json({ok:false,error:e.message});
+}});
 app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
   try{
     if(!process.env.BLOB_READ_WRITE_TOKEN)return res.status(503).json({ok:false,error:"Vercel Blob is not configured."});

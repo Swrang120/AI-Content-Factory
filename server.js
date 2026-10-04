@@ -499,7 +499,7 @@ app.get("/auth/youtube/callback",async(req,res)=>{
     const existing=await loadTokens();
     await saveTokens({...existing,...tokens});
     res.setHeader("Set-Cookie","acf_youtube_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax");
-    res.send("<h2>YouTube connected successfully.</h2><p>Your YouTube authorization was saved securely on the server.</p><p>You can close this tab and return to AI Content Factory.</p><script>setTimeout(()=>window.close(),1200)</script>");
+    res.redirect("https://swrang120.github.io/AI-Content-Factory/?youtube=connected");
   }catch(e){
     res.status(500).send("OAuth callback failed: "+e.message);
   }

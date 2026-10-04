@@ -149,3 +149,9 @@ linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
 .screenshot-office .office-name{font-size:6px}.screenshot-office .office-task{font-size:5px}.screenshot-office .office-bubble{font-size:5px}
 @keyframes serverBlink{to{opacity:.35}}
 @media(max-width:800px){.office-map{min-height:520px}.map-room>b{font-size:5px}.screenshot-office .office-worker{transform:translate(calc(var(--sleep-x) - 30px),calc(var(--sleep-y) - 20px)) scale(.78)}.screenshot-office .office-worker.office-working{transform:translate(calc(var(--desk-x) - 30px),calc(var(--desk-y) - 20px)) scale(.78)}}
+
+
+/* Master automation Online/Offline control */
+.setting .automation-state{display:inline-flex;align-items:center;justify-content:center;min-width:68px;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.08em;margin-left:8px;border:1px solid rgba(255,255,255,.12)}
+.setting .automation-state.online{color:#63ff9b;background:rgba(43,255,126,.10);border-color:rgba(43,255,126,.28)}
+.setting .automation-state.offline{color:#ff7b86;background:rgba(255,75,92,.10);border-color:rgba(255,75,92,.28)}

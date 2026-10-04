@@ -433,7 +433,32 @@ async function toggleSetting(k){
     try{s=raw?JSON.parse(raw):null;}catch(_){
       throw new Error(`Server returned HTTP ${r.status} instead of JSON`);
     }
-    if(!r.ok||!s?.ok)throw new Error(s?.error||`Settings save failed (HTTP ${r.status})`);
+    if(!r.ok||!s?.ok){
+      // Some Vercel rollouts may temporarily expose GET while POST is still
+      // routed to an older function. Fall back to the JSON GET compatibility
+      // save path so the switches remain usable during deployment rollout.
+      if(r.status===404){
+        const params=new URLSearchParams({save:"1",version:"2",
+          autoGenerate:String(!!data.settings.autoGenerate),
+          approval:String(data.settings.approval!==false),
+          autoPublish:String(!!data.settings.autoPublish),
+          liveAutomation:String(!!data.settings.liveAutomation),
+          liveApproval:String(data.settings.liveApproval!==false),
+          liveDurationMinutes:String(data.settings.liveDurationMinutes||120)
+        });
+        const fallback=await fetch(apiUrl("/api/factory/settings?")+params.toString(),{credentials:"include",cache:"no-store"});
+        const fallbackRaw=await fallback.text();
+        let fs=null; try{fs=fallbackRaw?JSON.parse(fallbackRaw):null;}catch(_){}
+        if(fallback.ok&&fs?.ok){
+          data.settings={...data.settings,...fs.settings};
+          save();
+          if(activeView==="accounts") renderAccounts(); else renderSettings();
+          return;
+        }
+        throw new Error(`Settings save endpoint returned HTTP ${r.status}; fallback returned HTTP ${fallback.status}`);
+      }
+      throw new Error(s?.error||`Settings save failed (HTTP ${r.status})`);
+    }
     data.settings={...data.settings,...s.settings};
     save();
     if(activeView==="accounts") renderAccounts(); else renderSettings();

@@ -88,7 +88,7 @@ async function saveTokens(tokens){
     fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
   }catch{}
 }
-function loadSettings(){try{return JSON.parse(fs.readFileSync(SETTINGS_FILE,"utf8"));}catch{return {autoGenerate:false,approval:true,autoPublish:false,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]};}}
+function loadSettings(){const defaults={autoGenerate:true,approval:true,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]};try{const saved=JSON.parse(fs.readFileSync(SETTINGS_FILE,"utf8"));return {...defaults,...saved};}catch{return defaults;}}
 function saveSettings(settings){fs.mkdirSync(path.dirname(SETTINGS_FILE),{recursive:true});fs.writeFileSync(SETTINGS_FILE,JSON.stringify(settings,null,2));}
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
 function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}
@@ -246,6 +246,8 @@ function weeklyLiveSchedule(){
 }
 
 function autoSlotId(item){return "auto_"+item.id+"_"+item.date+"_"+item.time.replace(":","");}
+function nextBossUploadSlot(){const now=new Date();const items=autoScheduleForToday(now);const mins=Number(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now).split(":")[0])*60+Number(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now).split(":")[1]);for(const x of items){const [h,m]=x.time.split(":").map(Number);if(h*60+m>mins+5)return x.slot;}const d=new Date(now.getTime()+86400000);const day=d.toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});return day+"T09:00:00+05:30";}
+
 async function autoJobExists(id){
   if(supabase){
     try{const {data,error}=await supabase.from("content_jobs").select("id").eq("id",id).maybeSingle();if(!error&&data)return true;}catch{}
@@ -301,7 +303,13 @@ async function generateAutomaticJob(item,req){
   return {ok:true,skipped:false,jobId:id,status:job.status,topic:job.topic,videoUrl:job.renderedVideoUrl||null};
 }
 async function runAutomaticFactory(req){
-  if(!loadSettings().autoGenerate)return {ok:true,enabled:false,message:"Auto Generate is OFF."};
+  const settings=loadSettings();
+  const jobs=loadJobs();
+  const now=new Date();
+  const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&j.status==="approved"&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).slice(0,1);
+  const bossResults=[];
+  for(const job of bossDue){try{const youtubeResult=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:job.topic,description:"Uploaded by Boss in AI Content Factory.",tags:["Boss Upload","AI Content Factory"],categoryId:"22",privacyStatus:"public",approved:true,req});job.youtube=youtubeResult;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,videoId:youtubeResult.videoId});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
+  if(!settings.autoGenerate)return {ok:true,enabled:false,bossUploads:bossResults,message:"Auto Generate is OFF."};
   const now=new Date();
   const items=autoScheduleForToday(now);
   const hourMinute=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now);
@@ -317,7 +325,7 @@ async function runAutomaticFactory(req){
     try{results.push(await generateAutomaticJob(item,req));}
     catch(e){results.push({ok:false,category:item.category,time:item.time,error:e.message});}
   }
-  return {ok:true,enabled:true,due:due.map(x=>x.category),results};
+  return {ok:true,enabled:true,due:due.map(x=>x.category),results,bossUploads:bossResults};
 }
 
 async function publishRenderedYouTubeVideo(p){
@@ -658,7 +666,12 @@ app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","
     if(!req.body||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({ok:false,error:"Video file body is required"});
     const {put}=await import("@vercel/blob");
     const blob=await put("uploads/"+Date.now()+"-"+filename,req.body,{access:"public",contentType:req.headers["content-type"]||"video/mp4",token:process.env.BLOB_READ_WRITE_TOKEN});
-    res.json({ok:true,title,url:blob.url,pathname:blob.pathname,contentType:req.headers["content-type"]||"video/mp4",size:req.body.length});
+    const scheduledSlot=String(req.query.scheduledSlot||"").trim()||nextBossUploadSlot();
+    const id="boss_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7);
+    const jobs=loadJobs();
+    jobs[id]={id,status:"approved",topic:title,category:"Boss Upload",language:"English",format:"Uploaded Video",notes:"Uploaded by Boss",sourceText:"",sources:[],renderedVideoUrl:blob.url,approved:true,autoPublish:true,manualUpload:true,scheduledSlot,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    saveJobs(jobs); await persistJob(jobs[id]);
+    res.json({ok:true,title,url:blob.url,pathname:blob.pathname,contentType:req.headers["content-type"]||"video/mp4",size:req.body.length,jobId:id,scheduledSlot,status:"queued"});
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{

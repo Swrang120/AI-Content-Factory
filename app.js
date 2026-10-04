@@ -82,8 +82,8 @@ function startAgentPolling(){
   },3000);
 }
 function robotCard(r){
- const active=r.status==="Active";
- return `<div class="robot-card"><div class="robot-top"><div class="robot-avatar">${r.icon}</div><div><div class="robot-name">${r.name}</div><div class="robot-role">${r.role}</div></div><div class="robot-status ${active?"":"idle"}"><i></i>${r.status}</div></div><div class="robot-task">${r.task}</div><div class="robot-bar"><i style="width:${r.progress}%"></i></div><div class="robot-meta"><span>${active?"Working":"Waiting for job"}</span><span>${r.progress}%</span></div></div>`;
+ const a=agentStateFor(r),working=a.status==="WORKING"||a.status==="MEETING";
+ return `<div class="robot-card ${working?"live-working":"live-sleeping"}" id="robot-summary-${r.id}"><div class="robot-top"><div class="robot-avatar">${r.icon}</div><div><div class="robot-name">${r.name}</div><div class="robot-role">${r.role}</div></div><div class="robot-status ${working?"":"idle"}"><i></i>${working?"Working":a.status==="ERROR"?"Error":"Sleeping"}</div></div><div class="robot-task">${esc(a.task)}</div><div class="robot-bar"><i style="width:${a.progress}%"></i></div><div class="robot-meta"><span>${working?"Working":"Sleeping"}</span><span>${a.progress}%</span></div></div>`;
 }
 function renderBossRoom(){
  title.textContent="Boss Room";

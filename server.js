@@ -140,7 +140,7 @@ async function persistSettings(settings){
   }
 }
 function loadJobs(){try{return JSON.parse(fs.readFileSync(JOBS_FILE,"utf8"));}catch{return {};}}
-function saveJobs(jobs){fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}
+function saveJobs(jobs){try{fs.mkdirSync(path.dirname(JOBS_FILE),{recursive:true});fs.writeFileSync(JOBS_FILE,JSON.stringify(jobs,null,2));}catch{ /* Vercel filesystem is ephemeral/read-only; Supabase is the persistent store. */ }}
 function jobId(){return "job_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,8);}
 function encodeJobNotes(job){
   const meta={
@@ -459,10 +459,10 @@ async function runVoiceForJob(job){
   const selectedVoice=voiceForLanguage(job.language);
   if(!selectedVoice)return {status:"voice_waiting_voice",error:"No ElevenLabs voice ID is configured."};
   const audio=await generateElevenLabsAudio(job.script,selectedVoice,process.env.ELEVENLABS_MODEL_ID,job.language==="Assamese"?"as":job.language==="Hindi"?"hi":undefined);
-  fs.mkdirSync(VOICE_DIR,{recursive:true});
-  const file=path.join(VOICE_DIR,job.id+".mp3");
-  fs.writeFileSync(file,audio);
-  job.voice={status:"ready",file:"/api/pipeline/jobs/"+job.id+"/voice",model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voiceId:selectedVoice,generatedAt:new Date().toISOString()};
+  if(!process.env.BLOB_READ_WRITE_TOKEN)throw new Error("Vercel Blob is required for automatic voice storage.");
+  const {put}=await import("@vercel/blob");
+  const blob=await put("voices/"+job.id+".mp3",audio,{access:"public",contentType:"audio/mpeg",token:process.env.BLOB_READ_WRITE_TOKEN});
+  job.voice={status:"ready",file:blob.url,model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voiceId:selectedVoice,generatedAt:new Date().toISOString()};
   job.status="voice_ready";
   job.updatedAt=new Date().toISOString();
   return job.voice;

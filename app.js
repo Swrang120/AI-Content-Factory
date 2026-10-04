@@ -94,6 +94,10 @@ function renderDashboard(){
     <div class="section-head"><div><h3>YouTube Connection</h3><span class="muted">Live status from the secure backend.</span></div><span id="dashboardYtBadge" class="badge">Checking…</span></div>
     <div class="platform"><div><div class="platform-name">YouTube</div><small id="dashboardYtText">Checking connected channel…</small></div><div class="platform-actions"><button class="small-btn" onclick="setView('accounts')">Manage</button></div></div>
   </div>
+  <div class="table-card">
+    <div class="section-head"><div><h3>📊 Creator Analytics & Learning</h3><span class="muted">The factory studies your own performance and turns patterns into the next experiments.</span></div><button class="small-btn" onclick="loadCreatorLearning()">Refresh</button></div>
+    <div id="creatorAnalytics" class="muted">Loading performance data…</div>
+  </div>
   <div class="table-card"><div class="section-head"><div><h3>AI Robot Control Room</h3><span class="muted">See which AI role is working, waiting or ready.</span></div><button class="small-btn" onclick="setView('robots')">Open Robot Room</button></div><div class="robot-summary">${AI_ROBOTS.slice(0,6).map(robotCard).join("")}</div></div>
   <div class="two-col">
     <div class="table-card"><div class="section-head"><h3>Production Pipeline</h3><span class="badge">YouTube adapter ready</span></div><div class="pipeline">
@@ -155,6 +159,24 @@ async function renderSchedule(){
     if(badge){badge.textContent=s.settings?.liveAutomation?"Live Automation ON":"Live Automation OFF";badge.className="badge "+(s.settings?.liveAutomation?"ready":"");}
     box.innerHTML=(s.schedules||[]).map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.icon||"")} ${esc(x.day)} — ${esc(x.title)}</div><div class="queue-meta">2:00 PM–4:00 PM IST · ${esc(x.category)}</div>${x.sourceChannels?.length?`<div class="queue-meta">Original music sources: ${x.sourceChannels.map(esc).join(" · ")}</div>`:""}</div><span class="badge ready">Weekly</span></div>`).join("");
   }).catch(e=>{document.getElementById("weeklyLiveSchedule").innerHTML='<div class="empty">Could not load live schedule: '+esc(e.message)+'</div>';});
+}
+async function loadCreatorLearning(){
+  const box=document.getElementById("creatorAnalytics");
+  if(!box)return;
+  try{
+    const r=await fetch(apiUrl("/api/youtube/analytics"),{credentials:"include"});
+    const s=await r.json();
+    if(!r.ok||!s.ok)throw new Error(s.error||"Analytics unavailable");
+    const t=s.analytics?.total||{};
+    box.innerHTML=`<div class="cards" style="margin:0 0 12px">
+      <div class="card"><div class="metric-label">Views</div><div class="metric">${Number(t.views||0).toLocaleString()}</div><div class="metric-note">Processed period</div></div>
+      <div class="card"><div class="metric-label">Watch Minutes</div><div class="metric">${Number(t.estimatedMinutesWatched||0).toLocaleString()}</div><div class="metric-note">Processed period</div></div>
+      <div class="card"><div class="metric-label">Likes</div><div class="metric">${Number(t.likes||0).toLocaleString()}</div><div class="metric-note">Engagement</div></div>
+      <div class="card"><div class="metric-label">Subscribers</div><div class="metric">+${Number(t.subscribersGained||0).toLocaleString()}</div><div class="metric-note">Gained</div></div>
+    </div>
+    <div class="queue-row"><div><div class="queue-title">Top videos</div><div class="queue-meta">${(s.analytics.topVideos||[]).slice(0,5).map(v=>esc(v.video)+": "+Number(v.views||0).toLocaleString()+" views").join(" · ")||"No processed video data yet."}</div></div><span class="badge ready">Learning ON</span></div>
+    <div class="muted" style="margin-top:8px">${esc(s.analytics.latencyNote||"")}</div>`;
+  }catch(e){box.innerHTML='<div class="empty">Analytics not ready: '+esc(e.message)+'</div>';}
 }
 async function youtubeStatus(){
   try{
@@ -343,7 +365,7 @@ function renderSettings(){
 function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button class="switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
 async function loadServerSettings(){
   try{
-    const r=await fetch(apiUrl("/api/factory/settings"));
+    const r=await fetch(apiUrl("/api/factory/settings"),{credentials:"include"});
     const s=await r.json();
     if(s.ok&&s.settings){data.settings=s.settings;save();}
   }catch(e){}
@@ -361,7 +383,7 @@ async function toggleSetting(k){
   data.settings[k]=!data.settings[k];
   save();
   try{
-    const r=await fetch(apiUrl("/api/factory/settings"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data.settings)});
+    const r=await fetch(apiUrl("/api/factory/settings"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(data.settings)});
     const s=await r.json();
     if(s.ok&&s.settings){data.settings=s.settings;save();}
   }catch(e){}
@@ -369,5 +391,5 @@ async function toggleSetting(k){
   else renderSettings();
 }
 document.getElementById("themeBtn").onclick=()=>document.body.classList.toggle("light");
-loadServerSettings().finally(()=>setView("dashboard"));
+loadServerSettings().finally(()=>{setView("dashboard");setTimeout(loadCreatorLearning,500);});
 window.setBackendUrl=function(url){const v=String(url||"").trim().replace(/\/+$/,"");if(v){localStorage.setItem("acf_backend_url",v);}else{localStorage.removeItem("acf_backend_url");}location.reload();};

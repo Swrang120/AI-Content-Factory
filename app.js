@@ -96,32 +96,43 @@ function robotCard(r){
  return `<div class="robot-card ${working?"live-working":"live-sleeping"}" id="robot-summary-${r.id}"><div class="robot-top"><div class="robot-avatar">${r.icon}</div><div><div class="robot-name">${r.name}</div><div class="robot-role">${r.role}</div></div><div class="robot-status ${working?"":"idle"}"><i></i>${working?"Working":a.status==="ERROR"?"Error":"Sleeping"}</div></div><div class="robot-task">${esc(a.task)}</div><div class="robot-bar"><i style="width:${a.progress}%"></i></div><div class="robot-meta"><span>${working?"Working":"Sleeping"}</span><span>${a.progress}%</span></div></div>`;
 }
 function renderBossRoom(){
- title.textContent="Pixel Office";
- const roomMap={manager:["Command Room","12%","18%"],research:["Research Lab","33%","18%"],script:["Script Room","55%","18%"],voice:["Voice Studio","78%","18%"],visual:["Visual Lab","25%","48%"],editor:["Edit Suite","48%","48%"],thumb:["Design Studio","70%","48%"],qa:["QA Lab","25%","78%"],publisher:["Publishing","52%","78%"],analytics:["Analytics","75%","78%"]};
- view.innerHTML=`<div class="pixel-office-page">
-   <div class="pixel-office-head"><div><p class="eyebrow">AI CONTENT FACTORY · PIXEL OFFICE</p><h2>🏢 The Factory Office</h2><p>Employees walk to their workstation when a real production stage starts and return to the rest area when their work is finished.</p></div><div class="office-live"><span></span><b id="officeLiveText">SYNCING</b></div></div>
+ title.textContent="AI Office";
+ const rooms={
+  manager:["Manager","6%","5%","25%","27%"],meeting:["Meeting Room","33%","5%","31%","27%"],strategy:["Strategy Room","66%","5%","28%","27%"],
+  research:["Research","6%","35%","30%","30%"],operations:["Operations","39%","35%","55%","30%"],
+  lounge:["Break Room","6%","68%","30%","27%"],kitchen:["Kitchen","39%","68%","26%","27%"],server:["AI Command Center","67%","68%","27%","27%"]
+ };
+ const roomFor={manager:"manager",research:"research",script:"operations",voice:"operations",visual:"operations",editor:"operations",thumb:"operations",qa:"operations",publisher:"server",analytics:"server"};
+ view.innerHTML=`<div class="pixel-office-page screenshot-office">
+   <div class="pixel-office-head"><div><p class="eyebrow">AI CONTENT FACTORY · VIRTUAL HQ</p><h2>🏢 AI Employee Office</h2><p>Exactly this style: a top-down dark pixel-art office where every AI employee physically moves between rooms, works at a desk, joins meetings, or rests when idle.</p></div><div class="office-live"><span></span><b id="officeLiveText">SYNCING</b></div></div>
    <div class="pixel-office-shell">
-     <div class="office-toolbar"><div><b>Production Floor</b><small>10 AI employees · live backend state</small></div><div class="office-legend"><span><i class="legend-dot work"></i>Working</span><span><i class="legend-dot sleep"></i>Sleeping</span></div></div>
-     <div class="office-floor">
-       <div class="office-grid-lines"></div>
-       <div class="office-room room-command"><div class="room-sign">COMMAND CENTER</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">◉</span></div></div>
-       <div class="office-room room-research"><div class="room-sign">RESEARCH LAB</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">⌕</span></div></div>
-       <div class="office-room room-script"><div class="room-sign">SCRIPT ROOM</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">✎</span></div></div>
-       <div class="office-room room-voice"><div class="room-sign">VOICE STUDIO</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">♫</span></div></div>
-       <div class="office-room room-visual"><div class="room-sign">VISUAL LAB</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">▣</span></div></div>
-       <div class="office-room room-editor"><div class="room-sign">EDIT SUITE</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">▶</span></div></div>
-       <div class="office-room room-thumb"><div class="room-sign">DESIGN STUDIO</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">✦</span></div></div>
-       <div class="office-room room-qa"><div class="room-sign">QA LAB</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">✓</span></div></div>
-       <div class="office-room room-publisher"><div class="room-sign">PUBLISHING</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">↑</span></div></div>
-       <div class="office-room room-analytics"><div class="room-sign">ANALYTICS</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">▥</span></div></div>
-       <div class="office-rest"><div class="rest-sign">REST AREA</div><div class="rest-bed"></div><div class="rest-bed"></div><span>☕</span><span>🛋️</span></div>
-       <div class="office-worker-layer">${AI_ROBOTS.map((r,i)=>{const p=roomMap[r.id]||["Office","50%","50%"];const sx=[38,45,52,59,66,42,49,56,63,70][i]||50;return `<div class="office-worker office-sleeping" id="office-worker-${r.id}" style="--desk-x:${p[1]};--desk-y:${p[2]};--sleep-x:${sx}%;--sleep-y:91%"><div class="office-bubble">Zzz</div><div class="office-sprite"><div class="sprite-head">${r.icon}</div><div class="sprite-body"></div><div class="sprite-feet"></div></div><div class="office-name">${r.name}</div><div class="office-task">Sleeping</div></div>`}).join("")}</div>
-     </div>
+    <div class="office-toolbar"><div><b>FACTORY FLOOR</b><small>Live employee simulation · click an employee for details</small></div><div class="office-legend"><span><i class="legend-dot work"></i>Working</span><span><i class="legend-dot sleep"></i>Resting</span><span>🟣 Meeting</span></div></div>
+    <div class="office-map">
+      <div class="map-room manager-room"><b>MANAGER OFFICE</b><div class="map-desk big"></div><div class="map-monitor"></div><div class="map-plant p1">🌿</div><div class="map-plant p2">🌿</div></div>
+      <div class="map-room meeting-room"><b>MEETING ROOM</b><div class="conference-table"></div><div class="meeting-chair c1"></div><div class="meeting-chair c2"></div><div class="meeting-chair c3"></div><div class="meeting-chair c4"></div><div class="meeting-chair c5"></div><div class="meeting-chair c6"></div><div class="whiteboard">PIPELINE<br><small>IDEA → PUBLISH</small></div></div>
+      <div class="map-room strategy-room"><b>STRATEGY / PLANNING</b><div class="map-desk"></div><div class="map-monitor"></div><div class="map-cabinet"></div><div class="map-plant p2">🌿</div></div>
+      <div class="map-room research-room"><b>RESEARCH LAB</b><div class="work-desk d1"></div><div class="work-desk d2"></div><div class="map-monitor m1">⌕</div><div class="map-monitor m2">⌕</div><div class="shelf"></div></div>
+      <div class="map-room operations-room"><b>PRODUCTION FLOOR</b><div class="work-desk od1"></div><div class="work-desk od2"></div><div class="work-desk od3"></div><div class="work-desk od4"></div><div class="work-desk od5"></div><div class="work-desk od6"></div><div class="map-monitor om1">✎</div><div class="map-monitor om2">♫</div><div class="map-monitor om3">▶</div><div class="map-monitor om4">✦</div><div class="map-monitor om5">✓</div><div class="map-monitor om6">↑</div></div>
+      <div class="map-room lounge-room"><b>BREAK ROOM</b><div class="sofa"></div><div class="coffee-table"></div><div class="pool-table"></div><span class="coffee">☕</span><span class="plant-large">🌿</span></div>
+      <div class="map-room kitchen-room"><b>KITCHEN / CAFÉ</b><div class="counter"></div><div class="fridge"></div><div class="cafe-table"></div><div class="cafe-chair a"></div><div class="cafe-chair b"></div><span class="coffee">☕</span></div>
+      <div class="map-room server-room"><b>AI COMMAND CENTER</b><div class="server-wall"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="data-screen">AI FACTORY<br><small>LIVE DATA</small></div><div class="map-monitor sm">◈</div></div>
+      <div class="map-corridor vertical"></div><div class="map-corridor horizontal"></div><div class="map-door dtop"></div><div class="map-door dleft"></div><div class="map-door dright"></div>
+      <div class="office-worker-layer">${AI_ROBOTS.map((r,i)=>{
+        const p=rooms[roomFor[r.id]||"operations"];
+        const sleep=[18,28,38,48,58,68,78,27,47,67][i]||50;
+        return `<button class="office-worker office-sleeping" id="office-worker-${r.id}" style="--desk-x:calc(${p[1]} + ${i%2?14:7}%);--desk-y:calc(${p[2]} + 13%);--sleep-x:${sleep}%;--sleep-y:93%" onclick="officeEmployeeClick('${r.id}')" aria-label="${r.name}">
+          <div class="office-bubble">Zzz</div><div class="office-sprite"><div class="sprite-head">${r.icon}</div><div class="sprite-body"></div><div class="sprite-feet"></div></div><div class="office-name">${r.name.replace(" Bot","")}</div><div class="office-task">Sleeping</div>
+        </button>`}).join("")}</div>
+    </div>
    </div>
+   <div class="office-status-strip" id="officeStatusStrip">Select an employee to see their live task.</div>
    <div class="boss-command office-command"><div class="command-label">BOSS COMMAND</div><div class="command-row"><input id="bossCommand" placeholder="Give your employees an order…" onkeydown="if(event.key==='Enter')bossCommandRun()"><button class="primary" onclick="bossCommandRun()">⚡ Execute</button></div><div class="quick-actions"><button class="small-btn" onclick="bossQuick('Create a new video idea')">🎬 New Video</button><button class="small-btn" onclick="bossQuick('Research a news topic')">🔎 Research</button><button class="small-btn" onclick="bossQuick('Write a YouTube script')">✍️ Script</button><button class="small-btn" onclick="bossQuick('Prepare a YouTube upload')">📤 Publish</button></div><div id="bossResult" class="boss-result">Waiting for the Boss order…</div></div>
  </div>`;
- loadAgentStates();
- startAgentPolling();
+ loadAgentStates(); startAgentPolling();
+}
+function officeEmployeeClick(id){
+ const r=AI_ROBOTS.find(x=>x.id===id),a=agentStateFor(r||{}),el=document.getElementById("officeStatusStrip");
+ if(el&&r)el.innerHTML="<b>"+esc(r.name)+"</b> · "+(a.status==="WORKING"?"🟢 Working":"😴 Resting")+" · "+esc(a.task)+" · "+Number(a.progress||0)+"%";
 }function bossQuick(c){const i=document.getElementById("bossCommand");if(i){i.value=c;bossCommandRun();}}
 async function bossCommandRun(){
  const input=document.getElementById("bossCommand"),result=document.getElementById("bossResult"),badge=document.getElementById("bossLiveBadge"),command=(input?.value||"").trim();if(!command)return;

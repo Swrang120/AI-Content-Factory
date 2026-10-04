@@ -60,22 +60,43 @@ function renderDashboard(){
   const counts={Idea:0,Planned:0,Ready:0,Approval:0};
   data.content.forEach(x=>counts[x.status]=(counts[x.status]||0)+1);
   view.innerHTML=`
-  <div class="hero"><p class="eyebrow">PRIVATE AI WORKSPACE</p><h2>Your content production command center.</h2><p>Generate, review, schedule and publish from one workspace. YouTube publishing is now connected through the secure server adapter.</p></div>
+  <div class="hero"><p class="eyebrow">PRIVATE AI WORKSPACE</p><h2>Your content production command center.</h2><p>Generate, review, schedule and publish from one workspace. YouTube publishing is connected through the secure server adapter.</p></div>
   <div class="cards">
     <div class="card"><div class="metric-label">Total Content</div><div class="metric">${data.content.length}</div><div class="metric-note">In your queue</div></div>
     <div class="card"><div class="metric-label">Ready</div><div class="metric">${counts.Ready||0}</div><div class="metric-note">Production-ready</div></div>
     <div class="card"><div class="metric-label">Scheduled</div><div class="metric">${data.schedule.length}</div><div class="metric-note">Publishing slots</div></div>
     <div class="card"><div class="metric-label">Categories</div><div class="metric">${data.categories.filter(x=>x.enabled).length}</div><div class="metric-note">Active categories</div></div>
   </div>
+  <div class="table-card">
+    <div class="section-head"><div><h3>YouTube Connection</h3><span class="muted">Live status from the secure backend.</span></div><span id="dashboardYtBadge" class="badge">Checking…</span></div>
+    <div class="platform"><div><div class="platform-name">YouTube</div><small id="dashboardYtText">Checking connected channel…</small></div><div class="platform-actions"><button class="small-btn" onclick="setView('accounts')">Manage</button></div></div>
+  </div>
   <div class="table-card"><div class="section-head"><div><h3>AI Robot Control Room</h3><span class="muted">See which AI role is working, waiting or ready.</span></div><button class="small-btn" onclick="setView('robots')">Open Robot Room</button></div><div class="robot-summary">${AI_ROBOTS.slice(0,6).map(robotCard).join("")}</div></div>
   <div class="two-col">
     <div class="table-card"><div class="section-head"><h3>Production Pipeline</h3><span class="badge">YouTube adapter ready</span></div><div class="pipeline">
-      <div class="stage"><strong>${counts.Idea||0}</strong><span>IDEAS</span></div><div class="stage"><strong>${counts.Planned||0}</strong><span>PLANNED</span></div><div class="stage"><strong>${counts.Ready||0}</strong><span>READY</span></div><div class="stage"><strong>${counts.Approval||0}</strong><span>APPROVAL</span></div><div class="stage"><strong>—</strong><span>YOUTUBE</span></div>
+      <div class="stage"><strong>${counts.Idea||0}</strong><span>IDEAS</span></div><div class="stage"><strong>${counts.Planned||0}</strong><span>PLANNED</span></div><div class="stage"><strong>${counts.Ready||0}</strong><span>READY</span></div><div class="stage"><strong>${counts.Approval||0}</strong><span>APPROVAL</span></div><div class="stage"><strong id="dashboardYtStage">—</strong><span>YOUTUBE</span></div>
     </div></div>
     <div class="table-card"><div class="section-head"><h3>Latest Content</h3><button class="small-btn" onclick="setView('content')">View all</button></div>
       ${data.content.slice(-4).reverse().map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.title)}</div><div class="queue-meta">${esc(x.category)} · ${esc(x.format)}</div></div><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></div>`).join("")||'<div class="empty">No content yet.</div>'}
     </div>
   </div>`;
+  youtubeStatus().then(s=>{
+    const badge=document.getElementById("dashboardYtBadge");
+    const textEl=document.getElementById("dashboardYtText");
+    const stage=document.getElementById("dashboardYtStage");
+    if(!badge||!textEl)return;
+    if(s.connected){
+      badge.textContent="Connected";
+      badge.className="badge ready";
+      textEl.textContent="Channel: "+(s.channel?.title||"Connected")+" · "+(s.channel?.subscribers||"—")+" subscribers";
+      if(stage)stage.textContent="✓";
+    }else{
+      badge.textContent="Not connected";
+      badge.className="badge";
+      textEl.textContent=s.error||"Connect your YouTube channel";
+      if(stage)stage.textContent="—";
+    }
+  });
 }
 function renderContent(){
   title.textContent="Content";

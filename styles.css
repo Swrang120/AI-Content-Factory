@@ -65,3 +65,5 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}.app-shell{displ
   .setting small{line-height:1.4}
   .premium-switch{flex:0 0 44px}
 }
+
+.employee-sleeping .employee-head{filter:saturate(.45);opacity:.62;animation:employeeSleep 3.8s ease-in-out infinite}.employee-sleeping .employee-body{opacity:.38}.employee-sleeping .employee-state{color:#718096}.live-working{border-color:rgba(85,214,167,.65)!important;box-shadow:0 0 24px rgba(85,214,167,.1)}.live-sleeping{opacity:.78}.live-sleeping:before{opacity:.2}.employee-sleeping:after{content:"Zzz";position:absolute;top:8px;right:10px;font-size:9px;color:#718096;animation:zzz 2.2s ease-in-out infinite}@keyframes employeeSleep{0%,100%{transform:translateY(2px) rotate(0);opacity:.62}50%{transform:translateY(5px) rotate(2deg);opacity:.42}}@keyframes zzz{0%{transform:translateY(4px);opacity:.15}50%{transform:translateY(-2px);opacity:.8}100%{transform:translateY(-8px);opacity:.05}}

@@ -650,6 +650,17 @@ app.get("/api/factory/automation-schedule",(req,res)=>res.json({ok:true,timeZone
 app.get("/api/live/weekly-schedule",(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",startTime:"14:00",endTime:"16:00",durationMinutes:120,schedules:weeklyLiveSchedule(),musicSourceChannels:loadSettings().musicSourceChannels,settings:loadSettings()}));
 
 app.post("/api/factory/settings",requireAppKey,(req,res)=>{try{const next={...loadSettings(),...(req.body||{})};next.autoGenerate=!!next.autoGenerate;next.approval=next.approval!==false;next.autoPublish=!!next.autoPublish;saveSettings(next);res.json({ok:true,settings:next});}catch(e){res.status(500).json({ok:false,error:e.message});}});
+app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
+  try{
+    if(!process.env.BLOB_READ_WRITE_TOKEN)return res.status(503).json({ok:false,error:"Vercel Blob is not configured."});
+    const filename=String(req.query.filename||"video.mp4").replace(/[^a-zA-Z0-9._-]/g,"_");
+    const title=String(req.query.title||filename);
+    if(!req.body||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({ok:false,error:"Video file body is required"});
+    const {put}=await import("@vercel/blob");
+    const blob=await put("uploads/"+Date.now()+"-"+filename,req.body,{access:"public",contentType:req.headers["content-type"]||"video/mp4",token:process.env.BLOB_READ_WRITE_TOKEN});
+    res.json({ok:true,title,url:blob.url,pathname:blob.pathname,contentType:req.headers["content-type"]||"video/mp4",size:req.body.length});
+  }catch(e){res.status(500).json({ok:false,error:e.message});}
+});
 app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
   try{
     const {title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.query||{};

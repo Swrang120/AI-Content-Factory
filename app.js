@@ -428,8 +428,12 @@ async function toggleSetting(k){
       credentials:"include",
       body:JSON.stringify({...data.settings,version:2})
     });
-    const s=await r.json();
-    if(!r.ok||!s.ok)throw new Error(s.error||"Settings save failed");
+    const raw=await r.text();
+    let s=null;
+    try{s=raw?JSON.parse(raw):null;}catch(_){
+      throw new Error(`Server returned HTTP ${r.status} instead of JSON`);
+    }
+    if(!r.ok||!s?.ok)throw new Error(s?.error||`Settings save failed (HTTP ${r.status})`);
     data.settings={...data.settings,...s.settings};
     save();
     if(activeView==="accounts") renderAccounts(); else renderSettings();

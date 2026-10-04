@@ -158,7 +158,51 @@ async function youtube(req){
   client.on("tokens",t=>{saveTokens({...tokens,...t}).catch(()=>{});});
   return google.youtube({version:"v3",auth:client});
 }
-async function generateWithChatGPT(task,fields){if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT API is not configured. Add OPENAI_API_KEY on the server.");const model=process.env.OPENAI_MODEL||"gpt-6-luna";const instructions="You are the Content Brain for a private AI Content Factory. Create original, useful, platform-safe content. Never invent factual claims when source material is provided. For current news or sports facts, use only supplied source material.";const prompt=["TASK: "+task,"","CONTENT INPUT:",JSON.stringify(fields||{},null,2),"","OUTPUT REQUIREMENTS:","Write for YouTube first. Avoid copyrighted song lyrics, copied scripts, or fabricated sources."].join("\n");const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,instructions,input:[{role:"user",content:prompt}],store:false})});const body=await response.json();if(!response.ok)throw new Error(body?.error?.message||"ChatGPT API request failed");return body.output_text||"";}
+function needsLiveResearch(task,fields){
+  const s=(String(task||"")+" "+JSON.stringify(fields||{})).toLowerCase();
+  return /news|sports|current|today|latest|breaking|live update|verified source/.test(s);
+}
+async function generateWithChatGPT(task,fields){
+  if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT API is not configured. Add OPENAI_API_KEY on the server.");
+  const model=process.env.OPENAI_MODEL||"gpt-6-luna";
+  const live=needsLiveResearch(task,fields);
+  const instructions=live
+    ?"You are the Content Brain for a private AI Content Factory. For current news or sports, research the live web before writing. Use multiple credible sources where possible, prefer primary/official sources for factual claims, and clearly distinguish confirmed facts from developing or attributed claims. Never invent names, dates, scores, quotes, locations or numbers. For political/news topics remain neutral and factual. Include a compact Sources section with the URLs of the key sources used. Create original wording; never copy article text or copyrighted scripts."
+    :"You are the Content Brain for a private AI Content Factory. Create original, useful, platform-safe content. Never invent factual claims when source material is provided.";
+  const prompt=[
+    "TASK: "+task,
+    "",
+    "CONTENT INPUT:",
+    JSON.stringify(fields||{},null,2),
+    "",
+    "OUTPUT REQUIREMENTS:",
+    "Write for YouTube first. Avoid copyrighted song lyrics, copied scripts, fabricated sources, and unsupported factual claims.",
+    live
+      ?"This is a live-information task. Search the web now. Prefer recent reliable reporting and official sources. If a fact cannot be verified, omit it. Preserve dates and distinguish the event date from the publication date."
+      :""
+  ].join("\n");
+  const bodyInput={
+    model,
+    instructions,
+    input:[{role:"user",content:prompt}],
+    store:false
+  };
+  if(live){
+    bodyInput.tools=[{
+      type:"web_search",
+      search_context_size:"high",
+      user_location:{type:"approximate",country:"IN",region:"Assam",city:"Dibrugarh",timezone:"Asia/Kolkata"}
+    }];
+  }
+  const response=await fetch("https://api.openai.com/v1/responses",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},
+    body:JSON.stringify(bodyInput)
+  });
+  const body=await response.json();
+  if(!response.ok)throw new Error(body?.error?.message||"ChatGPT API request failed");
+  return body.output_text||"";
+}
 async function generateThumbnailImage(prompt,size="1536x1024"){
   if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT/OpenAI API is not configured. Add OPENAI_API_KEY on the server.");
   const r=await fetch("https://api.openai.com/v1/images/generations",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_IMAGE_MODEL||"gpt-image-1",prompt:String(prompt||"").trim(),size})});

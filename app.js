@@ -360,7 +360,33 @@ async function generateVoice(){
 
 function renderSettings(){
   title.textContent="Settings";
-  view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">These switches control the future generation and publishing workers.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically after QA when YouTube is connected.")}</div></div>`;
+  view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">These switches control the future generation and publishing workers.</span></div></div><div class="settings-list">${setting("autoGenerate","Auto-generate content","Allow future AI workers to create content automatically.")}${setting("approval","Require approval","Keep human approval before publishing.",true)}${setting("autoPublish","Auto-publish","Publish automatically after QA when YouTube is connected.")}</div></div><div class="settings-card" style="margin-top:16px"><div class="section-head"><div><h3>🛡️ AI Self-Heal</h3><span class="muted">ChatGPT + Google Gemini diagnose runtime failures; the server uses bounded retry/fallback instead of blindly changing code.</span></div><span id="selfHealBadge" class="badge">Checking…</span></div><div id="selfHealInfo" class="queue-meta">Checking reliability layer…</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="small-btn" onclick="checkSelfHeal()">↻ Refresh</button><button class="small-btn" onclick="testSelfHeal()">🧪 Test AI diagnosis</button></div><pre id="selfHealResult" class="ai-result" style="margin-top:12px">No incident test run yet.</pre></div>`;
+}
+async function checkSelfHeal(){
+  const badge=document.getElementById("selfHealBadge"),info=document.getElementById("selfHealInfo");
+  if(!badge||!info)return;
+  try{
+    const r=await fetch(apiUrl("/api/self-heal/status"),{credentials:"include"});
+    const s=await r.json();
+    if(!r.ok||!s.ok)throw new Error(s.error||"Self-heal status unavailable");
+    const c=s.providers?.chatgpt?.configured, g=s.providers?.gemini?.configured;
+    badge.textContent=s.enabled?"Self-Heal ON":"Self-Heal OFF";
+    badge.className="badge "+(s.enabled?"ready":"");
+    info.innerHTML="ChatGPT: <b>"+(c?"Ready":"Key needed")+"</b> · Gemini: <b>"+(g?"Ready":"Key needed")+"</b> · Retry limit: "+esc(s.retryLimit);
+    const incidents=s.recentIncidents||[];
+    const out=document.getElementById("selfHealResult");
+    if(out&&incidents.length)out.textContent=incidents.map(x=>"["+x.at+"] "+x.operation+" — "+x.message).join("\n");
+  }catch(e){badge.textContent="Unavailable";badge.className="badge";info.textContent=e.message;}
+}
+async function testSelfHeal(){
+  const out=document.getElementById("selfHealResult");
+  if(out)out.textContent="Asking ChatGPT + Gemini to diagnose a controlled test incident…";
+  try{
+    const r=await fetch(apiUrl("/api/self-heal/test"),{method:"POST",credentials:"include"});
+    const s=await r.json();
+    if(!r.ok||!s.ok)throw new Error(s.error||"Self-heal test failed");
+    if(out)out.textContent="Incident "+s.incident.id+"\n\nChatGPT:\n"+(s.diagnosis?.chatgpt||"Unavailable")+"\n\nGemini:\n"+(s.diagnosis?.gemini||"Unavailable");
+  }catch(e){if(out)out.textContent="Self-heal test error: "+e.message;}
 }
 function setting(key,label,desc,defaultOn=false){const on=data.settings[key]??defaultOn;return `<div class="setting"><div><strong>${label}</strong><small>${desc}</small></div><button class="switch ${on?"on":""}" onclick="toggleSetting('${key}')"><i></i></button></div>`;}
 async function loadServerSettings(){

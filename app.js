@@ -51,6 +51,16 @@ function applyAgentToDom(r){
     const state=card.querySelector(".employee-state"); if(state)state.textContent=working?"Working":a.status==="ERROR"?"Error":"Sleeping";
     const char=card.querySelector(".employee-character"); if(char)char.classList.toggle("working",working);
   }
+  const office=document.getElementById("office-worker-"+r.id);
+  if(office){
+    office.classList.toggle("office-working",working);
+    office.classList.toggle("office-sleeping",!working);
+    office.classList.toggle("office-error",a.status==="ERROR");
+    office.dataset.state=a.status;
+    office.title=(working?"Working: ":"Sleeping: ")+a.task;
+    const task=office.querySelector(".office-task"); if(task)task.textContent=working?a.task:"Sleeping";
+    const bubble=office.querySelector(".office-bubble"); if(bubble)bubble.textContent=working?"WORKING":"Zzz";
+  }
   const summary=document.getElementById("robot-summary-"+r.id);
   if(summary){
     summary.className="robot-card "+(working?"live-working":"live-sleeping");
@@ -86,15 +96,33 @@ function robotCard(r){
  return `<div class="robot-card ${working?"live-working":"live-sleeping"}" id="robot-summary-${r.id}"><div class="robot-top"><div class="robot-avatar">${r.icon}</div><div><div class="robot-name">${r.name}</div><div class="robot-role">${r.role}</div></div><div class="robot-status ${working?"":"idle"}"><i></i>${working?"Working":a.status==="ERROR"?"Error":"Sleeping"}</div></div><div class="robot-task">${esc(a.task)}</div><div class="robot-bar"><i style="width:${a.progress}%"></i></div><div class="robot-meta"><span>${working?"Working":"Sleeping"}</span><span>${a.progress}%</span></div></div>`;
 }
 function renderBossRoom(){
- title.textContent="Boss Room";
- view.innerHTML=`<div class="boss-room"><div class="boss-header"><div><p class="eyebrow">COMMAND CENTER</p><h2>👔 Boss Room</h2><p>Boss gives the order. Employees wake only while they have work.</p></div><div class="boss-avatar"><div class="boss-face">👔</div><span>YOU · BOSS</span><i></i></div></div>
- <div class="boss-command"><div class="command-label">QUICK COMMAND</div><div class="command-row"><input id="bossCommand" placeholder="Tell your AI employees what to do…" onkeydown="if(event.key==='Enter')bossCommandRun()"><button class="primary" onclick="bossCommandRun()">⚡ Execute</button></div>
- <div class="quick-actions"><button class="small-btn" onclick="bossQuick('Create a new video idea')">🎬 New Video</button><button class="small-btn" onclick="bossQuick('Write a YouTube script')">✍️ Script</button><button class="small-btn" onclick="bossQuick('Create a thumbnail brief')">🎨 Thumbnail</button><button class="small-btn" onclick="bossQuick('Prepare a music promotion')">🎵 Music Promo</button></div><div id="bossResult" class="boss-result">Waiting for the Boss order…</div></div>
- <div class="employee-room"><div class="room-title"><h3>AI Employees</h3><span id="bossLiveBadge" class="badge robot-live-badge">SYNCING…</span></div><div class="employee-grid">${AI_ROBOTS.map(r=>`<div class="employee-card" id="employee-${r.id}"><div class="employee-character"><div class="employee-head">${r.icon}</div><div class="employee-body"></div><div class="employee-shadow"></div></div><div class="employee-info"><strong>${r.name}</strong><small>${r.role}</small><span class="employee-state">Sleeping</span></div></div>`).join("")}</div></div></div>`;
+ title.textContent="Pixel Office";
+ const roomMap={manager:["Command Room","12%","18%"],research:["Research Lab","33%","18%"],script:["Script Room","55%","18%"],voice:["Voice Studio","78%","18%"],visual:["Visual Lab","25%","48%"],editor:["Edit Suite","48%","48%"],thumb:["Design Studio","70%","48%"],qa:["QA Lab","25%","78%"],publisher:["Publishing","52%","78%"],analytics:["Analytics","75%","78%"]};
+ view.innerHTML=`<div class="pixel-office-page">
+   <div class="pixel-office-head"><div><p class="eyebrow">AI CONTENT FACTORY · PIXEL OFFICE</p><h2>🏢 The Factory Office</h2><p>Employees walk to their workstation when a real production stage starts and return to the rest area when their work is finished.</p></div><div class="office-live"><span></span><b id="officeLiveText">SYNCING</b></div></div>
+   <div class="pixel-office-shell">
+     <div class="office-toolbar"><div><b>Production Floor</b><small>10 AI employees · live backend state</small></div><div class="office-legend"><span><i class="legend-dot work"></i>Working</span><span><i class="legend-dot sleep"></i>Sleeping</span></div></div>
+     <div class="office-floor">
+       <div class="office-grid-lines"></div>
+       <div class="office-room room-command"><div class="room-sign">COMMAND CENTER</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">◉</span></div></div>
+       <div class="office-room room-research"><div class="room-sign">RESEARCH LAB</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">⌕</span></div></div>
+       <div class="office-room room-script"><div class="room-sign">SCRIPT ROOM</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">✎</span></div></div>
+       <div class="office-room room-voice"><div class="room-sign">VOICE STUDIO</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">♫</span></div></div>
+       <div class="office-room room-visual"><div class="room-sign">VISUAL LAB</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">▣</span></div></div>
+       <div class="office-room room-editor"><div class="room-sign">EDIT SUITE</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">▶</span></div></div>
+       <div class="office-room room-thumb"><div class="room-sign">DESIGN STUDIO</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">✦</span></div></div>
+       <div class="office-room room-qa"><div class="room-sign">QA LAB</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">✓</span></div></div>
+       <div class="office-room room-publisher"><div class="room-sign">PUBLISHING</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">↑</span></div></div>
+       <div class="office-room room-analytics"><div class="room-sign">ANALYTICS</div><div class="room-furniture"><span class="desk">▰</span><span class="screen">▥</span></div></div>
+       <div class="office-rest"><div class="rest-sign">REST AREA</div><div class="rest-bed"></div><div class="rest-bed"></div><span>☕</span><span>🛋️</span></div>
+       <div class="office-worker-layer">${AI_ROBOTS.map(r=>{const p=roomMap[r.id]||["Office","50%","50%"];return `<div class="office-worker office-sleeping" id="office-worker-${r.id}" style="--desk-x:${p[1]};--desk-y:${p[2]};--sleep-x:48%;--sleep-y:92%"><div class="office-bubble">Zzz</div><div class="office-sprite"><div class="sprite-head">${r.icon}</div><div class="sprite-body"></div><div class="sprite-feet"></div></div><div class="office-name">${r.name}</div><div class="office-task">Sleeping</div></div>`}).join("")}</div>
+     </div>
+   </div>
+   <div class="boss-command office-command"><div class="command-label">BOSS COMMAND</div><div class="command-row"><input id="bossCommand" placeholder="Give your employees an order…" onkeydown="if(event.key==='Enter')bossCommandRun()"><button class="primary" onclick="bossCommandRun()">⚡ Execute</button></div><div class="quick-actions"><button class="small-btn" onclick="bossQuick('Create a new video idea')">🎬 New Video</button><button class="small-btn" onclick="bossQuick('Research a news topic')">🔎 Research</button><button class="small-btn" onclick="bossQuick('Write a YouTube script')">✍️ Script</button><button class="small-btn" onclick="bossQuick('Prepare a YouTube upload')">📤 Publish</button></div><div id="bossResult" class="boss-result">Waiting for the Boss order…</div></div>
+ </div>`;
  loadAgentStates();
  startAgentPolling();
-}
-function bossQuick(c){const i=document.getElementById("bossCommand");if(i){i.value=c;bossCommandRun();}}
+}function bossQuick(c){const i=document.getElementById("bossCommand");if(i){i.value=c;bossCommandRun();}}
 async function bossCommandRun(){
  const input=document.getElementById("bossCommand"),result=document.getElementById("bossResult"),badge=document.getElementById("bossLiveBadge"),command=(input?.value||"").trim();if(!command)return;
  const w=command.toLowerCase();let ids=["manager"];

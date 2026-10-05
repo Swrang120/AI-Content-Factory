@@ -224,17 +224,26 @@ function renderDashboard(){
 async function uploadFactoryVideo(){
   const file=document.getElementById("factoryUploadFile")?.files?.[0], titleInput=document.getElementById("factoryUploadTitle"), result=document.getElementById("factoryUploadResult");
   if(!file){result.textContent="Choose a video file first.";return;}
-  // Accept video files even when the browser reports an empty/unknown MIME type. The backend validates the upload.
   const isLikelyVideo=file.type.startsWith("video/")||/\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg|3gp|wmv|flv)$/i.test(file.name)||!file.type;
   if(!isLikelyVideo){result.textContent="Please choose a video file.";return;}
-  if(file.size>50*1024*1024){result.textContent="File is larger than 50 MB.";return;}
-  result.textContent="Uploading video to the Factory media library…";
+  result.textContent="Preparing secure Blob upload…";
   try{
-    const params=new URLSearchParams({filename:file.name,title:(titleInput?.value||file.name).trim()});
-    const r=await fetch(apiUrl("/api/media/upload-file?"+params.toString()),{method:"POST",headers:{"Content-Type":file.type||"video/mp4"},credentials:"include",body:file});
-    const body=await r.json();
-    if(!r.ok||!body.ok)throw new Error(body.error||"Factory upload failed");
-    result.innerHTML='<span style="color:var(--accent)">✓ Uploaded to Factory.</span><br><small>'+esc(body.title)+' · '+Math.round((body.size||0)/1024/1024*10)/10+' MB</small><br><a href="'+esc(body.url)+'" target="_blank" rel="noopener">Open uploaded video</a>';
+    const pr=await fetch(apiUrl("/api/media/presign"),{
+      method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",
+      body:JSON.stringify({filename:file.name,contentType:file.type||"video/mp4"})
+    });
+    const pj=await pr.json().catch(()=>({}));
+    if(!pr.ok||!pj.ok)throw new Error(pj.error||"Could not prepare Blob upload");
+    result.textContent="Uploading directly to Blob…";
+    const up=await fetch(pj.uploadUrl,{method:"PUT",headers:{"Content-Type":file.type||"video/mp4"},body:file});
+    if(!up.ok)throw new Error("Blob upload failed ("+up.status+")");
+    const completed=await fetch(apiUrl("/api/media/complete-upload"),{
+      method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",
+      body:JSON.stringify({url:"https://"+new URL(pj.uploadUrl).hostname+"/"+pj.pathname,pathname:pj.pathname,title:(titleInput?.value||file.name).trim(),filename:file.name,size:file.size,contentType:file.type||"video/mp4"})
+    });
+    const body=await completed.json().catch(()=>({}));
+    if(!completed.ok||!body.ok)throw new Error(body.error||"Upload completed but job creation failed");
+    result.innerHTML='<span style="color:var(--accent)">✓ Uploaded to Factory.</span><br><small>'+esc(body.title)+' · '+Math.round((body.size||0)/1024/1024*10)/10+' MB · Scheduled '+esc(body.scheduledSlot||"next slot")+'</small><br><a href="'+esc(body.url)+'" target="_blank" rel="noopener">Open uploaded video</a>';
   }catch(e){result.textContent="Upload failed: "+e.message;}
 }
 function renderContent(){

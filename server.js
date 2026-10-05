@@ -294,7 +294,7 @@ async function youtube(req){
    if(!process.env.OPENAI_API_KEY)return "ChatGPT not configured.";
    const prompt=["You are the reliability engineer for a private AI Content Factory.","Diagnose this runtime incident and suggest only safe runtime remediation: retry, fallback provider, queue/skip the failed job, reconnect a dependency, or configuration check.","Never expose secrets, disable security, bypass authentication, or blindly rewrite source code.","Incident:",JSON.stringify(incident)].join("\\n");
    const model=process.env.OPENAI_MODEL||"gpt-6-luna";
-   const response=await retryTransient(()=>fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,input:prompt,store:false})}));
+   const response=await retryTransient(()=>fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,input:prompt,store:false})});
    const body=await response.json();
    if(!response.ok)throw new Error(body?.error?.message||"ChatGPT diagnosis failed");
    return String(body.output_text||"No ChatGPT diagnosis returned.").slice(0,2500);
@@ -356,7 +356,7 @@ async function generateWithChatGPT(task,fields){
     method:"POST",
     headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},
     body:JSON.stringify(bodyInput)
-  });
+  }));
   const body=await response.json();
   if(!response.ok){
     const err=new Error(body?.error?.message||"ChatGPT API request failed");
@@ -411,7 +411,7 @@ async function runFactoryHealthChecks(){
   add("Cron",!!process.env.CRON_SECRET,process.env.CRON_SECRET?"Cron secret configured":"CRON_SECRET missing",true);
   try{
     if(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY){
-      const r=await fetch(String(process.env.SUPABASE_URL).replace(/\/$/,"")+"/rest/v1/content_jobs?select=id&limit=1",{headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,Authorization:"Bearer "+process.env.SUPABASE_SERVICE_ROLE_KEY}});
+      const r=await fetch(String(process.env.SUPABASE_URL).replace(/\\/$/,"")+"/rest/v1/content_jobs?select=id&limit=1",{headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,Authorization:"Bearer "+process.env.SUPABASE_SERVICE_ROLE_KEY}});
       add("Supabase",r.ok,"HTTP "+r.status,true);
     }else add("Supabase",false,"Supabase configuration incomplete",true);
   }catch(e){add("Supabase",false,safeErrorMessage(e),true);}
@@ -520,8 +520,8 @@ async function getRemotionBundle(){
   }
   return REMOTION_BUNDLE_PROMISE;
 }
-async async function renderFactoryVideo(job,req){
-  if(!process.env.BLOB_READ_WRITE_TOKEN)throw new Error("Vercel Blob is not configured in the Vercel Production environment. Add BLOB_READ_WRITE_TOKEN to Production, then redeploy.");
+async function renderFactoryVideo(job,req){
+  if(!process.env.BLOB_READ_WRITE_TOKEN)throw new Error("Vercel Blob is not configured. Create a Blob store and connect it to this Vercel project.");
   const {createSandbox,addBundleToSandbox,renderMediaOnVercel,uploadToVercelBlob}=await import("@remotion/vercel");
   const bundleDir=await getRemotionBundle();
   const sandbox=await createSandbox();
@@ -651,20 +651,16 @@ async function runAutomaticFactory(req){
   const bossResults=[];
   for(const job of bossDue){try{const youtubeResult=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:job.topic,description:"Uploaded by Boss in AI Content Factory.",tags:["Boss Upload","AI Content Factory"],categoryId:"22",privacyStatus:"public",approved:true,req});job.youtube=youtubeResult;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,videoId:youtubeResult.videoId});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
   if(!settings.autoGenerate)return {ok:true,enabled:false,bossUploads:bossResults,message:"Auto Generate is OFF."};
-   const items=autoScheduleForToday(now);
+  const now=new Date();
+  const items=autoScheduleForToday(now);
   const hourMinute=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now);
   const [nowH,nowM]=hourMinute.split(":").map(Number);
-  // Vercel Hobby cron may execute anywhere inside its scheduled hour.
-  // Choose the nearest upcoming slot instead of requiring an exact minute.
-  let due=items.filter(x=>{
+  const due=items.filter(x=>{
     const [h,m]=x.time.split(":").map(Number);
-    const slotMinutes=h*60+m;
-    const nowMinutes=nowH*60+nowM;
-    return slotMinutes>=nowMinutes-90;
+    const diff=(nowH*60+nowM)-(h*60+m);
+    return diff>=-15 && diff<=5;
   }).sort((a,b)=>a.time.localeCompare(b.time)).slice(0,1);
-  if(!due.length){
-    due=items.slice().sort((a,b)=>a.time.localeCompare(b.time)).slice(-1);
-  }
+  if(!due.length)return {ok:true,enabled:true,due:[],message:"No category is scheduled for this minute."};
   const results=[];
   for(const item of due){
     try{results.push(await generateAutomaticJob(item,req));}

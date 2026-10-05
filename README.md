@@ -72,10 +72,10 @@ Veryfi's Make app is a document OCR/data-extraction integration, not a general w
 - [x] Research → Script pipeline endpoint
 - [x] Make.com research webhook bridge
 - [x] ElevenLabs voice adapter
-- [ ] Persistent production database
-- [ ] Background worker/queue
-- [ ] Video renderer
-- [ ] Thumbnail generation
-- [ ] QA/copyright automation
-- [ ] Scheduler
-- [ ] Analytics worker
+- [x] Persistent production database (Supabase-backed content jobs + production metadata)
+- [x] Background worker/queue (durable worker state + GitHub Actions worker)
+- [x] Video renderer (Remotion/Vercel Sandbox with transient retry)
+- [x] Thumbnail generation (AI image generation + Vercel Blob)
+- [x] QA/copyright automation (deterministic gate + AI originality/rights review)
+- [x] Scheduler (Asia/Kolkata catch-up scheduler)
+- [x] Analytics worker (persistent YouTube analytics snapshots)

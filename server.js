@@ -520,8 +520,8 @@ async function getRemotionBundle(){
   }
   return REMOTION_BUNDLE_PROMISE;
 }
-async function renderFactoryVideo(job,req){
-  if(!process.env.BLOB_READ_WRITE_TOKEN)throw new Error("Vercel Blob is not configured. Create a Blob store and connect it to this Vercel project.");
+async async function renderFactoryVideo(job,req){
+  if(!process.env.BLOB_READ_WRITE_TOKEN)throw new Error("Vercel Blob is not configured in the Vercel Production environment. Add BLOB_READ_WRITE_TOKEN to Production, then redeploy.");
   const {createSandbox,addBundleToSandbox,renderMediaOnVercel,uploadToVercelBlob}=await import("@remotion/vercel");
   const bundleDir=await getRemotionBundle();
   const sandbox=await createSandbox();

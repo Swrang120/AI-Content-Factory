@@ -1009,10 +1009,11 @@ const META_GRAPH_VERSION=process.env.META_GRAPH_VERSION||"v24.0";
 const META_SCOPES=["pages_show_list","pages_read_engagement","pages_manage_posts","instagram_basic","instagram_content_publish"];
 
 function metaApp(){
-  if(!process.env.META_APP_ID||!process.env.META_APP_SECRET||!process.env.META_REDIRECT_URI){
-    throw new Error("Meta is not configured. Add META_APP_ID, META_APP_SECRET and META_REDIRECT_URI on Vercel.");
+  const redirect=process.env.META_REDIRECT_URI||process.env.META_CALLBACK_URL||"";
+  if(!process.env.META_APP_ID||!process.env.META_APP_SECRET||!redirect){
+    throw new Error("Meta is not configured. Add META_APP_ID, META_APP_SECRET and META_REDIRECT_URI (or META_CALLBACK_URL) on Vercel.");
   }
-  return {id:process.env.META_APP_ID,secret:process.env.META_APP_SECRET,redirect:process.env.META_REDIRECT_URI};
+  return {id:process.env.META_APP_ID,secret:process.env.META_APP_SECRET,redirect};
 }
 async function metaGraph(pathname,init={}){
   const url="https://graph.facebook.com/"+META_GRAPH_VERSION+pathname;
@@ -1099,7 +1100,7 @@ app.get("/api/meta/webhook",(req,res)=>{
   const mode=String(req.query["hub.mode"]||"");
   const token=String(req.query["hub.verify_token"]||"");
   const challenge=String(req.query["hub.challenge"]||"");
-  const expected=String(process.env.META_WEBHOOK_VERIFY_TOKEN||"");
+  const expected=String(process.env.META_WEBHOOK_VERIFY_TOKEN||process.env.VERIFY_TOKEN||"");
   if(mode==="subscribe" && expected && token===expected) return res.status(200).send(challenge);
   return res.status(403).send("Meta webhook verification failed");
 });
@@ -1112,7 +1113,7 @@ app.get("/api/meta/status",async(req,res)=>{
   try{
     const cfgOk=!!(process.env.META_APP_ID&&process.env.META_APP_SECRET&&process.env.META_REDIRECT_URI);
     const meta=await loadMetaConnection();
-    res.json({ok:true,configured:cfgOk,connected:!!meta,page:meta?{id:meta.pageId,name:meta.pageName}:null,instagram:!!meta?.instagramUserId,redirectUri:process.env.META_REDIRECT_URI||null});
+    res.json({ok:true,configured:cfgOk,connected:!!meta,page:meta?{id:meta.pageId,name:meta.pageName}:null,instagram:!!meta?.instagramUserId,redirectUri:process.env.META_REDIRECT_URI||process.env.META_CALLBACK_URL||null});
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 

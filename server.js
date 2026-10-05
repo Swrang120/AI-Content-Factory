@@ -411,7 +411,7 @@ async function runFactoryHealthChecks(){
   add("Cron",!!process.env.CRON_SECRET,process.env.CRON_SECRET?"Cron secret configured":"CRON_SECRET missing",true);
   try{
     if(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY){
-      const r=await fetch(String(process.env.SUPABASE_URL).replace(/\\/$/,"")+"/rest/v1/content_jobs?select=id&limit=1",{headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,Authorization:"Bearer "+process.env.SUPABASE_SERVICE_ROLE_KEY}});
+      const r=await fetch(String(process.env.SUPABASE_URL).replace(/\/$/,"")+"/rest/v1/content_jobs?select=id&limit=1",{headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,Authorization:"Bearer "+process.env.SUPABASE_SERVICE_ROLE_KEY}});
       add("Supabase",r.ok,"HTTP "+r.status,true);
     }else add("Supabase",false,"Supabase configuration incomplete",true);
   }catch(e){add("Supabase",false,safeErrorMessage(e),true);}
@@ -651,7 +651,6 @@ async function runAutomaticFactory(req){
   const bossResults=[];
   for(const job of bossDue){try{const youtubeResult=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:job.topic,description:"Uploaded by Boss in AI Content Factory.",tags:["Boss Upload","AI Content Factory"],categoryId:"22",privacyStatus:"public",approved:true,req});job.youtube=youtubeResult;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,videoId:youtubeResult.videoId});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
   if(!settings.autoGenerate)return {ok:true,enabled:false,bossUploads:bossResults,message:"Auto Generate is OFF."};
-  const now=new Date();
   const items=autoScheduleForToday(now);
   const hourMinute=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now);
   const [nowH,nowM]=hourMinute.split(":").map(Number);

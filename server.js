@@ -1155,9 +1155,40 @@ app.post("/api/factory/settings",requireAppKey,async(req,res)=>{
     return res.status(500).json({ok:false,error:safeErrorMessage(e)});
   }
 });
+app.post("/api/media/presign",requireAppKey,async(req,res)=>{
+  try{
+    const filename=String(req.body?.filename||"video.mp4").replace(/[^a-zA-Z0-9._-]/g,"_");
+    const contentType=String(req.body?.contentType||"video/mp4");
+    const pathname="uploads/"+Date.now()+"-"+Math.random().toString(36).slice(2,8)+"-"+filename;
+    const {issueSignedToken,presignUrl}=await import("@vercel/blob");
+    const token=await issueSignedToken({pathname,operations:["put"]});
+    const signed=await presignUrl(token,{pathname,operation:"put",validUntil:Date.now()+15*60*1000});
+    return res.json({ok:true,pathname,uploadUrl:signed.presignedUrl,contentType});
+  }catch(e){
+    console.error("Blob presign failed:",e);
+    return res.status(500).json({ok:false,error:safeErrorMessage(e)});
+  }
+});
+app.post("/api/media/complete-upload",requireAppKey,async(req,res)=>{
+  try{
+    const {url,pathname,title,filename,size,contentType}=req.body||{};
+    if(!url)return res.status(400).json({ok:false,error:"Uploaded Blob URL is required"});
+    const finalTitle=String(title||filename||"Uploaded Video");
+    const id="boss_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7);
+    const scheduledSlot=nextBossUploadSlot();
+    const jobs=loadJobs();
+    jobs[id]={id,status:"approved",topic:finalTitle,category:"Boss Upload",language:"English",format:"Uploaded Video",notes:"Uploaded by Boss",sourceText:"",sources:[],renderedVideoUrl:String(url),approved:true,autoPublish:true,manualUpload:true,scheduledSlot,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),media:{pathname,filename,size:Number(size)||0,contentType:contentType||"video/mp4"}};
+    saveJobs(jobs);
+    await persistJob(jobs[id]);
+    return res.json({ok:true,title:finalTitle,url,pathname,size:Number(size)||0,contentType:contentType||"video/mp4",jobId:id,scheduledSlot,status:"queued"});
+  }catch(e){
+    console.error("Blob completion failed:",e);
+    return res.status(500).json({ok:false,error:safeErrorMessage(e)});
+  }
+});
 app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
   try{
-    if(!process.env.BLOB_READ_WRITE_TOKEN)return res.status(503).json({ok:false,error:"Vercel Blob is not configured."});
+    if(!process.env.BLOB_READ_WRITE_TOKEN && !process.env.VERCEL_OIDC_TOKEN && !process.env.BLOB_STORE_ID)return res.status(503).json({ok:false,error:"Vercel Blob authentication is not configured. Connect the Blob store to this Vercel project or configure its server authentication."});
     const filename=String(req.query.filename||"video.mp4").replace(/[^a-zA-Z0-9._-]/g,"_");
     const title=String(req.query.title||filename);
     if(!req.body||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({ok:false,error:"Video file body is required"});

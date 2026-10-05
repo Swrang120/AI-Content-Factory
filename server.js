@@ -407,7 +407,7 @@ async function runFactoryHealthChecks(){
   add("ChatGPT",!!process.env.OPENAI_API_KEY,process.env.OPENAI_API_KEY?"API key configured":"OPENAI_API_KEY missing",true);
   add("Google Gemini",!!process.env.GEMINI_API_KEY,process.env.GEMINI_API_KEY?"API key configured":"GEMINI_API_KEY missing",true);
   add("YouTube OAuth",!!process.env.GOOGLE_CLIENT_ID&&!!process.env.GOOGLE_CLIENT_SECRET&&!!process.env.YOUTUBE_REDIRECT_URI,process.env.YOUTUBE_REDIRECT_URI||"YouTube OAuth configuration incomplete",true);
-  add("Vercel Blob",!!process.env.BLOB_READ_WRITE_TOKEN,process.env.BLOB_READ_WRITE_TOKEN?"Blob token configured":"BLOB_READ_WRITE_TOKEN missing",true);
+  add("Vercel Blob",!!process.env.BLOB_READ_WRITE_TOKEN||process.env.VERCEL_BLOB_READ_WRITE_TOKEN,process.env.BLOB_READ_WRITE_TOKEN?"Blob token configured":"BLOB_READ_WRITE_TOKEN missing",true);
   add("Cron",!!process.env.CRON_SECRET,process.env.CRON_SECRET?"Cron secret configured":"CRON_SECRET missing",true);
   try{
     if(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY){
@@ -1052,6 +1052,22 @@ app.get("/auth/meta/callback",async(req,res)=>{
     res.redirect("https://swrang120.github.io/AI-Content-Factory/?meta=connected");
   }catch(e){res.status(500).send("Meta OAuth callback failed: "+e.message);}
 });
+// Meta Webhook verification for Facebook/Instagram integrations.
+// Configure META_WEBHOOK_VERIFY_TOKEN on Vercel and use this callback:
+// https://ai-content-factory-zeta-ruby.vercel.app/api/meta/webhook
+app.get("/api/meta/webhook",(req,res)=>{
+  const mode=String(req.query["hub.mode"]||"");
+  const token=String(req.query["hub.verify_token"]||"");
+  const challenge=String(req.query["hub.challenge"]||"");
+  const expected=String(process.env.META_WEBHOOK_VERIFY_TOKEN||"");
+  if(mode==="subscribe" && expected && token===expected) return res.status(200).send(challenge);
+  return res.status(403).send("Meta webhook verification failed");
+});
+app.post("/api/meta/webhook",express.json({limit:"1mb"}),(req,res)=>{
+  console.log("Meta webhook event received");
+  return res.status(200).send("EVENT_RECEIVED");
+});
+
 app.get("/api/meta/status",async(req,res)=>{
   try{
     const cfgOk=!!(process.env.META_APP_ID&&process.env.META_APP_SECRET&&process.env.META_REDIRECT_URI);

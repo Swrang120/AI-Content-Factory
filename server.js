@@ -294,7 +294,7 @@ async function youtube(req){
    if(!process.env.OPENAI_API_KEY)return "ChatGPT not configured.";
    const prompt=["You are the reliability engineer for a private AI Content Factory.","Diagnose this runtime incident and suggest only safe runtime remediation: retry, fallback provider, queue/skip the failed job, reconnect a dependency, or configuration check.","Never expose secrets, disable security, bypass authentication, or blindly rewrite source code.","Incident:",JSON.stringify(incident)].join("\\n");
    const model=process.env.OPENAI_MODEL||"gpt-6-luna";
-   const response=await retryTransient(()=>fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,input:prompt,store:false})});
+   const response=await retryTransient(()=>fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,input:prompt,store:false})}));
    const body=await response.json();
    if(!response.ok)throw new Error(body?.error?.message||"ChatGPT diagnosis failed");
    return String(body.output_text||"No ChatGPT diagnosis returned.").slice(0,2500);
@@ -356,7 +356,7 @@ async function generateWithChatGPT(task,fields){
     method:"POST",
     headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},
     body:JSON.stringify(bodyInput)
-  }));
+  });
   const body=await response.json();
   if(!response.ok){
     const err=new Error(body?.error?.message||"ChatGPT API request failed");

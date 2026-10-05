@@ -230,28 +230,33 @@ async function uploadFactoryVideo(){
   const title=(titleInput?.value||file.name).trim()||"AI Content Factory Upload";
   result.textContent="Checking Factory storage…";
   try{
-    // Preferred path: Vercel Blob queue. This keeps the video in the factory.
-    const pr=await fetch(apiUrl("/api/media/presign"),{
-      method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",
-      body:JSON.stringify({filename:file.name,contentType:file.type||"video/mp4"})
-    });
-    const pj=await pr.json().catch(()=>({}));
-    if(pr.ok&&pj.ok){
-      result.textContent="Uploading to Factory storage…";
-      const up=await fetch(pj.uploadUrl,{method:"PUT",headers:{"Content-Type":file.type||"video/mp4"},body:file});
-      if(!up.ok)throw new Error("Factory storage upload failed ("+up.status+")");
-      const completed=await fetch(apiUrl("/api/media/complete-upload"),{
+    // Factory storage is optional. If Blob presigning fails (including a network
+    // error), fall back to a direct YouTube upload instead of aborting the upload.
+    let storageReady=false;
+    try{
+      const pr=await fetch(apiUrl("/api/media/presign"),{
         method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",
-        body:JSON.stringify({url:"https://"+new URL(pj.uploadUrl).hostname+"/"+pj.pathname,pathname:pj.pathname,title,filename:file.name,size:file.size,contentType:file.type||"video/mp4"})
+        body:JSON.stringify({filename:file.name,contentType:file.type||"video/mp4"})
       });
-      const body=await completed.json().catch(()=>({}));
-      if(!completed.ok||!body.ok)throw new Error(body.error||"Upload completed but job creation failed");
-      result.innerHTML='<span style="color:var(--accent)">✓ Uploaded to Factory.</span><br><small>'+esc(body.title)+' · '+Math.round((body.size||0)/1024/1024*10)/10+' MB · Scheduled '+esc(body.scheduledSlot||"next slot")+'</small><br><a href="'+esc(body.url)+'" target="_blank" rel="noopener">Open uploaded video</a>';
-      return;
+      const pj=await pr.json().catch(()=>({}));
+      if(pr.ok&&pj.ok){
+        result.textContent="Uploading to Factory storage…";
+        const up=await fetch(pj.uploadUrl,{method:"PUT",headers:{"Content-Type":file.type||"video/mp4"},body:file});
+        if(!up.ok)throw new Error("Factory storage upload failed ("+up.status+")");
+        const completed=await fetch(apiUrl("/api/media/complete-upload"),{
+          method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",
+          body:JSON.stringify({url:"https://"+new URL(pj.uploadUrl).hostname+"/"+pj.pathname,pathname:pj.pathname,title,filename:file.name,size:file.size,contentType:file.type||"video/mp4"})
+        });
+        const body=await completed.json().catch(()=>({}));
+        if(!completed.ok||!body.ok)throw new Error(body.error||"Upload completed but job creation failed");
+        result.innerHTML='<span style="color:var(--accent)">✓ Uploaded to Factory.</span><br><small>'+esc(body.title)+' · '+Math.round((body.size||0)/1024/1024*10)/10+' MB · Scheduled '+esc(body.scheduledSlot||"next slot")+'</small><br><a href="'+esc(body.url)+'" target="_blank" rel="noopener">Open uploaded video</a>';
+        storageReady=true;
+      }
+    }catch(storageError){
+      console.warn("Factory storage unavailable; using YouTube fallback:",storageError);
     }
+    if(storageReady)return;
 
-    // Fallback: if Blob is unavailable, upload directly to YouTube as PRIVATE.
-    // This keeps testing usable and avoids the browser's generic "Failed to fetch".
     result.textContent="Factory storage unavailable. Uploading directly to YouTube as PRIVATE…";
     const params=new URLSearchParams({title,privacyStatus:"private",categoryId:"22"});
     const yt=await fetch(apiUrl("/api/youtube/upload-file?"+params.toString()),{

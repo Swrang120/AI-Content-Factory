@@ -684,7 +684,8 @@ async function publishRenderedYouTubeVideo(p){
     requestBody:{snippet:{title:p.title,description:p.description||"",tags:Array.isArray(p.tags)?p.tags:[],categoryId:p.categoryId||"22"},status},
     media:{body:Readable.fromWeb(asset.body)}
   });
-  return {videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||privacyStatus};
+  const meta=await publishMetaVideo(p).catch(error=>({facebook:{published:false,error:safeErrorMessage(error)},instagram:{published:false,error:safeErrorMessage(error)}}));
+  return {videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||privacyStatus,meta};
 }
 
 // Automatic Research → Script pipeline
@@ -959,6 +960,147 @@ app.get("/auth/youtube/callback",async(req,res)=>{
     res.status(500).send("OAuth callback failed: "+e.message);
   }
 });
+
+// =========================
+// Meta (Facebook Page + Instagram Professional) OAuth
+// Credentials are kept in Vercel environment variables.
+// =========================
+const META_GRAPH_VERSION=process.env.META_GRAPH_VERSION||"v24.0";
+const META_SCOPES=["pages_show_list","pages_read_engagement","pages_manage_posts","instagram_basic","instagram_content_publish"];
+
+function metaApp(){
+  if(!process.env.META_APP_ID||!process.env.META_APP_SECRET||!process.env.META_REDIRECT_URI){
+    throw new Error("Meta is not configured. Add META_APP_ID, META_APP_SECRET and META_REDIRECT_URI on Vercel.");
+  }
+  return {id:process.env.META_APP_ID,secret:process.env.META_APP_SECRET,redirect:process.env.META_REDIRECT_URI};
+}
+async function metaGraph(pathname,init={}){
+  const url="https://graph.facebook.com/"+META_GRAPH_VERSION+pathname;
+  const r=await fetch(url,init);
+  const body=await r.json().catch(()=>({}));
+  if(!r.ok||body.error)throw new Error(body?.error?.message||("Meta Graph API HTTP "+r.status));
+  return body;
+}
+async function saveMetaConnection(meta){
+  if(!supabase)return;
+  const {data}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+  const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
+  await supabase.from("youtube_connections").upsert({
+    id:"default",
+    tokens:{...existing,__acf_meta:meta},
+    updated_at:new Date().toISOString()
+  },{onConflict:"id"});
+}
+async function loadMetaConnection(){
+  if(!supabase)return null;
+  try{
+    const {data}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+    return data?.tokens?.__acf_meta||null;
+  }catch{return null;}
+}
+app.get("/auth/meta",(req,res)=>{
+  try{
+    const cfg=metaApp();
+    const state=crypto.randomBytes(32).toString("hex");
+    setCookie(res,"acf_meta_state",state,600);
+    const params=new URLSearchParams({
+      client_id:cfg.id,
+      redirect_uri:cfg.redirect,
+      response_type:"code",
+      state,
+      scope:META_SCOPES.join(",")
+    });
+    res.redirect("https://www.facebook.com/"+META_GRAPH_VERSION+"/dialog/oauth?"+params.toString());
+  }catch(e){res.status(500).send("Meta OAuth configuration error: "+e.message);}
+});
+app.get("/auth/meta/callback",async(req,res)=>{
+  try{
+    if(req.query.error)return res.status(400).send("Meta authorization denied: "+String(req.query.error));
+    if(!req.query.code)return res.status(400).send("Missing Meta OAuth authorization code.");
+    const expected=getCookie(req,"acf_meta_state");
+    if(!expected||expected!==String(req.query.state||""))return res.status(400).send("Meta OAuth state validation failed. Start Meta connection again.");
+    const cfg=metaApp();
+    const tokenUrl="https://graph.facebook.com/"+META_GRAPH_VERSION+"/oauth/access_token?"+new URLSearchParams({
+      client_id:cfg.id,client_secret:cfg.secret,redirect_uri:cfg.redirect,code:String(req.query.code)
+    }).toString();
+    const short=await metaGraph("/oauth/access_token?"+new URLSearchParams({client_id:cfg.id,client_secret:cfg.secret,redirect_uri:cfg.redirect,code:String(req.query.code)}).toString());
+    let userToken=short.access_token;
+    try{
+      const long=await metaGraph("/oauth/access_token?"+new URLSearchParams({
+        grant_type:"fb_exchange_token",client_id:cfg.id,client_secret:cfg.secret,fb_exchange_token:userToken
+      }).toString());
+      if(long.access_token)userToken=long.access_token;
+    }catch(_){}
+    const accounts=await metaGraph("/me/accounts?"+new URLSearchParams({
+      fields:"id,name,access_token,instagram_business_account",
+      access_token:userToken
+    }).toString());
+    const page=Array.isArray(accounts.data)&&accounts.data[0];
+    if(!page)throw new Error("No Facebook Page was granted to this Meta account.");
+    const igId=page.instagram_business_account?.id||null;
+    const meta={
+      userAccessToken:userToken,
+      pageId:page.id,
+      pageName:page.name||"",
+      pageAccessToken:page.access_token||userToken,
+      instagramUserId:igId,
+      connectedAt:new Date().toISOString()
+    };
+    await saveMetaConnection(meta);
+    const cookies=["acf_meta_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"];
+    res.setHeader("Set-Cookie",cookies);
+    res.redirect("https://swrang120.github.io/AI-Content-Factory/?meta=connected");
+  }catch(e){res.status(500).send("Meta OAuth callback failed: "+e.message);}
+});
+app.get("/api/meta/status",async(req,res)=>{
+  try{
+    const cfgOk=!!(process.env.META_APP_ID&&process.env.META_APP_SECRET&&process.env.META_REDIRECT_URI);
+    const meta=await loadMetaConnection();
+    res.json({ok:true,configured:cfgOk,connected:!!meta,page:meta?{id:meta.pageId,name:meta.pageName}:null,instagram:!!meta?.instagramUserId,redirectUri:process.env.META_REDIRECT_URI||null});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
+
+async function publishMetaVideo(p){
+  const meta=await loadMetaConnection();
+  if(!meta||!p?.videoUrl)return {facebook:{published:false,reason:"not_connected"},instagram:{published:false,reason:"not_connected"}};
+  const out={facebook:{published:false},instagram:{published:false}};
+  const caption=String(p.description||p.title||"AI Content Factory").slice(0,2200);
+  try{
+    const fb=await metaGraph("/"+encodeURIComponent(meta.pageId)+"/videos",{
+      method:"POST",
+      headers:{"Content-Type":"application/x-www-form-urlencoded"},
+      body:new URLSearchParams({file_url:p.videoUrl,title:p.title||"AI Content Factory",description:caption,access_token:meta.pageAccessToken})
+    });
+    out.facebook={published:true,videoId:fb.id||null,url:fb.id?"https://www.facebook.com/"+fb.id:null};
+  }catch(e){out.facebook={published:false,error:safeErrorMessage(e)};}
+  if(meta.instagramUserId){
+    try{
+      const container=await metaGraph("/"+encodeURIComponent(meta.instagramUserId)+"/media",{
+        method:"POST",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},
+        body:new URLSearchParams({media_type:"REELS",video_url:p.videoUrl,caption,access_token:meta.userAccessToken})
+      });
+      let ready=false;
+      for(let n=0;n<10;n++){
+        await sleep(3000);
+        try{
+          const status=await metaGraph("/"+encodeURIComponent(container.id)+"?fields=status_code&access_token="+encodeURIComponent(meta.userAccessToken));
+          if(status.status_code==="FINISHED"){ready=true;break;}
+          if(status.status_code==="ERROR"){throw new Error("Instagram media processing failed");}
+        }catch(e){if(n===9)throw e;}
+      }
+      if(!ready)throw new Error("Instagram Reel is still processing; publish was not completed.");
+      const published=await metaGraph("/"+encodeURIComponent(meta.instagramUserId)+"/media_publish",{
+        method:"POST",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},
+        body:new URLSearchParams({creation_id:container.id,access_token:meta.userAccessToken})
+      });
+      out.instagram={published:true,mediaId:published.id||null};
+    }catch(e){out.instagram={published:false,error:safeErrorMessage(e)};}
+  }else out.instagram={published:false,reason:"no_instagram_professional_account_linked"};
+  return out;
+}
+
 app.get("/api/youtube/config",(req,res)=>{
   const missing=[];
   if(!process.env.GOOGLE_CLIENT_ID)missing.push("GOOGLE_CLIENT_ID");

@@ -197,7 +197,14 @@ function encodeJobNotes(job){
     categoryId:job.categoryId||null,
     privacyStatus:job.privacyStatus||null,
     renderError:job.renderError||null,
-    publishError:job.publishError||null
+    publishError:job.publishError||null,
+    thumbnailUrl:job.thumbnailUrl||null,
+    thumbnailPrompt:job.thumbnailPrompt||null,
+    qaStatus:job.qaStatus||null,
+    qaReport:job.qaReport||null,
+    queueStatus:job.queueStatus||null,
+    attemptCount:Number(job.attemptCount||0),
+    lastWorkerAt:job.lastWorkerAt||null
   };
   return "__ACF_META__"+JSON.stringify(meta)+"\\n"+String(job.notes||"");
 }
@@ -555,13 +562,12 @@ async function generateAndStoreThumbnail(job){
     "Category: "+String(job.category||""),
     "Use a clean cinematic composition, strong focal subject, high readability, no copyrighted characters/logos, no fake celebrity likeness, and very little text.",
     "Do not reproduce existing artwork."
-  ].join("\\n");
+  ].join("\n");
   const b64=await generateThumbnailImage(prompt,"1536x1024");
   const {put}=await import("@vercel/blob");
   const blob=await put("thumbnails/"+job.id+".png",Buffer.from(b64,"base64"),{access:"public",contentType:"image/png",...(process.env.BLOB_READ_WRITE_TOKEN?{token:process.env.BLOB_READ_WRITE_TOKEN}:{})});
   job.thumbnailUrl=blob.url; job.thumbnailPrompt=prompt; return blob.url;
 }
-
 async function runAutomatedQa(job){
   const report={checks:[],riskFlags:[],checkedAt:new Date().toISOString()};
   const add=(name,ok,detail)=>report.checks.push({name,ok,detail:String(detail||"").slice(0,500)});
@@ -586,6 +592,7 @@ async function runAutomatedQa(job){
   report.status=(failed.length||report.riskFlags.length||aiRisk==="high")?"blocked":"passed";
   job.qaStatus=report.status; job.qaReport=report; return report;
 }
+
 const AUTO_SCHEDULES=[
   {id:"editing_morning",category:"Editing Knowledge",icon:"🎬",time:"09:00",format:"Short Video",language:"English",prompt:"Trending video editing tutorial, creator editing tip, CapCut/VN/Alight Motion/Premiere Pro workflow. Make it practical and original."},
   {id:"music_promo",category:"Music Promotion",icon:"🎵",time:"12:00",format:"Promo",language:"Hindi + Bodo",prompt:"Promote an original romantic/sad music release or artist story. Do not reproduce copyrighted lyrics. Focus on original promotional storytelling."},
@@ -1446,3 +1453,16 @@ app.get("*",(req,res)=>{
   // Never return index.html for missing files/assets. Browsers need a real
   // asset response (CSS/JS/image/etc.), not text/html.
   if(path.extname(req.path)){
+    return res.status(404).type("text").send("Asset not found");
+  }
+  try{
+    const file=path.resolve(ROOT,"index.html");
+    if(!fs.existsSync(file))return res.status(500).type("text").send("AI Content Factory: index.html is missing from the deployment.");
+    return res.status(200).type("html").send(fs.readFileSync(file,"utf8"));
+  }catch(error){
+    console.error("SPA fallback failed:",error);
+    return res.status(500).type("text").send("AI Content Factory page failed to load.");
+  }
+});
+if (require.main === module) app.listen(PORT,()=>console.log("AI Content Factory running on http://localhost:"+PORT));
+module.exports = app;

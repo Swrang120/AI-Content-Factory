@@ -203,6 +203,7 @@ function renderDashboard(){
       ${data.content.slice(-4).reverse().map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.title)}</div><div class="queue-meta">${esc(x.category)} · ${esc(x.format)}</div></div><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></div>`).join("")||'<div class="empty">No content yet.</div>'}
     </div>
   </div>`;
+  metaStatus().then(s=>{const fb=document.getElementById("fbBadge"),ig=document.getElementById("igBadge"),ft=document.getElementById("fbStatusText"),it=document.getElementById("igStatusText"); if(!fb||!ig)return; if(s.connected&&s.page){fb.textContent="Connected";fb.className="badge ready";if(ft)ft.textContent="Page: "+s.page.name; if(s.instagram){ig.textContent="Connected";ig.className="badge ready";if(it)it.textContent="Instagram Professional connected";}else{ig.textContent="Needs IG";if(it)it.textContent="Connect an Instagram Professional account to the Facebook Page.";}}else{fb.textContent=s.configured?"Not connected":"Setup needed";ig.textContent=s.configured?"Not connected":"Setup needed";}});
   youtubeStatus().then(s=>{
     const badge=document.getElementById("dashboardYtBadge");
     const textEl=document.getElementById("dashboardYtText");
@@ -316,8 +317,8 @@ function renderAccounts(){
     <div class="section-head"><div><h3>Connected Platforms</h3><span class="muted">YouTube uses OAuth; secrets stay server-side.</span></div></div>
     <div class="platform"><div><div class="platform-name">YouTube</div><small id="ytStatusText">Checking connection…</small></div><div class="platform-actions"><span id="ytBadge" class="badge">Checking</span><button class="small-btn" onclick="connectYouTube()">Connect</button></div></div>
     <div class="platform"><div><div class="platform-name">Automation</div><small>Master control for scheduled AI workers and video uploads.</small></div><span class="badge ${data.settings.automationOnline!==false?"ready":""}">${data.settings.automationOnline!==false?"ONLINE":"OFFLINE"}</span></div>
-    <div class="platform"><div><div class="platform-name">Facebook</div><small>Meta publishing adapter</small></div><span class="badge">Not connected</span></div>
-    <div class="platform"><div><div class="platform-name">Instagram</div><small>Publishing adapter</small></div><span class="badge">Not connected</span></div>
+    <div class="platform"><div><div class="platform-name">Facebook</div><small id="fbStatusText">Meta Page publishing</small></div><div class="platform-actions"><span id="fbBadge" class="badge">Checking</span><button class="small-btn" onclick="connectMeta()">Connect Meta</button></div></div>
+    <div class="platform"><div><div class="platform-name">Instagram</div><small id="igStatusText">Instagram Professional/Reels publishing</small></div><div class="platform-actions"><span id="igBadge" class="badge">Checking</span><button class="small-btn" onclick="connectMeta()">Connect Meta</button></div></div>
     <div class="table-card" style="margin-top:14px">
       <div class="section-head"><div><h3>YouTube Private Test Upload</h3><span class="muted">Connect Google once, then test a video upload without making it public.</span></div></div>
       <label>Test video title<input id="ytTestTitle" value="AI Content Factory — Private Upload Test"></label>
@@ -334,6 +335,8 @@ function renderAccounts(){
   });
 }
 function connectYouTube(){const target=API_BASE+"/auth/youtube";window.location.assign(target);}
+function connectMeta(){window.location.assign(API_BASE+"/auth/meta");}
+async function metaStatus(){try{const r=await fetch(apiUrl("/api/meta/status"),{credentials:"include",cache:"no-store"});return await r.json();}catch(e){return {ok:false,error:"Backend unavailable: "+e.message};}}
 async function uploadYouTubeTest(){
   const file=document.getElementById("ytTestFile")?.files?.[0];
   const titleInput=document.getElementById("ytTestTitle");

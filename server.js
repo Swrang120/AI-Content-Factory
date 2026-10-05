@@ -548,6 +548,44 @@ async function renderFactoryVideo(job,req){
   return uploaded.url;
 }
 
+async function generateAndStoreThumbnail(job){
+  const prompt=[
+    "Create a professional YouTube thumbnail for an original AI Content Factory video.",
+    "Topic: "+String(job.topic||"AI Content Factory"),
+    "Category: "+String(job.category||""),
+    "Use a clean cinematic composition, strong focal subject, high readability, no copyrighted characters/logos, no fake celebrity likeness, and very little text.",
+    "Do not reproduce existing artwork."
+  ].join("\\n");
+  const b64=await generateThumbnailImage(prompt,"1536x1024");
+  const {put}=await import("@vercel/blob");
+  const blob=await put("thumbnails/"+job.id+".png",Buffer.from(b64,"base64"),{access:"public",contentType:"image/png",...(process.env.BLOB_READ_WRITE_TOKEN?{token:process.env.BLOB_READ_WRITE_TOKEN}:{})});
+  job.thumbnailUrl=blob.url; job.thumbnailPrompt=prompt; return blob.url;
+}
+
+async function runAutomatedQa(job){
+  const report={checks:[],riskFlags:[],checkedAt:new Date().toISOString()};
+  const add=(name,ok,detail)=>report.checks.push({name,ok,detail:String(detail||"").slice(0,500)});
+  add("topic",!!job.topic,"Topic is present.");
+  add("script",!!job.script&&String(job.script).trim().length>=80,"Script is present.");
+  add("voice",!!job.voice?.file,"Narration asset is present.");
+  add("video",!!job.renderedVideoUrl,"Rendered video asset is present.");
+  add("thumbnail",!!job.thumbnailUrl,"Thumbnail asset is present.");
+  const text=String(job.script||"");
+  if(/lyrics?\s*[:=-]|song lyrics|full lyrics/i.test(text))report.riskFlags.push("possible_lyrics");
+  const currentTask=/news|sports|current|latest|today|breaking/i.test(String(job.category||"")+" "+String(job.notes||""));
+  if(currentTask&&(!Array.isArray(job.sources)||job.sources.length===0))report.riskFlags.push("current_topic_without_sources");
+  if(process.env.OPENAI_API_KEY){
+    try{
+      const review=await generateWithChatGPT("production_qa_rights_review",{topic:job.topic,category:job.category,script:text.slice(0,12000),sources:Array.isArray(job.sources)?job.sources:[],requirement:"Return JSON only with pass, riskLevel, flags, reason. Check originality, unsupported claims, copied/copyrighted lyrics or scripts, fake facts, and missing sources. Do not claim legal clearance."});
+      try{report.ai=JSON.parse(String(review||"").trim());}catch{report.ai={pass:false,riskLevel:"medium",flags:["qa_json_parse_failed"],reason:"AI QA returned non-JSON output."};}
+    }catch(error){report.ai={pass:false,riskLevel:"medium",flags:["qa_provider_unavailable"],reason:safeErrorMessage(error)};}
+  }
+  const aiRisk=String(report.ai?.riskLevel||"low").toLowerCase();
+  const failed=report.checks.filter(x=>!x.ok);
+  if(failed.length)report.riskFlags.push(...failed.map(x=>x.name+"_failed"));
+  report.status=(failed.length||report.riskFlags.length||aiRisk==="high")?"blocked":"passed";
+  job.qaStatus=report.status; job.qaReport=report; return report;
+}
 const AUTO_SCHEDULES=[
   {id:"editing_morning",category:"Editing Knowledge",icon:"🎬",time:"09:00",format:"Short Video",language:"English",prompt:"Trending video editing tutorial, creator editing tip, CapCut/VN/Alight Motion/Premiere Pro workflow. Make it practical and original."},
   {id:"music_promo",category:"Music Promotion",icon:"🎵",time:"12:00",format:"Promo",language:"Hindi + Bodo",prompt:"Promote an original romantic/sad music release or artist story. Do not reproduce copyrighted lyrics. Focus on original promotional storytelling."},
@@ -594,7 +632,7 @@ async function generateAutomaticJob(item,req){
   });
   const topic=String(topicRaw||"AI Content Factory").replace(/^["']|["']$/g,"").trim().split("\n")[0].slice(0,180);
   await setAgentState("research","WORKING",45,"Researching: "+topic,id);
-  const job={id,status:"researching",topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[],createdAt:new Date().toISOString(),auto:true,scheduledSlot:item.slot};
+  const job={id,status:"queued",queueStatus:"processing",attemptCount:1,lastWorkerAt:new Date().toISOString(),topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[],createdAt:new Date().toISOString(),auto:true,scheduledSlot:item.slot};
   jobs[id]=job; saveJobs(jobs); await persistJob(job);
   job.research=await generateWithChatGPT("research_plan",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[]});
   await setAgentState("research","SLEEPING",100,"Research complete",id);
@@ -610,10 +648,10 @@ async function generateAutomaticJob(item,req){
     await setAgentState("editor","WORKING",20,"Rendering the final video",id);
     job.status="rendering"; saveJobs(jobs); await persistJob(job);
     await setAgentState("visual","SLEEPING",100,"Visual plan complete",id);
-    job.renderedVideoUrl=await renderFactoryVideo(job,req);
+    job.renderedVideoUrl=await retryTransient(()=>renderFactoryVideo(job,req));
     job.status="rendered";
     await setAgentState("editor","SLEEPING",100,"Video render complete",id);
-    await setAgentState("thumb","WORKING",20,"Preparing thumbnail and metadata",id);
+    await setAgentState("thumb","WORKING",20,"Generating production thumbnail",id); try{await generateAndStoreThumbnail(job);await setAgentState("thumb","SLEEPING",100,"Thumbnail generated",id);}catch(error){job.thumbnailError=safeErrorMessage(error);await setAgentState("thumb","ERROR",0,"Thumbnail generation failed",id);} await setAgentState("qa","WORKING",60,"Running automated quality and rights checks",id); try{await runAutomatedQa(job);}catch(error){job.qaStatus="blocked";job.qaReport={status:"blocked",riskFlags:["qa_runtime_error"],reason:safeErrorMessage(error)};}
     await setAgentState("qa","WORKING",30,"Checking quality, sources and rights",id);
   }else{
     job.status="voice_waiting";
@@ -621,8 +659,8 @@ async function generateAutomaticJob(item,req){
   }
   job.updatedAt=new Date().toISOString(); saveJobs(jobs); await persistJob(job);
   await setAgentState("thumb","SLEEPING",100,"Publishing metadata ready",id);
-  await setAgentState("qa","WORKING",80,"Final quality and rights gate",id);
-  if(job.renderedVideoUrl && loadSettings().autoPublish){
+  await setAgentState("qa","WORKING",90,"Final quality and rights gate",id);
+  if(job.renderedVideoUrl && job.qaStatus==="passed" && loadSettings().autoPublish){
     await setAgentState("publisher","WORKING",45,"Uploading and scheduling on YouTube",id);
     const scheduledAt=new Date(item.slot);
     const now=new Date();
@@ -647,22 +685,19 @@ async function runAutomaticFactory(req){
   const now=new Date();
   const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
   const bossResults=[];
-  for(const job of bossDue){try{const youtubeResult=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:job.topic,description:"Uploaded by Boss in AI Content Factory.",tags:["Boss Upload","AI Content Factory"],categoryId:"22",privacyStatus:"public",approved:true,req});job.youtube=youtubeResult;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,videoId:youtubeResult.videoId});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
+  for(const job of bossDue){
+    try{
+      const youtubeResult=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:job.topic,description:"Uploaded by Boss in AI Content Factory.",tags:["Boss Upload","AI Content Factory"],categoryId:"22",privacyStatus:"public",approved:true,req});
+      job.youtube=youtubeResult; job.status="published"; job.updatedAt=new Date().toISOString(); jobs[job.id]=job; saveJobs(jobs); await persistJob(job);
+      bossResults.push({ok:true,jobId:job.id,videoId:youtubeResult.videoId});
+    }catch(e){bossResults.push({ok:false,jobId:job.id,error:safeErrorMessage(e)});}
+  }
   if(!settings.autoGenerate)return {ok:true,enabled:false,bossUploads:bossResults,message:"Auto Generate is OFF."};
   const items=autoScheduleForToday(now);
-  const hourMinute=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now);
-  const [nowH,nowM]=hourMinute.split(":").map(Number);
-  const due=items.filter(x=>{
-    const [h,m]=x.time.split(":").map(Number);
-    const diff=(nowH*60+nowM)-(h*60+m);
-    return diff>=-15 && diff<=5;
-  }).sort((a,b)=>a.time.localeCompare(b.time)).slice(0,1);
-  if(!due.length)return {ok:true,enabled:true,due:[],message:"No category is scheduled for this minute."};
+  const due=items.filter(x=>new Date(x.slot).getTime()<=now.getTime()+5*60*1000).filter(x=>!Object.values(jobs).some(j=>j.id===autoSlotId(x))).sort((a,b)=>new Date(a.slot)-new Date(b.slot)).slice(0,1);
+  if(!due.length)return {ok:true,enabled:true,due:[],message:"No pending scheduled production job.",bossUploads:bossResults};
   const results=[];
-  for(const item of due){
-    try{results.push(await generateAutomaticJob(item,req));}
-    catch(e){results.push({ok:false,category:item.category,time:item.time,error:e.message});}
-  }
+  for(const item of due){try{results.push(await generateAutomaticJob(item,req));}catch(e){results.push({ok:false,category:item.category,time:item.time,error:safeErrorMessage(e)});}}
   return {ok:true,enabled:true,due:due.map(x=>x.category),results,bossUploads:bossResults};
 }
 
@@ -1164,6 +1199,19 @@ app.get("/api/youtube/analytics",async(req,res)=>{
   try{res.json({ok:true,analytics:await getYouTubeAnalytics(req)});}
   catch(e){res.status(400).json({ok:false,error:e.message});}
 });
+app.get("/api/cron/analytics",async(req,res)=>{
+  try{
+    const expected=process.env.CRON_SECRET||"";
+    if(expected&&(req.headers.authorization||"")!=="Bearer "+expected)return res.status(401).json({ok:false,error:"Unauthorized cron request"});
+    const analytics=await getYouTubeAnalytics(req);
+    let saved=false;
+    if(supabase){
+      const {error}=await supabase.from("analytics_snapshots").insert({captured_at:new Date().toISOString(),start_date:analytics.startDate,end_date:analytics.endDate,totals:analytics.total||{},top_videos:analytics.topVideos||[]});
+      saved=!error;
+    }
+    res.json({ok:true,saved,analytics});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
 app.get("/api/youtube/learning",async(req,res)=>{
   try{
     const analytics=await getYouTubeAnalytics(req);
@@ -1398,16 +1446,3 @@ app.get("*",(req,res)=>{
   // Never return index.html for missing files/assets. Browsers need a real
   // asset response (CSS/JS/image/etc.), not text/html.
   if(path.extname(req.path)){
-    return res.status(404).type("text").send("Asset not found");
-  }
-  try{
-    const file=path.resolve(ROOT,"index.html");
-    if(!fs.existsSync(file))return res.status(500).type("text").send("AI Content Factory: index.html is missing from the deployment.");
-    return res.status(200).type("html").send(fs.readFileSync(file,"utf8"));
-  }catch(error){
-    console.error("SPA fallback failed:",error);
-    return res.status(500).type("text").send("AI Content Factory page failed to load.");
-  }
-});
-if (require.main === module) app.listen(PORT,()=>console.log("AI Content Factory running on http://localhost:"+PORT));
-module.exports = app;

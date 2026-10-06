@@ -19,7 +19,7 @@ function Scene({text,index,total}) {
   </Sequence>
 }
 
-export const FactoryVideo=({title="AI Content Factory",script="",audioUrl="",durationSeconds=45})=>{
+export const FactoryVideo=({title="AI Content Factory",script="",audioUrl="",musicUrl="",musicStartSeconds=0,musicDurationSeconds=25,spotifyUrl="",artist="",durationSeconds=45})=>{
   const {fps,durationInFrames}=useVideoConfig();
   const clean=String(script||"").replace(/\s+/g," ").trim();
   const words=clean.split(" ").filter(Boolean);
@@ -30,6 +30,8 @@ export const FactoryVideo=({title="AI Content Factory",script="",audioUrl="",dur
   return <AbsoluteFill>
     {scenes.map((s,i)=><Scene key={i} text={s} index={i} total={scenes.length}/>)}
     {audioUrl?<Audio src={audioUrl} volume={1}/>:null}
+    {musicUrl?<Audio src={musicUrl} volume={1} startFrom={Math.round(Number(musicStartSeconds||0)*fps)} endAt={Math.round((Number(musicStartSeconds||0)+Number(musicDurationSeconds||25))*fps)}/>:null}
+    {musicUrl?<AbsoluteFill style={{justifyContent:"flex-end",padding:"0 70px 55px",pointerEvents:"none"}}><div style={{alignSelf:"center",textAlign:"center",background:"rgba(0,0,0,.62)",borderRadius:28,padding:"18px 30px",maxWidth:"88%",color:"#fff",fontFamily:"Arial, sans-serif"}}><div style={{fontSize:38,fontWeight:800}}>{title}</div><div style={{fontSize:24,opacity:.9,marginTop:8}}>{artist}</div><div style={{fontSize:18,opacity:.72,marginTop:8}}>🎵 Original Music • Listen on Spotify</div></div></AbsoluteFill>:null}
   </AbsoluteFill>
 };
 

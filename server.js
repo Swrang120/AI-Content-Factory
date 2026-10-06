@@ -1385,7 +1385,7 @@ app.get("/api/cron/factory",async(req,res)=>{
     res.json(result);
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
-app.get("/api/factory/automation-schedule",async(req,res)=>res.json({ok:true,timeZone:"Asia/Kolkata",schedules:AUTO_SCHEDULES,settings:await hydrateSettings()}));
+app.get("/api/factory/automation-schedule",async(req,res)=>{const settings=await hydrateSettings();res.json({ok:true,timeZone:"Asia/Kolkata",schedules:AUTO_SCHEDULES.filter(x=>enabledCategory(settings,x.category)),allSchedules:AUTO_SCHEDULES,settings});});
 app.get("/api/live/weekly-schedule",async(req,res)=>{const settings=await hydrateSettings();res.json({ok:true,timeZone:"Asia/Kolkata",startTime:"14:00",endTime:"16:00",durationMinutes:120,schedules:weeklyLiveSchedule(),musicSourceChannels:settings.musicSourceChannels,settings});});
 
 app.post("/api/factory/settings",requireAppKey,async(req,res)=>{
@@ -1404,6 +1404,7 @@ app.post("/api/factory/settings",requireAppKey,async(req,res)=>{
     next.liveApproval=next.liveApproval!==false;
     next.liveDurationMinutes=Math.max(1,Math.min(1440,Number(next.liveDurationMinutes)||120));
     next.musicSourceChannels=Array.isArray(next.musicSourceChannels)?next.musicSourceChannels:DEFAULT_FACTORY_SETTINGS.musicSourceChannels;
+    next.enabledCategories={...DEFAULT_FACTORY_SETTINGS.enabledCategories,...(next.enabledCategories&&typeof next.enabledCategories==="object"?next.enabledCategories:{})};
 
     let source="memory-only";
     try{

@@ -45,7 +45,7 @@
         '<div id="mlChannelResult" class="muted" style="margin-top:10px">Ready. The scheduler also syncs these sources before the daily Music Promotion slot.</div>'+
       '</div>'+
       '<div class="table-card">'+
-        '<div class="section-head"><div><h3>＋ Add Music</h3><span class="muted">Add a Spotify/YouTube release link. Upload only your own or authorized master audio.</span></div></div>'+
+        '<div class="section-head"><div><h3>＋ Add Music</h3><span class="muted">Upload your own/authorized master audio. The newest uploaded master automatically becomes the only daily Music Promotion track; older tracks stay in the library.</span></div></div>'+
         '<div class="form-grid">'+
           '<label>Spotify or YouTube Link<input id="mlLink" placeholder="Spotify track or YouTube video URL"></label>'+
           '<label>Rights<select id="mlRights"><option value="owned">OWNED — my original song</option><option value="authorized">AUTHORIZED</option><option value="metadata_only">METADATA ONLY</option></select></label>'+

@@ -24,51 +24,42 @@
     if(titleEl) titleEl.textContent="Music Library";
     if(!viewEl) return;
 
-    viewEl.innerHTML =
-      '<div class="hero"><p class="eyebrow">ORIGINAL MUSIC INTELLIGENCE</p><h2>🎵 Music Library</h2><p>Connect your own YouTube channel, import releases automatically, and let AI rank promotion opportunities.</p></div>'+
-      '<div class="cards">'+
-        '<div class="card"><div class="metric-label">Library</div><div class="metric" id="mlCount">—</div><div class="metric-note">Total saved tracks</div></div>'+
-        '<div class="card"><div class="metric-label">Today’s AI Pick</div><div class="metric" id="mlTodayScore">—</div><div class="metric-note" id="mlTodayName">Loading…</div></div>'+
-        '<div class="card"><div class="metric-label">AI Manager</div><div class="metric">ChatGPT + Gemini</div><div class="metric-note">Trend + promotion strategy</div></div>'+
-      '</div>'+
-      '<div class="table-card">'+
-        '<div class="section-head"><div><h3>📺 My Music Source Channels</h3><span class="muted">Two configured YouTube source channels are synced automatically. The library keeps source links and performance data; it does not download YouTube audio.</span></div></div>'+
-        '<div class="ai-result" style="margin-bottom:12px">'+
-          '<div>🎵 <b>Swrang Swargiary</b> source</div><div>🎼 <b>Santiram Swargiary</b> source</div>'+
-          '<div class="muted" style="margin-top:6px">Daily target: 1 music promotion · source rotation across both channels.</div>'+
+    var styleId="music-library-premium-style";
+    if(!document.getElementById(styleId)){
+      var st=document.createElement("style");
+      st.id=styleId;
+      st.textContent=".ml-premium{background:linear-gradient(135deg,#07111f 0%,#0b1730 55%,#17102d 100%);border:1px solid rgba(124,92,255,.25);border-radius:22px;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.28)}.ml-upload{background:linear-gradient(135deg,rgba(18,31,58,.96),rgba(31,18,61,.96));border:1px solid rgba(153,120,255,.38);border-radius:20px;padding:20px;box-shadow:0 12px 35px rgba(77,45,160,.18)}.ml-upload h3{margin:0 0 6px}.ml-upload .muted{color:#aeb8d3}.ml-file{width:100%;padding:14px;border:1px dashed rgba(178,154,255,.65);border-radius:14px;background:rgba(255,255,255,.035);color:#eaf0ff}.ml-title{width:100%;padding:13px 14px;border-radius:12px;border:1px solid rgba(150,132,255,.28);background:rgba(3,8,20,.5);color:#fff;box-sizing:border-box}.ml-btn{width:100%;margin-top:14px;padding:14px 18px;border:0;border-radius:13px;font-weight:800;color:#fff;background:linear-gradient(135deg,#6d5dfc,#a84dff);box-shadow:0 8px 25px rgba(120,76,255,.3)}.ml-status{margin-top:10px;color:#b9c5df;font-size:13px}.ml-active{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;background:rgba(107,91,255,.12);border:1px solid rgba(157,130,255,.25);color:#d8d0ff;font-size:12px;font-weight:700}";
+      document.head.appendChild(st);
+    }
+    viewEl.innerHTML=
+      '<div class="ml-premium">'+
+        '<div class="hero" style="background:transparent;padding:4px 4px 18px"><p class="eyebrow">ORIGINAL MUSIC PROMOTION</p><h2>🎵 Music Library</h2><p>Upload one master audio. That is the track the system promotes every day.</p></div>'+
+        '<div class="cards">'+
+          '<div class="card"><div class="metric-label">Library</div><div class="metric" id="mlCount">—</div><div class="metric-note">Saved tracks</div></div>'+
+          '<div class="card"><div class="metric-label">Today’s Track</div><div class="metric" id="mlTodayScore">—</div><div class="metric-note" id="mlTodayName">Loading…</div></div>'+
+          '<div class="card"><div class="metric-label">AI Manager</div><div class="metric">ChatGPT + Gemini</div><div class="metric-note">Promotion strategy</div></div>'+
         '</div>'+
-        '<div class="form-grid">'+
-          '<label>Channel 1<input id="mlChannel1" value="https://www.youtube.com/channel/UC_7oWDyqUuF8FtCm3XWkMvQ" readonly></label>'+
-          '<label>Channel 2<input id="mlChannel2" value="https://www.youtube.com/channel/UC45qxqZuEpQvYs14c1pLf7Q" readonly></label>'+
+        '<div class="ml-upload">'+
+          '<div class="ml-active">● ACTIVE DAILY PROMOTION</div>'+
+          '<h3 style="margin-top:12px">Upload New Song</h3>'+
+          '<div class="muted">The newest uploaded audio automatically replaces the previous daily promotion track. Old tracks remain saved.</div>'+
+          '<div style="margin-top:15px"><input id="mlTitle" class="ml-title" placeholder="Song title (optional)"></div>'+
+          '<div style="margin-top:10px"><input id="mlAudio" class="ml-file" type="file" accept="audio/*"></div>'+
+          '<button class="ml-btn" id="mlAdd">🎵 Set as Daily Promotion</button>'+
+          '<div id="mlResult" class="ml-status">Ready.</div>'+
         '</div>'+
-        '<button class="primary" id="mlChannelSyncAll">📺 Sync Both Music Channels</button>'+
-        '<div id="mlChannelResult" class="muted" style="margin-top:10px">Ready. The scheduler also syncs these sources before the daily Music Promotion slot.</div>'+
-      '</div>'+
-      '<div class="table-card">'+
-        '<div class="section-head"><div><h3>＋ Add Music</h3><span class="muted">Upload your own/authorized master audio. The newest uploaded master automatically becomes the only daily Music Promotion track; older tracks stay in the library.</span></div></div>'+
-        '<div class="form-grid">'+
-          '<label>Spotify or YouTube Link<input id="mlLink" placeholder="Spotify track or YouTube video URL"></label>'+
-          '<label>Rights<select id="mlRights"><option value="owned">OWNED — my original song</option><option value="authorized">AUTHORIZED</option><option value="metadata_only">METADATA ONLY</option></select></label>'+
+        '<div class="table-card" style="margin-top:16px">'+
+          '<div class="section-head"><div><h3>Track Library</h3><span class="muted" id="mlMeta">Loading…</span></div>'+
+            '<div><input id="mlSearch" placeholder="Search title / artist"><button class="small-btn" id="mlSearchBtn">Search</button></div>'+
+          '</div>'+
+          '<div class="table-wrap"><table class="table"><thead><tr><th>Track</th><th>Status</th><th>Views</th><th>Growth</th><th>Trend</th><th>Promos</th><th>AI</th></tr></thead>'+
+          '<tbody id="mlRows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>'+
+          '<div class="section-head" style="margin-top:14px"><span class="muted" id="mlPage">Page 1</span><div><button class="small-btn" id="mlPrev">← Previous</button><button class="small-btn" id="mlNext">Next →</button></div></div>'+
         '</div>'+
-        '<div class="form-grid">'+
-          '<label>Original Master Audio<input id="mlAudio" type="file" accept="audio/*"></label>'+
-          '<label>Tags<input id="mlTags" placeholder="romantic, Bodo, sad"></label>'+
-        '</div>'+
-        '<button class="primary" id="mlAdd">🎵 Add to Music Library</button>'+
-        '<div id="mlResult" class="muted" style="margin-top:10px">Ready.</div>'+
-      '</div>'+
-      '<div class="table-card">'+
-        '<div class="section-head"><div><h3>Track Intelligence</h3><span class="muted" id="mlMeta">Loading…</span></div>'+
-          '<div><input id="mlSearch" placeholder="Search title / artist"><button class="small-btn" id="mlSearchBtn">Search</button></div>'+
-        '</div>'+
-        '<div class="table-wrap"><table class="table"><thead><tr><th>Track</th><th>Rights</th><th>Views</th><th>Growth</th><th>Trend</th><th>Promos</th><th>AI</th></tr></thead>'+
-        '<tbody id="mlRows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>'+
-        '<div class="section-head" style="margin-top:14px"><span class="muted" id="mlPage">Page 1</span><div><button class="small-btn" id="mlPrev">← Previous</button><button class="small-btn" id="mlNext">Next →</button></div></div>'+
-      '</div>'+
-      '<div class="table-card" id="mlManager"><h3>🧠 Music Manager</h3><div class="ai-result">Loading today’s decision…</div></div>';
+        '<div class="table-card" id="mlManager"><h3>🧠 Music Manager</h3><div class="ai-result">Loading today’s decision…</div></div>'+
+      '</div>';
 
     document.getElementById("mlAdd").onclick=musicLibraryAdd;
-    document.getElementById("mlChannelSyncAll").onclick=musicLibraryChannelSyncAll;
     document.getElementById("mlSearchBtn").onclick=function(){musicLibraryPage=0;loadMusicLibrary();};
     document.getElementById("mlSearch").addEventListener("keydown",function(e){
       if(e.key==="Enter"){musicLibraryPage=0;loadMusicLibrary();}

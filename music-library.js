@@ -98,7 +98,7 @@
       rows.innerHTML=tracks.length?tracks.map(function(t){
         return '<tr>'+
           '<td><strong>'+mlEscape(t.title||"Untitled")+'</strong><br><small>'+mlEscape(t.artist||"")+'</small></td>'+
-          '<td>'+mlEscape(t.rightsStatus||t.rights_status||"")+'</td>'+
+          '<td>'+mlEscape((t.status||"inactive")==="active"?"● ACTIVE":"INACTIVE")+'</td>'+
           '<td>'+Number(t.views||0).toLocaleString()+'</td>'+
           '<td>'+Number(t.viewVelocity||t.view_velocity||0).toFixed(0)+'/day</td>'+
           '<td><strong>'+Number(t.trendScore||t.trend_score||0).toFixed(1)+'</strong></td>'+

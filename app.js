@@ -358,13 +358,7 @@ async function readMusicTrack(){
     info.innerHTML="<b>🎵 "+esc(b.track.title||"Unknown title")+"</b> · "+esc(b.track.artist||"Unknown artist")+"<br><small>Spotify track recognized. Your uploaded original audio will be used for the clip.</small>";
   }catch(e){info.textContent="Spotify lookup failed: "+e.message;}
 }
-async function uploadMusicAudio(file){
-  const r=await fetch(apiUrl("/api/media/presign"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({filename:file.name,contentType:file.type||"audio/mpeg"})});
-  const b=await r.json(); if(!r.ok||!b.ok)throw new Error(b.error||"Could not prepare audio upload");
-  const put=await fetch(b.uploadUrl,{method:"PUT",headers:{"Content-Type":file.type||"audio/mpeg"},body:file});
-  if(!put.ok)throw new Error("Original audio upload failed (HTTP "+put.status+").");
-  return "https://"+location.host+"/"+b.pathname;
-}
+async function uploadMusicAudio(file){ const q=new URLSearchParams({filename:file.name,title:"Original Music Source"}); const r=await fetch(apiUrl("/api/media/upload-file?"+q.toString()),{method:"POST",headers:{"Content-Type":file.type||"audio/mpeg"},credentials:"include",body:file}); const b=await r.json().catch(()=>({})); if(!r.ok||!b.ok)throw new Error(b.error||"Original song upload failed"); return b.url; }
 async function createMusicPromotion(){
   const spotifyUrl=(document.getElementById("musicSpotifyUrl")?.value||"").trim();
   const file=document.getElementById("musicAudioFile")?.files?.[0];

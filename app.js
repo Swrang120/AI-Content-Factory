@@ -157,7 +157,7 @@ function startBossVoiceCommand(){
  if(!SpeechRecognition){if(result)result.textContent="Voice command is not supported in this browser. Use Chrome on Android/desktop.";return;}
  if(bossSpeech){try{bossSpeech.stop();}catch(_){}bossSpeech=null;return;}
  bossSpeech=new SpeechRecognition();
- bossSpeech.lang="en-IN";
+ bossSpeech.lang="hi-IN";
  bossSpeech.interimResults=false;
  bossSpeech.maxAlternatives=1;
  if(btn){btn.textContent="🛑 Listening…";btn.classList.add("voice-listening");}
@@ -193,14 +193,14 @@ async function bossCommandRun(){
  AI_ROBOTS.forEach(applyAgentToDom);
  if(badge){badge.textContent="EMPLOYEES WORKING";badge.className="badge ready robot-live-badge";}
  if(result)result.innerHTML="<b>Boss order:</b> "+esc(command)+"<br><span>Assigned: "+ids.map(id=>AI_ROBOTS.find(r=>r.id===id)?.name||id).join(" → ")+"</span>";
- if(/\b(upload|publish|post|youtube)\b/i.test(command)){
+ if(/\b(create|make|generate|build|video|content|upload|publish|post|youtube)\b/i.test(command)){
    try{
-     if(result)result.innerHTML+="<br><span class='boss-output'>📤 Publisher Bot is uploading the latest rendered video…</span>";
-     const pr=await fetch(apiUrl("/api/boss/publish-latest"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({command})});
+     if(result)result.innerHTML+="<br><span class='boss-output'>🤖 Manager → Research → Script → Voice → Editor → QA → Publisher: building your video now…</span>";
+     const pr=await fetch(apiUrl("/api/boss/command"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({command})});
      const pb=await pr.json().catch(()=>({}));
-     if(!pr.ok||!pb.ok)throw new Error(pb.error||"Publish command failed");
-     if(result)result.innerHTML+="<br><span class='boss-output'>✓ Published: "+esc(pb.title||"latest video")+"<br><a href='"+esc(pb.video?.url||"")+"' target='_blank' rel='noopener'>Open YouTube video</a></span>";
-   }catch(e){if(result)result.innerHTML+="<br><span class='boss-output'>Publish failed: "+esc(e.message)+"</span>";}
+     if(!pr.ok||!pb.ok)throw new Error(pb.error||"Boss video command failed");
+     if(result)result.innerHTML+="<br><span class='boss-output'>✓ Video created and published to YouTube: "+esc(pb.title||"Boss video")+"<br><a href='"+esc(pb.video?.url||"")+"' target='_blank' rel='noopener'>Open YouTube video</a></span>";
+   }catch(e){if(result)result.innerHTML+="<br><span class='boss-output'>Boss video failed: "+esc(e.message)+"</span>";}
  }
  try{await fetch(apiUrl("/api/agents/state"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({agents:changes})});}catch(_){}
  try{

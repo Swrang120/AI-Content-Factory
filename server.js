@@ -1573,6 +1573,12 @@ app.post("/api/factory/settings",requireAppKey,async(req,res)=>{
     return res.status(500).json({ok:false,error:safeErrorMessage(e)});
   }
 });
+app.get("/api/music/track",requireAppKey,async(req,res)=>{
+  try{
+    const meta=await fetchSpotifyTrackMetadata(String(req.query?.url||"").trim());
+    res.json({ok:true,track:meta});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
 app.post("/api/music/promotion",requireAppKey,async(req,res)=>{
   try{
     const spotifyUrl=String(req.body?.spotifyUrl||"").trim();

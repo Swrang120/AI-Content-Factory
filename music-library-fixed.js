@@ -142,6 +142,63 @@
   }
 
 
+  function mlB64(value){
+    var bytes=new TextEncoder().encode(String(value==null?"":value));
+    var bin="";
+    for(var i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
+    return btoa(bin);
+  }
+
+  function mlTusUpload(info,file,out){
+    return new Promise(function(resolve,reject){
+      var endpoint=String(info.resumableEndpoint||"").trim();
+      var token=String(info.token||"").trim();
+      var path=String(info.pathname||"").trim();
+      if(!endpoint||!token||!path){reject(new Error("Resumable upload configuration is missing."));return;}
+      var chunkSize=6*1024*1024;
+      var meta="bucketName "+mlB64("music-library")+",objectName "+mlB64(path)+",contentType "+mlB64(file.type||"application/octet-stream");
+      var create=new XMLHttpRequest();
+      create.open("POST",endpoint,true);
+      create.setRequestHeader("Tus-Resumable","1.0.0");
+      create.setRequestHeader("x-signature",token);
+      create.setRequestHeader("x-upsert","false");
+      create.setRequestHeader("Upload-Length",String(file.size));
+      create.setRequestHeader("Upload-Metadata",meta);
+      create.onreadystatechange=function(){
+        if(create.readyState!==4)return;
+        if(create.status<200||create.status>=300){reject(new Error("Supabase resumable upload could not start (HTTP "+create.status+")"));return;}
+        var location=create.getResponseHeader("Location")||create.getResponseHeader("location");
+        if(!location){reject(new Error("Supabase did not return an upload session URL."));return;}
+        sendChunk(location,0);
+      };
+      create.onerror=function(){reject(new Error("Failed to connect to Supabase Storage."));};
+      create.send();
+      function sendChunk(url,offset){
+        if(offset>=file.size){resolve();return;}
+        var end=Math.min(offset+chunkSize,file.size);
+        var xhr=new XMLHttpRequest();
+        xhr.open("PATCH",url,true);
+        xhr.setRequestHeader("Tus-Resumable","1.0.0");
+        xhr.setRequestHeader("Upload-Offset",String(offset));
+        xhr.setRequestHeader("Content-Type","application/offset+octet-stream");
+        xhr.upload.onprogress=function(ev){
+          if(!ev.lengthComputable)return;
+          var pct=Math.min(100,((offset+ev.loaded)/file.size)*100);
+          if(out)out.textContent="📤 Uploading… "+pct.toFixed(1)+"%";
+        };
+        xhr.onreadystatechange=function(){
+          if(xhr.readyState!==4)return;
+          if(xhr.status<200||xhr.status>=300){reject(new Error("Supabase upload chunk failed (HTTP "+xhr.status+")"));return;}
+          var next=Number(xhr.getResponseHeader("Upload-Offset"));
+          if(!Number.isFinite(next)||next<=offset){reject(new Error("Supabase returned an invalid upload offset."));return;}
+          sendChunk(url,next);
+        };
+        xhr.onerror=function(){reject(new Error("Failed to fetch Supabase Storage while uploading."));};
+        xhr.send(file.slice(offset,end));
+      }
+    });
+  }
+
   async function musicLibraryAdd(){
     var out=document.getElementById("mlResult"),button=document.getElementById("mlAdd");
     var audio=document.getElementById("mlAudio")?.files?.[0]||null,title=(document.getElementById("mlTitle")?.value||"").trim();
@@ -157,18 +214,8 @@
       var r=await fetch(mlApi("/api/music/library/upload-token"),{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},credentials:"include",body:JSON.stringify({filename:audio.name,title:title})});
       var b=await r.json().catch(function(){return {};});
       if(!r.ok||!b.ok)throw new Error(b.error||("Could not prepare upload (HTTP "+r.status+")"));
-      out.textContent="📤 Uploading original master directly to Supabase Storage…";
-      // Upload the signed object using Supabase's signed-upload endpoint.
-      // The signed token is already represented by the generated upload URL.
-      // Keep the request simple so browsers do not trigger a CORS preflight.
-      var put=await fetch(b.uploadUrl,{
-        method:"PUT",
-        headers:{
-          "Content-Type":audio.type||"application/octet-stream"
-        },
-        body:audio
-      });
-      if(!put.ok){var uploadText=await put.text().catch(function(){return "";});throw new Error("Supabase Storage rejected the audio upload (HTTP "+put.status+")"+(uploadText?": "+uploadText.slice(0,240):""));}
+      out.textContent="📤 Uploading original master to Supabase Storage…";
+      await mlTusUpload(b,audio,out);
       out.textContent="☁️ Upload complete. Activating daily promotion…";
       r=await fetch(mlApi("/api/music/library/activate-upload"),{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},credentials:"include",body:JSON.stringify({id:b.id,pathname:b.pathname,title:b.title})});
       b=await r.json().catch(function(){return {};});

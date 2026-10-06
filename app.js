@@ -602,7 +602,7 @@ async function loadMusicLibrary(){
     const q=document.getElementById("musicLibrarySearch")?.value||"";
     const r=await fetch(apiUrl("/api/music/library?page="+musicLibraryPage+"&limit=25&sort="+encodeURIComponent(musicLibrarySort)+"&q="+encodeURIComponent(q)),{credentials:"include",cache:"no-store"});
     const b=await r.json(); if(!r.ok||!b.ok)throw new Error(b.error||"Music Library unavailable");
-    if(meta)meta.textContent=(b.count||0)+" tracks · page "+(Number(b.page)+1)+(b.hasMore?" · more available":"");
+    if(meta)meta.textContent=(b.count||0)+" tracks · page "+(Number(b.page)+1)+(b.hasMore?" · more available":""); const countEl=document.getElementById("musicLibraryCount"); if(countEl)countEl.textContent=Number(b.count||0).toLocaleString();
     tbody.innerHTML=(b.tracks||[]).map(t=>\`<tr>
       <td><div style="display:flex;align-items:center;gap:10px">\${t.artworkUrl?\`<img src="\${esc(t.artworkUrl)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px">\`:"🎵"}<div><strong>\${esc(t.title)}</strong><br><small>\${esc(t.artist)}</small></div></div></td>
       <td><span class="badge ready">\${esc(t.rightsStatus==="owned"?"OWNED":t.rightsStatus==="authorized"?"AUTHORIZED":"METADATA")}</span></td>
@@ -645,7 +645,7 @@ async function musicLibraryAdd(){
   if(!link){out.textContent="Add a Spotify or YouTube link first.";return;}
   out.textContent="🎵 Adding track…";
   try{
-    const r=await fetch(apiUrl("/api/music/library/import"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({spotifyUrl:link,youtubeUrl:link,rightsStatus:rights,tags})});
+    const isSpotify=/spotify\.com\/track\//i.test(link),isYouTube=/(youtube\.com|youtu\.be)/i.test(link); if(!isSpotify&&!isYouTube){out.textContent="Use a Spotify track link or YouTube video link.";return;} const r=await fetch(apiUrl("/api/music/library/import"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({...(isSpotify?{spotifyUrl:link}:{youtubeUrl:link}),rightsStatus:rights,tags})});
     const b=await r.json();if(!r.ok||!b.ok)throw new Error(b.error||"Could not add track");
     let track=b.tracks?.[0];
     if(audio&&track?.id&&rights!=="metadata_only"){

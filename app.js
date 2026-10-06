@@ -584,7 +584,17 @@ async function loadServerSettings(){
   try{
     const r=await fetch(apiUrl("/api/factory/settings"),{credentials:"include"});
     const s=await r.json();
-    if(s.ok&&s.settings){data.settings=s.settings;save();}
+    if(s.ok&&s.settings){
+      data.settings={...data.settings,...s.settings};
+      if(s.settings.enabledCategories&&typeof s.settings.enabledCategories==="object"){
+        for(const c of data.categories){
+          if(Object.prototype.hasOwnProperty.call(s.settings.enabledCategories,c.id)){
+            c.enabled=s.settings.enabledCategories[c.id]!==false;
+          }
+        }
+      }
+      save();
+    }
   }catch(e){}
 }
 function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,ai:renderAI,voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings}[v]||renderDashboard)();}
@@ -595,7 +605,37 @@ document.getElementById("newContentBtn").onclick=openModal;
 document.getElementById("closeModal").onclick=closeModal;
 document.getElementById("contentModal").addEventListener("click",e=>{if(e.target.id==="contentModal")closeModal()});
 document.getElementById("contentForm").addEventListener("submit",e=>{e.preventDefault();const f=new FormData(e.target);data.content.push({id:Date.now(),title:f.get("title"),category:f.get("category"),format:f.get("format"),language:f.get("language"),status:f.get("status"),notes:f.get("notes")});save();e.target.reset();closeModal();setView("content")});
-function toggleCategory(id){const c=data.categories.find(x=>x.id===id);if(c)c.enabled=!c.enabled;save();renderCategories();}
+async function toggleCategory(id){
+  const c=data.categories.find(x=>x.id===id);
+  if(!c)return;
+  const previous=c.enabled;
+  c.enabled=!previous;
+  save();
+  renderCategories();
+  try{
+    const enabledCategories=Object.fromEntries(data.categories.map(x=>[x.id,!!x.enabled]));
+    const r=await fetch(apiUrl("/api/factory/settings"),{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      credentials:"include",
+      body:JSON.stringify({enabledCategories})
+    });
+    const s=await r.json().catch(()=>({}));
+    if(!r.ok||!s.ok)throw new Error(s.error||"Category setting save failed");
+    if(s.settings?.enabledCategories){
+      for(const item of data.categories){
+        if(Object.prototype.hasOwnProperty.call(s.settings.enabledCategories,item.id))item.enabled=s.settings.enabledCategories[item.id]!==false;
+      }
+      save();
+      renderCategories();
+    }
+  }catch(e){
+    c.enabled=previous;
+    save();
+    renderCategories();
+    alert("Category setting save failed: "+e.message);
+  }
+}
 async function toggleAutomationOnline(){
   const previous=data.settings.automationOnline!==false;
   data.settings.automationOnline=!previous;

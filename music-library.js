@@ -147,41 +147,21 @@
 
   async function musicLibraryAdd(){
     var out=document.getElementById("mlResult");
-    var link=(document.getElementById("mlLink")?.value||"").trim();
-    var rights=document.getElementById("mlRights")?.value||"owned";
     var audio=document.getElementById("mlAudio")?.files?.[0]||null;
-    var tags=(document.getElementById("mlTags")?.value||"").split(",").map(function(x){return x.trim();}).filter(Boolean);
-
-    if(!link){out.textContent="Add a Spotify or YouTube link first.";return;}
-    var isSpotify=/spotify\.com\/track\//i.test(link);
-    var isYouTube=/(youtube\.com|youtu\.be)/i.test(link);
-    if(!isSpotify && !isYouTube){out.textContent="Use a valid Spotify track or YouTube video link.";return;}
-    if(rights==="metadata_only" && audio){out.textContent="Metadata-only tracks cannot attach master audio.";return;}
-
-    out.textContent="🎵 Saving track…";
+    var title=(document.getElementById("mlTitle")?.value||"").trim();
+    if(!audio){out.textContent="Choose an audio file first.";return;}
+    if(!/^audio\\//i.test(audio.type)){out.textContent="Please choose a valid audio file.";return;}
+    if(audio.size>100*1024*1024){out.textContent="Audio must be 100 MB or smaller.";return;}
+    out.textContent="📤 Uploading original master…";
     try{
-      var payload=isSpotify?{spotifyUrl:link,rightsStatus:rights,tags:tags}:{youtubeUrl:link,rightsStatus:rights,tags:tags};
-      var r=await fetch(mlApi("/api/music/library/import"),{
-        method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(payload)
+      var r=await fetch(mlApi("/api/music/library/upload-master?filename="+encodeURIComponent(audio.name)+"&title="+encodeURIComponent(title)),{
+        method:"POST",headers:{"Content-Type":audio.type||"audio/mpeg"},credentials:"include",body:audio
       });
       var b=await r.json().catch(function(){return {};});
-      if(!r.ok || !b.ok) throw new Error(b.error||("Could not add track (HTTP "+r.status+")"));
-
-      var track=Array.isArray(b.tracks)?b.tracks[0]:b.track;
-      if(audio && track?.id){
-        out.textContent="📤 Uploading original master…";
-        var ar=await fetch(mlApi("/api/music/library/audio?id="+encodeURIComponent(track.id)+"&filename="+encodeURIComponent(audio.name)),{
-          method:"POST",headers:{"Content-Type":audio.type||"audio/mpeg"},credentials:"include",body:audio
-        });
-        var ab=await ar.json().catch(function(){return {};});
-        if(!ar.ok || !ab.ok) throw new Error(ab.error||("Audio upload failed (HTTP "+ar.status+")"));
-        track=ab.track||track;
-      }
-
-      out.textContent="✓ Added "+(track?.title||"track")+(track?.audioUrl||track?.audio_url?" · master attached":" · add your original master before automatic promotion");
-      document.getElementById("mlLink").value="";
+      if(!r.ok||!b.ok)throw new Error(b.error||("Upload failed (HTTP "+r.status+")"));
+      out.textContent="✓ "+(b.track?.title||"Song")+" is now the active daily promotion track.";
       document.getElementById("mlAudio").value="";
-      document.getElementById("mlTags").value="";
+      document.getElementById("mlTitle").value="";
       await loadMusicLibrary();
       await musicManagerToday();
     }catch(e){

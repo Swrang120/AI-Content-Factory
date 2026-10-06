@@ -1970,7 +1970,7 @@ app.post("/api/music/library/upload-master",requireAppKey,express.raw({type:["au
     const {put}=await import("@vercel/blob");
     const blob=await put("music-library/"+id+"-"+Date.now()+"-"+filename,req.body,{access:"public",contentType,...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
     const {error:deactivateError}=await supabase.from("music_library")
-      .update({status:"inactive",updated_at:new Date().toISOString()})
+      .update({status:"paused",updated_at:new Date().toISOString()})
       .neq("id",id).in("status",["active"]);
     if(deactivateError)throw new Error("Could not switch active promotion track: "+deactivateError.message);
     const row={
@@ -2002,7 +2002,7 @@ app.post("/api/music/library/audio",requireAppKey,express.raw({type:["audio/*","
     // The newest uploaded master becomes the single active daily promotion track.
     // Keep older tracks in the library, but remove them from the automatic promotion pool.
     const {error:deactivateError}=await supabase.from("music_library")
-      .update({status:"inactive",updated_at:new Date().toISOString()})
+      .update({status:"paused",updated_at:new Date().toISOString()})
       .neq("id",id)
       .in("status",["active"]);
     if(deactivateError)throw new Error("Could not switch active promotion track: "+deactivateError.message);

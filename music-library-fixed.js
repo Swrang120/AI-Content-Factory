@@ -158,14 +158,13 @@
       var b=await r.json().catch(function(){return {};});
       if(!r.ok||!b.ok)throw new Error(b.error||("Could not prepare upload (HTTP "+r.status+")"));
       out.textContent="📤 Uploading original master directly to Supabase Storage…";
-      // Supabase signed-upload URLs are consumed with the signed token.
-      // Do not append the token to the URL or use the regular object PUT endpoint.
+      // Upload the signed object using Supabase's signed-upload endpoint.
+      // The signed token is already represented by the generated upload URL.
+      // Keep the request simple so browsers do not trigger a CORS preflight.
       var put=await fetch(b.uploadUrl,{
-        method:"POST",
+        method:"PUT",
         headers:{
-          "Content-Type":audio.type||"application/octet-stream",
-          "x-signature":String(b.token||""),
-          "x-upsert":"false"
+          "Content-Type":audio.type||"application/octet-stream"
         },
         body:audio
       });

@@ -1627,17 +1627,25 @@ async function upsertMusicTrack(input){
   }
   let metrics={views:Number(input.views)||0,likes:Number(input.likes)||0,comments:Number(input.comments)||0};
   if(parsedYouTube.type==="youtube"){
-    try{
-      const yt=await youtube(input.req);
-      const r=await yt.videos.list({part:"snippet,statistics",id:parsedYouTube.id});
-      const v=r.data.items?.[0];
-      if(v){
-        meta.title=meta.title||v.snippet?.title||"";
-        meta.artist=meta.artist||v.snippet?.channelTitle||"";
-        meta.artworkUrl=meta.artworkUrl||v.snippet?.thumbnails?.high?.url||v.snippet?.thumbnails?.default?.url||"";
-        metrics={views:Number(v.statistics?.viewCount||0),likes:Number(v.statistics?.likeCount||0),comments:Number(v.statistics?.commentCount||0)};
-      }
-    }catch(_){}
+    const supplied=input.youtubeMeta&&typeof input.youtubeMeta==="object"?input.youtubeMeta:null;
+    if(supplied){
+      meta.title=meta.title||String(supplied.title||"");
+      meta.artist=meta.artist||String(supplied.channelTitle||supplied.artist||"");
+      meta.artworkUrl=meta.artworkUrl||String(supplied.artworkUrl||"");
+      metrics={views:Number(supplied.views||0),likes:Number(supplied.likes||0),comments:Number(supplied.comments||0)};
+    }else{
+      try{
+        const yt=await youtube(input.req);
+        const r=await yt.videos.list({part:"snippet,statistics",id:parsedYouTube.id});
+        const v=r.data.items?.[0];
+        if(v){
+          meta.title=meta.title||v.snippet?.title||"";
+          meta.artist=meta.artist||v.snippet?.channelTitle||"";
+          meta.artworkUrl=meta.artworkUrl||v.snippet?.thumbnails?.high?.url||v.snippet?.thumbnails?.default?.url||"";
+          metrics={views:Number(v.statistics?.viewCount||0),likes:Number(v.statistics?.likeCount||0),comments:Number(v.statistics?.commentCount||0)};
+        }
+      }catch(_){}
+    }
   }
   const engagement=(metrics.views>0)?(metrics.likes+metrics.comments)/metrics.views:0;
   const row={

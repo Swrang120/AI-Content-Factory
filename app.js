@@ -468,17 +468,7 @@ async function uploadYouTubeTest(){
   }catch(e){result.textContent="Upload failed: "+e.message;}
 }
 
-async <style id="studioPremiumStyle">
-.studio-view{background:linear-gradient(145deg,#07111f,#0b1730 55%,#17102d);border:1px solid rgba(153,120,255,.22);border-radius:24px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.28)}
-.studio-view .two-col{gap:14px}.studio-view .table-card{background:linear-gradient(145deg,rgba(18,29,51,.98),rgba(32,19,57,.94));border:1px solid rgba(157,130,255,.2);border-radius:20px;padding:18px;box-shadow:0 12px 35px rgba(0,0,0,.18)}
-.studio-view .section-head{margin-bottom:14px}.studio-view .section-head h3{font-size:18px}.studio-view .section-head .muted{color:#9eabc8;line-height:1.5}
-.studio-view label{color:#cbd4e8;font-size:12px;font-weight:700}.studio-view input,.studio-view select,.studio-view textarea{box-sizing:border-box;width:100%;margin-top:7px;padding:12px 13px;border-radius:12px;border:1px solid rgba(157,130,255,.25);background:rgba(3,8,20,.68);color:#f4f5ff;outline:none}.studio-view input:focus,.studio-view select:focus,.studio-view textarea:focus{border-color:#9d82ff;box-shadow:0 0 0 3px rgba(125,91,255,.12)}
-.studio-view .primary{border:0;border-radius:13px;background:linear-gradient(135deg,#6d5dfc,#a84dff);color:#fff;font-weight:800;box-shadow:0 9px 25px rgba(120,76,255,.24)}.studio-view .small-btn{border-radius:11px;border:1px solid rgba(157,130,255,.22);background:rgba(118,91,255,.09);color:#dcd5ff}
-.studio-view .ai-result{min-height:190px;padding:14px;border-radius:13px;background:rgba(3,8,20,.52);border:1px solid rgba(157,130,255,.13);color:#dce4f6;white-space:pre-wrap;overflow:auto}.studio-view audio{width:100%;margin:12px 0}
-.studio-view .badge{border-radius:999px}.studio-view .badge.ready{background:rgba(118,91,255,.14);border-color:rgba(177,146,255,.25);color:#dcd5ff}
-.studio-view> .two-col{background:transparent}.studio-view> .table-card{background:linear-gradient(145deg,rgba(18,29,51,.98),rgba(32,19,57,.94))}
-@media(max-width:800px){.studio-view{padding:12px;border-radius:18px}.studio-view .two-col{grid-template-columns:1fr}.studio-view .table-card{padding:15px}}
-</style>
+async 
 function renderAI(){
   title.textContent="AI Studio";
   view.classList.add("studio-view");

@@ -1956,9 +1956,18 @@ app.post("/api/music/library/audio",requireAppKey,express.raw({type:["audio/*","
     const filename=String(req.query.filename||"original-audio.mp3").replace(/[^a-zA-Z0-9._-]/g,"_");
     const {put}=await import("@vercel/blob");
     const blob=await put("music-library/"+id+"-"+Date.now()+"-"+filename,req.body,{access:"public",contentType:req.headers["content-type"]||"audio/mpeg",...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
-    const {data,error:updateError}=await supabase.from("music_library").update({audio_url:blob.url,updated_at:new Date().toISOString()}).eq("id",id).select("*").single();
+    // The newest uploaded master becomes the single active daily promotion track.
+    // Keep older tracks in the library, but remove them from the automatic promotion pool.
+    const {error:deactivateError}=await supabase.from("music_library")
+      .update({status:"inactive",updated_at:new Date().toISOString()})
+      .neq("id",id)
+      .in("status",["active"]);
+    if(deactivateError)throw new Error("Could not switch active promotion track: "+deactivateError.message);
+    const {data,error:updateError}=await supabase.from("music_library")
+      .update({audio_url:blob.url,status:"active",updated_at:new Date().toISOString()})
+      .eq("id",id).select("*").single();
     if(updateError)throw new Error(updateError.message);
-    res.json({ok:true,track:publicMusicTrack(data),url:blob.url});
+    res.json({ok:true,track:publicMusicTrack(data),url:blob.url,activePromotionTrack:true});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
 

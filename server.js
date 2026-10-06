@@ -1622,7 +1622,7 @@ app.post("/api/media/complete-upload",requireAppKey,async(req,res)=>{
     return res.status(500).json({ok:false,error:safeErrorMessage(e)});
   }
 });
-app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
+app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","video/*","audio/*","application/octet-stream"],limit:"50mb"}),async(req,res)=>{
   try{
     const filename=String(req.query.filename||"video.mp4").replace(/[^a-zA-Z0-9._-]/g,"_");
     const title=String(req.query.title||filename);

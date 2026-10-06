@@ -19,7 +19,22 @@ const defaultData={
   settings:{automationOnline:true,autoGenerate:true,approval:false,autoPublish:true}
 };
 let data=JSON.parse(localStorage.getItem(KEY)||"null")||defaultData;
-const save=()=>localStorage.setItem(KEY,JSON.stringify(data));
+let contentSyncTimer=null;
+async function syncReadyContent(){
+  try{
+    const ready=(data.content||[]).filter(x=>String(x.status||"").toLowerCase()==="ready").slice(0,50);
+    if(!ready.length)return;
+    await fetch(apiUrl("/api/content/sync"),{
+      method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",
+      body:JSON.stringify({items:ready})
+    });
+  }catch(_){}
+}
+const save=()=>{
+  localStorage.setItem(KEY,JSON.stringify(data));
+  clearTimeout(contentSyncTimer);
+  contentSyncTimer=setTimeout(syncReadyContent,350);
+};
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 const statusClass=s=>String(s).toLowerCase().replace(/\s/g,"");
 const view=document.getElementById("view");
@@ -614,3 +629,4 @@ async function toggleAutomationOnline(){
 document.getElementById("themeBtn").onclick=()=>document.body.classList.toggle("light");
 loadServerSettings().finally(()=>{setView("dashboard");setTimeout(loadCreatorLearning,500);});
 window.setBackendUrl=function(url){const v=String(url||"").trim().replace(/\/+$/,"");if(v){localStorage.setItem("acf_backend_url",v);}else{localStorage.removeItem("acf_backend_url");}location.reload();};
+setTimeout(syncReadyContent,800);

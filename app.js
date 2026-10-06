@@ -323,7 +323,6 @@ async function uploadFactoryVideo(){
 }
 function renderContent(){
   title.textContent="Content";
-  view.classList.add("studio-view");
   view.innerHTML=`<div class="table-card">
     <div class="section-head"><div><h3>Content Queue</h3><span class="muted">Ideas, planned videos and AI-generated assets.</span></div><button class="primary" onclick="openModal()">＋ Add Content</button></div>
     <div class="table-card" style="margin:14px 0;background:#0a1726">
@@ -468,10 +467,8 @@ async function uploadYouTubeTest(){
   }catch(e){result.textContent="Upload failed: "+e.message;}
 }
 
-async 
-function renderAI(){
+async function renderAI(){
   title.textContent="AI Studio";
-  view.classList.add("studio-view");
   view.innerHTML=`
   <div class="two-col">
     <div class="table-card">
@@ -539,7 +536,6 @@ function useAIResult(){
 
 async function renderVoice(){
   title.textContent="Voice Studio";
-  view.classList.add("studio-view");
   view.innerHTML=`
   <div class="two-col">
     <div class="table-card">
@@ -653,7 +649,7 @@ async function loadServerSettings(){
     }
   }catch(e){}
 }
-function setView(v){view.classList.remove("studio-view");document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,ai:renderAI,voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings}[v]||renderDashboard)();}
+function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,ai:renderAI,voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings}[v]||renderDashboard)();}
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
 function openModal(){document.getElementById("categorySelect").innerHTML=data.categories.filter(c=>c.enabled).map(c=>`<option>${esc(c.name)}</option>`).join("");document.getElementById("contentModal").classList.remove("hidden");}
 function closeModal(){document.getElementById("contentModal").classList.add("hidden")}

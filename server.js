@@ -1641,10 +1641,10 @@ async function upsertMusicTrack(input){
   }
   const engagement=(metrics.views>0)?(metrics.likes+metrics.comments)/metrics.views:0;
   const row={
-    spotify_url:parsedSpotify.type==="spotify"?parsedSpotify.url:(input.spotifyUrl||null),
-    youtube_url:parsedYouTube.type==="youtube"?parsedYouTube.url:(input.youtubeUrl||null),
-    spotify_track_id:parsedSpotify.type==="spotify"?parsedSpotify.id:(input.spotifyTrackId||null),
-    youtube_video_id:parsedYouTube.type==="youtube"?parsedYouTube.id:(input.youtubeVideoId||null),
+    spotify_url:parsedSpotify.type==="spotify"?parsedSpotify.url:null,
+    youtube_url:parsedYouTube.type==="youtube"?parsedYouTube.url:null,
+    spotify_track_id:parsedSpotify.type==="spotify"?parsedSpotify.id:null,
+    youtube_video_id:parsedYouTube.type==="youtube"?parsedYouTube.id:null,
     title:meta.title||"Untitled Track",
     artist:meta.artist||"Unknown Artist",
     artwork_url:meta.artworkUrl||null,

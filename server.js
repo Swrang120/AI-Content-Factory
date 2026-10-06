@@ -16,6 +16,7 @@ const VOICE_DIR=path.join(ROOT,".data","voices");
 const SUPABASE_URL=process.env.SUPABASE_URL||"";
 const SUPABASE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_PUBLISHABLE_KEY||"";
 const supabase=(SUPABASE_URL&&SUPABASE_KEY)?createClient(SUPABASE_URL,SUPABASE_KEY):null;
+const BLOB_TOKEN=process.env.BLOB_READ_WRITE_TOKEN||process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN||"";
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];
 app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
 app.use(express.json({limit:"1mb"}));
@@ -407,7 +408,7 @@ async function runFactoryHealthChecks(){
   add("ChatGPT",!!process.env.OPENAI_API_KEY,process.env.OPENAI_API_KEY?"API key configured":"OPENAI_API_KEY missing",true);
   add("Google Gemini",!!process.env.GEMINI_API_KEY,process.env.GEMINI_API_KEY?"API key configured":"GEMINI_API_KEY missing",true);
   add("YouTube OAuth",!!process.env.GOOGLE_CLIENT_ID&&!!process.env.GOOGLE_CLIENT_SECRET&&!!process.env.YOUTUBE_REDIRECT_URI,process.env.YOUTUBE_REDIRECT_URI||"YouTube OAuth configuration incomplete",true);
-  add("Vercel Blob",true,process.env.BLOB_READ_WRITE_TOKEN?"Legacy Blob token configured":"Using Vercel Blob OIDC when the store is connected to this project",true);
+  add("Vercel Blob",true,BLOB_TOKEN?"Vercel Blob token configured":"Using Vercel Blob OIDC when the store is connected to this project",true);
   add("Cron",!!process.env.CRON_SECRET,process.env.CRON_SECRET?"Cron secret configured":"CRON_SECRET missing",true);
   try{
     if(process.env.SUPABASE_URL&&process.env.SUPABASE_SERVICE_ROLE_KEY){
@@ -502,7 +503,7 @@ async function runVoiceForJob(job){
   if(!selectedVoice)return {status:"voice_waiting_voice",error:"No ElevenLabs voice ID is configured."};
   const audio=await generateElevenLabsAudio(job.script,selectedVoice,process.env.ELEVENLABS_MODEL_ID,job.language==="Assamese"?"as":job.language==="Hindi"?"hi":undefined);
   const {put}=await import("@vercel/blob");
-  const blob=await put("voices/"+job.id+".mp3",audio,{access:"public",contentType:"audio/mpeg",...(process.env.BLOB_READ_WRITE_TOKEN?{token:process.env.BLOB_READ_WRITE_TOKEN}:{})});
+  const blob=await put("voices/"+job.id+".mp3",audio,{access:"public",contentType:"audio/mpeg",...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
   job.voice={status:"ready",file:blob.url,model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voiceId:selectedVoice,generatedAt:new Date().toISOString()};
   job.status="voice_ready";
   job.updatedAt=new Date().toISOString();
@@ -540,7 +541,7 @@ async function renderFactoryVideo(job,req){
     sandbox,
     sandboxFilePath,
     contentType:"video/mp4",
-    ...(process.env.BLOB_READ_WRITE_TOKEN?{blobToken:process.env.BLOB_READ_WRITE_TOKEN}:{}),
+    ...(BLOB_TOKEN?{blobToken:BLOB_TOKEN}:{}),
     access:"public",
     blobPath:"renders/"+job.id+".mp4"
   });
@@ -1348,7 +1349,7 @@ app.post("/api/media/upload-file",requireAppKey,express.raw({type:["video/mp4","
     const title=String(req.query.title||filename);
     if(!req.body||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({ok:false,error:"Video file body is required"});
     const {put}=await import("@vercel/blob");
-    const blob=await put("uploads/"+Date.now()+"-"+filename,req.body,{access:"public",contentType:req.headers["content-type"]||"video/mp4",...(process.env.BLOB_READ_WRITE_TOKEN?{token:process.env.BLOB_READ_WRITE_TOKEN}:{})});
+    const blob=await put("uploads/"+Date.now()+"-"+filename,req.body,{access:"public",contentType:req.headers["content-type"]||"video/mp4",...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
     const scheduledSlot=String(req.query.scheduledSlot||"").trim()||nextBossUploadSlot();
     const id="boss_"+Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,7);
     const jobs=loadJobs();

@@ -1957,38 +1957,54 @@ app.get("/api/music/manager/today",requireAppKey,async(req,res)=>{
     res.json({ok:true,track:publicMusicTrack(track),manager});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
-app.post("/api/music/library/upload-master",requireAppKey,express.raw({type:["audio/*","application/octet-stream"],limit:"100mb"}),async(req,res)=>{
+app.post("/api/music/library/upload-token",requireAppKey,async(req,res)=>{
   try{
     if(!supabase)throw new Error("Supabase is not configured for Music Library.");
-    if(!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({ok:false,error:"Choose an audio file first."});
-    const contentType=String(req.headers["content-type"]||"audio/mpeg");
-    if(!/^audio\//i.test(contentType) && contentType!=="application/octet-stream")return res.status(400).json({ok:false,error:"Only audio files are supported."});
-    const filename=String(req.query.filename||"original-audio.mp3").replace(/[^a-zA-Z0-9._-]/g,"_");
-    const titleRaw=String(req.query.title||"").trim();
+    const {issueSignedToken,presignUrl}=await import("@vercel/blob");
+    const body=req.body&&typeof req.body==="object"?req.body:{};
+    const filename=String(body.filename||"original-audio.mp3").replace(/[^a-zA-Z0-9._-]/g,"_");
+    const titleRaw=String(body.title||"").trim();
     const title=titleRaw||filename.replace(/\.[^.]+$/,"").replace(/[_-]+/g," ").trim()||"Original Music";
     const id=crypto.randomUUID();
-    const {put}=await import("@vercel/blob");
-    const blob=await put("music-library/"+id+"-"+Date.now()+"-"+filename,req.body,{access:"public",contentType,...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
-    const {error:deactivateError}=await supabase.from("music_library")
-      .update({status:"paused",updated_at:new Date().toISOString()})
-      .neq("id",id).in("status",["active"]);
+    const pathname="music-library/"+id+"-"+Date.now()+"-"+filename;
+    const token=await issueSignedToken({operations:["put"],validUntil:Date.now()+15*60*1000});
+    const signed=await presignUrl(token,{pathname,operation:"put",validUntil:Date.now()+15*60*1000});
+    res.json({ok:true,id,title,filename,pathname,presignedUrl:signed.presignedUrl});
+  }catch(e){
+    console.error("Music master presign failed:",e);
+    res.status(400).json({ok:false,error:safeErrorMessage(e)});
+  }
+});
+
+app.post("/api/music/library/activate-upload",requireAppKey,async(req,res)=>{
+  try{
+    if(!supabase)throw new Error("Supabase is not configured for Music Library.");
+    const pathname=String(req.body?.pathname||"").trim();
+    const id=String(req.body?.id||"").trim();
+    const title=String(req.body?.title||"Original Music").trim()||"Original Music";
+    if(!pathname||!id)throw new Error("Upload session information is missing.");
+    const {head}=await import("@vercel/blob");
+    const blob=await head(pathname,{...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
+    if(!blob?.url)throw new Error("Uploaded audio could not be verified in Vercel Blob.");
+    const now=new Date().toISOString();
+    const {error:deactivateError}=await supabase.from("music_library").update({status:"paused",updated_at:now}).eq("status","active");
     if(deactivateError)throw new Error("Could not switch active promotion track: "+deactivateError.message);
     const row={
       id,spotify_url:null,youtube_url:null,spotify_track_id:null,youtube_video_id:null,
-      title,artist:"Swrang Swargiary",artwork_url:null,audio_url:blob.url,
-      rights_status:"owned",status:"active",views:0,likes:0,comments:0,
-      view_velocity:0,engagement_rate:0,trend_score:0,promotion_count:0,promo_views:0,
-      last_promoted_at:null,last_used_at:null,last_metrics_at:null,tags:["Original Master"],
-      ai_analysis:null,source_metrics:{upload:"direct_master"},created_at:new Date().toISOString(),updated_at:new Date().toISOString()
+      title,artist:"Swrang Swargiary",artwork_url:null,audio_url:blob.url,rights_status:"owned",status:"active",
+      views:0,likes:0,comments:0,view_velocity:0,engagement_rate:0,trend_score:0,promotion_count:0,promo_views:0,
+      last_promoted_at:null,last_used_at:null,last_metrics_at:null,tags:["Original Master"],ai_analysis:null,
+      source_metrics:{upload:"direct_blob"},created_at:now,updated_at:now
     };
     const {data,error}=await supabase.from("music_library").insert(row).select("*").single();
     if(error)throw new Error("Music Library save failed: "+error.message);
     res.json({ok:true,track:publicMusicTrack(data),activePromotionTrack:true});
   }catch(e){
-    console.error("Music master upload failed:",e);
+    console.error("Music master activation failed:",e);
     res.status(400).json({ok:false,error:safeErrorMessage(e)});
   }
 });
+
 app.post("/api/music/library/audio",requireAppKey,express.raw({type:["audio/*","application/octet-stream"],limit:"100mb"}),async(req,res)=>{
   try{
     const id=String(req.query.id||"").trim();

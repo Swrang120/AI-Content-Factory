@@ -13,8 +13,10 @@ const TOKEN_FILE=path.join(ROOT,".data","youtube-token.json");
 const SETTINGS_FILE=path.join(ROOT,".data","factory-settings.json");
 const JOBS_FILE=path.join(ROOT,".data","research-jobs.json");
 const VOICE_DIR=path.join(ROOT,".data","voices");
-const SUPABASE_URL="https://rvprrulkjegvicbnjuft.supabase.co";
-const SUPABASE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||process.env.SUPABASE_PUBLISHABLE_KEY||"";
+const SUPABASE_URL=process.env.SUPABASE_URL||"";
+// Use the current publishable key first. This prevents a stale legacy service-role key
+// from silently overriding the project/key pair configured for Music Library.
+const SUPABASE_KEY=process.env.SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY||"";
 const supabase=(SUPABASE_URL&&SUPABASE_KEY)?createClient(SUPABASE_URL,SUPABASE_KEY):null;
 const BLOB_TOKEN=process.env.BLOB_READ_WRITE_TOKEN||process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN||"";
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];

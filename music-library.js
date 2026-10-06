@@ -44,8 +44,8 @@
           '<h3>Upload New Song</h3>'+
           '<div class="ml-muted">Upload your original master. The newest upload automatically becomes the daily promotion track.</div>'+
           '<div class="ml-field"><label>SONG TITLE <span class="ml-muted">(optional)</span></label><input id="mlTitle" class="ml-title" placeholder="Enter song title"></div>'+
-          '<div class="ml-field"><label>ORIGINAL MASTER AUDIO</label><input id="mlAudio" class="ml-file" type="file" accept="audio/*"></div>'+
-          '<button class="ml-btn" id="mlAdd">🎵 Set as Daily Promotion</button>'+
+          '<div class="ml-field"><label>ORIGINAL MASTER AUDIO</label><input id="mlAudio" class="ml-file" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"></div>'+
+          '<button type="button" class="ml-btn" id="mlAdd">🎵 Set as Daily Promotion</button>'+
           '<div id="mlResult" class="ml-status">Ready for your next release.</div>'+
         '</div>'+
         '<div class="ml-library">'+
@@ -56,7 +56,7 @@
         '<div class="ml-manager" id="mlManager"><h3>🧠 Music Manager</h3><div class="ml-ai-box">Loading today’s decision…</div></div>'+
       '</div>';
 
-    document.getElementById("mlAdd").onclick=musicLibraryAdd;
+    var addBtn=document.getElementById("mlAdd"); if(addBtn){ addBtn.type="button"; addBtn.addEventListener("click",function(e){e.preventDefault();musicLibraryAdd();},{passive:false}); }
     document.getElementById("mlSearchBtn").onclick=function(){musicLibraryPage=0;loadMusicLibrary();};
     document.getElementById("mlSearch").addEventListener("keydown",function(e){
       if(e.key==="Enter"){musicLibraryPage=0;loadMusicLibrary();}

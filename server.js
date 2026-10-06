@@ -1965,11 +1965,16 @@ app.post("/api/music/library/upload-token",requireAppKey,async(req,res)=>{
   try{
     if(!supabaseAdmin)throw new Error("Supabase server Storage is not configured. Add SUPABASE_SERVICE_ROLE_KEY in Vercel.");
     const body=req.body&&typeof req.body==="object"?req.body:{};
-    const filename=String(body.filename||"original-audio.mp3").replace(/[^a-zA-Z0-9._-]/g,"_");
+    // Storage object names are always ASCII-safe. The user's original
+    // filename/title may contain Hindi, Bodo, Assamese, emoji or other Unicode;
+    // that must never make the upload fail. Preserve the title separately.
+    const originalFilename=String(body.filename||"original-audio.mp3").trim();
+    const extMatch=originalFilename.match(/\\.(mp3|wav|wave|m4a|aac|ogg|flac)$/i);
+    const ext=extMatch?extMatch[1].toLowerCase().replace("wave","wav"):"mp3";
     const titleRaw=String(body.title||"").trim();
-    const title=titleRaw||filename.replace(/\.[^.]+$/,"").replace(/[_-]+/g," ").trim()||"Original Music";
+    const title=titleRaw||originalFilename.replace(/\\.[^.]+$/,"").trim()||"Original Music";
     const id=crypto.randomUUID();
-    const pathname="original/"+id+"-"+Date.now()+"-"+filename;
+    const pathname="original/"+id+"-"+Date.now()+"."+ext;
     const {data,error}=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).createSignedUploadUrl(pathname,{upsert:false});
     if(error||!data?.token)throw new Error("Could not create Supabase Storage upload URL: "+(error?.message||"unknown error"));
     const base=SUPABASE_URL.replace(/\/$/,"");

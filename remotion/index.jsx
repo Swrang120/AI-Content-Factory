@@ -9,7 +9,7 @@ const Root=()=> <Composition
   height={FACTORY_HEIGHT}
   fps={FACTORY_FPS}
   durationInFrames={FACTORY_FPS*FACTORY_DURATION_SECONDS}
-  defaultProps={{title:"AI Content Factory",script:"",audioUrl:"",durationSeconds:FACTORY_DURATION_SECONDS}}
+  defaultProps={{title:"AI Content Factory",script:"",audioUrl:"",musicUrl:"",musicStartSeconds:0,musicDurationSeconds:25,spotifyUrl:"",artist:"",durationSeconds:FACTORY_DURATION_SECONDS}}
 />;
 
 registerRoot(Root);

@@ -126,14 +126,43 @@ function renderBossRoom(){
     </div>
    </div>
    <div class="office-status-strip" id="officeStatusStrip">Select an employee to see their live task.</div>
-   <div class="boss-command office-command"><div class="command-label">BOSS COMMAND</div><div class="command-row"><input id="bossCommand" placeholder="Give your employees an order…" onkeydown="if(event.key==='Enter')bossCommandRun()"><button class="primary" onclick="bossCommandRun()">⚡ Execute</button></div><div class="quick-actions"><button class="small-btn" onclick="bossQuick('Create a new video idea')">🎬 New Video</button><button class="small-btn" onclick="bossQuick('Research a news topic')">🔎 Research</button><button class="small-btn" onclick="bossQuick('Write a YouTube script')">✍️ Script</button><button class="small-btn" onclick="bossQuick('Prepare a YouTube upload')">📤 Publish</button></div><div id="bossResult" class="boss-result">Waiting for the Boss order…</div></div>
+   <div class="boss-command office-command"><div class="command-label">BOSS COMMAND</div><div class="command-row"><input id="bossCommand" placeholder="Type or speak an order…" onkeydown="if(event.key==='Enter')bossCommandRun()"><button class="small-btn voice-command-btn" id="bossVoiceBtn" onclick="startBossVoiceCommand()">🎙️ Speak</button><button class="primary" onclick="bossCommandRun()">⚡ Execute</button></div><div class="quick-actions"><button class="small-btn" onclick="bossQuick('Create a new video idea')">🎬 New Video</button><button class="small-btn" onclick="bossQuick('Research a news topic')">🔎 Research</button><button class="small-btn" onclick="bossQuick('Write a YouTube script')">✍️ Script</button><button class="small-btn" onclick="bossQuick('Prepare a YouTube upload')">📤 Publish</button></div><div id="bossResult" class="boss-result">Waiting for the Boss order…</div></div>
  </div>`;
  loadAgentStates(); startAgentPolling();
 }
 function officeEmployeeClick(id){
  const r=AI_ROBOTS.find(x=>x.id===id),a=agentStateFor(r||{}),el=document.getElementById("officeStatusStrip");
  if(el&&r)el.innerHTML="<b>"+esc(r.name)+"</b> · "+(a.status==="WORKING"?"🟢 Working":"😴 Resting")+" · "+esc(a.task)+" · "+Number(a.progress||0)+"%";
-}function bossQuick(c){const i=document.getElementById("bossCommand");if(i){i.value=c;bossCommandRun();}}
+}
+function bossQuick(c){const i=document.getElementById("bossCommand");if(i){i.value=c;bossCommandRun();}}
+let bossSpeech=null;
+function startBossVoiceCommand(){
+ const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+ const input=document.getElementById("bossCommand"),btn=document.getElementById("bossVoiceBtn"),result=document.getElementById("bossResult");
+ if(!SpeechRecognition){if(result)result.textContent="Voice command is not supported in this browser. Use Chrome on Android/desktop.";return;}
+ if(bossSpeech){try{bossSpeech.stop();}catch(_){}bossSpeech=null;return;}
+ bossSpeech=new SpeechRecognition();
+ bossSpeech.lang="en-IN";
+ bossSpeech.interimResults=false;
+ bossSpeech.maxAlternatives=1;
+ if(btn){btn.textContent="🛑 Listening…";btn.classList.add("voice-listening");}
+ if(result)result.textContent="🎙️ Listening… say: “upload the latest video” or “create and publish a video”.";
+ bossSpeech.onresult=e=>{
+   const text=String(e.results?.[0]?.[0]?.transcript||"").trim();
+   if(input)input.value=text;
+   if(result)result.innerHTML="<b>Voice command:</b> "+esc(text);
+   bossSpeech=null;
+   if(btn){btn.textContent="🎙️ Speak";btn.classList.remove("voice-listening");}
+   bossCommandRun();
+ };
+ bossSpeech.onerror=e=>{
+   if(result)result.textContent="Voice command error: "+(e.error||"permission denied");
+   bossSpeech=null;
+   if(btn){btn.textContent="🎙️ Speak";btn.classList.remove("voice-listening");}
+ };
+ bossSpeech.onend=()=>{if(btn&&!bossSpeech){btn.textContent="🎙️ Speak";btn.classList.remove("voice-listening");}};
+ try{bossSpeech.start();}catch(e){bossSpeech=null;if(btn){btn.textContent="🎙️ Speak";btn.classList.remove("voice-listening");}}
+}
 async function bossCommandRun(){
  const input=document.getElementById("bossCommand"),result=document.getElementById("bossResult"),badge=document.getElementById("bossLiveBadge"),command=(input?.value||"").trim();if(!command)return;
  const w=command.toLowerCase();let ids=["manager"];
@@ -149,6 +178,15 @@ async function bossCommandRun(){
  AI_ROBOTS.forEach(applyAgentToDom);
  if(badge){badge.textContent="EMPLOYEES WORKING";badge.className="badge ready robot-live-badge";}
  if(result)result.innerHTML="<b>Boss order:</b> "+esc(command)+"<br><span>Assigned: "+ids.map(id=>AI_ROBOTS.find(r=>r.id===id)?.name||id).join(" → ")+"</span>";
+ if(/\\b(upload|publish|post|youtube)\\b/i.test(command)){
+   try{
+     if(result)result.innerHTML+="<br><span class='boss-output'>📤 Publisher Bot is uploading the latest rendered video…</span>";
+     const pr=await fetch(apiUrl("/api/boss/publish-latest"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({command})});
+     const pb=await pr.json().catch(()=>({}));
+     if(!pr.ok||!pb.ok)throw new Error(pb.error||"Publish command failed");
+     if(result)result.innerHTML+="<br><span class='boss-output'>✓ Published: "+esc(pb.title||"latest video")+"<br><a href='"+esc(pb.video?.url||"")+"' target='_blank' rel='noopener'>Open YouTube video</a></span>";
+   }catch(e){if(result)result.innerHTML+="<br><span class='boss-output'>Publish failed: "+esc(e.message)+"</span>";}
+ }
  try{await fetch(apiUrl("/api/agents/state"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({agents:changes})});}catch(_){}
  try{
    if(w.includes("script")||w.includes("idea")||w.includes("content")||w.includes("video")){

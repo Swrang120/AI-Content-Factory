@@ -5,23 +5,32 @@ on:
     - cron: "*/10 * * * *"
   workflow_dispatch:
 
+concurrency:
+  group: ai-content-factory-scheduler
+  cancel-in-progress: false
+
 jobs:
   trigger-factory:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
-      - name: Trigger production factory
+      - name: Validate scheduler secret
         env:
           CRON_SECRET: ${{ secrets.ACF_CRON_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${CRON_SECRET:-}" ]; then
-            echo "ACF_CRON_SECRET GitHub Actions secret is not configured."
+            echo "::error title=Missing scheduler secret::GitHub Actions secret ACF_CRON_SECRET is not configured."
             exit 1
           fi
 
-          response="$(
-            curl --fail-with-body --silent --show-error               --max-time 240               -H "Authorization: Bearer ${CRON_SECRET}"               "https://ai-content-factory-zeta-ruby.vercel.app/api/cron/factory"
-          )"
-
+      - name: Trigger production factory
+        env:
+          CRON_SECRET: ${{ secrets.ACF_CRON_SECRET }}
+          FACTORY_URL: "https://ai-content-factory-zeta-ruby.vercel.app"
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error --max-time 240 -H "Authorization: Bearer ${CRON_SECRET}" -H "Accept: application/json" "${FACTORY_URL}/api/cron/factory")"
           echo "${response}"

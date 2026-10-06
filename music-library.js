@@ -32,13 +32,17 @@
         '<div class="card"><div class="metric-label">AI Manager</div><div class="metric">ChatGPT + Gemini</div><div class="metric-note">Trend + promotion strategy</div></div>'+
       '</div>'+
       '<div class="table-card">'+
-        '<div class="section-head"><div><h3>📺 Import My YouTube Channel</h3><span class="muted">Paste the channel linked to your YouTube account. The factory imports metadata and performance stats; it does not download YouTube audio.</span></div></div>'+
-        '<div class="form-grid">'+
-          '<label>YouTube Channel Link<input id="mlChannel" placeholder="https://www.youtube.com/@YourChannel"></label>'+
-          '<label>Rights<select id="mlChannelRights"><option value="owned">OWNED — my original content</option><option value="authorized">AUTHORIZED</option><option value="metadata_only">METADATA ONLY</option></select></label>'+
+        '<div class="section-head"><div><h3>📺 My Music Source Channels</h3><span class="muted">Two configured YouTube source channels are synced automatically. The library keeps source links and performance data; it does not download YouTube audio.</span></div></div>'+
+        '<div class="ai-result" style="margin-bottom:12px">'+
+          '<div>🎵 <b>Swrang Swargiary</b> source</div><div>🎼 <b>Santiram Swargiary</b> source</div>'+
+          '<div class="muted" style="margin-top:6px">Daily target: 1 music promotion · source rotation across both channels.</div>'+
         '</div>'+
-        '<button class="primary" id="mlChannelSync">📺 Sync Channel</button>'+
-        '<div id="mlChannelResult" class="muted" style="margin-top:10px">Ready. Each sync imports up to 250 videos; tap Sync again for older pages.</div>'+
+        '<div class="form-grid">'+
+          '<label>Channel 1<input id="mlChannel1" value="https://www.youtube.com/channel/UC_7oWDyqUuF8FtCm3XWkMvQ" readonly></label>'+
+          '<label>Channel 2<input id="mlChannel2" value="https://www.youtube.com/channel/UC45qxqZuEpQvYs14c1pLf7Q" readonly></label>'+
+        '</div>'+
+        '<button class="primary" id="mlChannelSyncAll">📺 Sync Both Music Channels</button>'+
+        '<div id="mlChannelResult" class="muted" style="margin-top:10px">Ready. The scheduler also syncs these sources before the daily Music Promotion slot.</div>'+
       '</div>'+
       '<div class="table-card">'+
         '<div class="section-head"><div><h3>＋ Add Music</h3><span class="muted">Add a Spotify/YouTube release link. Upload only your own or authorized master audio.</span></div></div>'+
@@ -64,7 +68,7 @@
       '<div class="table-card" id="mlManager"><h3>🧠 Music Manager</h3><div class="ai-result">Loading today’s decision…</div></div>';
 
     document.getElementById("mlAdd").onclick=musicLibraryAdd;
-    document.getElementById("mlChannelSync").onclick=musicLibraryChannelSync;
+    document.getElementById("mlChannelSyncAll").onclick=musicLibraryChannelSyncAll;
     document.getElementById("mlSearchBtn").onclick=function(){musicLibraryPage=0;loadMusicLibrary();};
     document.getElementById("mlSearch").addEventListener("keydown",function(e){
       if(e.key==="Enter"){musicLibraryPage=0;loadMusicLibrary();}
@@ -125,42 +129,30 @@
     }
   }
 
-  async function musicLibraryChannelSync(){
+  async function musicLibraryChannelSyncAll(){
     var out=document.getElementById("mlChannelResult");
-    var channel=(document.getElementById("mlChannel")?.value||"").trim();
-    var rights=document.getElementById("mlChannelRights")?.value||"owned";
-    if(!channel){out.textContent="Paste your YouTube channel link first.";return;}
-    var pageToken=localStorage.getItem("acf_music_channel_next_token")||"";
-    var savedChannel=localStorage.getItem("acf_music_channel_url")||"";
-    if(savedChannel!==channel){
-      pageToken="";
-      localStorage.removeItem("acf_music_channel_next_token");
-      localStorage.setItem("acf_music_channel_url",channel);
-    }
-    var button=document.getElementById("mlChannelSync");
+    var button=document.getElementById("mlChannelSyncAll");
     if(button)button.disabled=true;
-    out.textContent=pageToken?"🔄 Importing the next channel page…":"🔄 Reading your connected YouTube channel…";
+    if(out)out.textContent="🔄 Syncing both configured YouTube music channels…";
     try{
-      var r=await fetch(mlApi("/api/music/library/import-channel"),{
-        method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",
-        body:JSON.stringify({channelUrl:channel,pageToken:pageToken,maxVideos:250,rightsStatus:rights})
+      var r=await fetch(mlApi("/api/music/library/sync-sources"),{
+        method:"POST",headers:{"Content-Type":"application/json"},credentials:"include"
       });
       var b=await r.json().catch(function(){return {};});
-      if(!r.ok||!b.ok)throw new Error(b.error||("Channel sync failed (HTTP "+r.status+")"));
-      if(b.nextPageToken)localStorage.setItem("acf_music_channel_next_token",b.nextPageToken);
-      else localStorage.removeItem("acf_music_channel_next_token");
-      var total=Number(b.totalResults||0);
-      var imported=Number(b.imported||0);
-      var skipped=Number(b.skipped||0);
-      out.textContent="✓ "+(b.channel?.title||"Channel")+" · imported "+imported+" videos"+(skipped?" · skipped "+skipped:"")+" · "+(b.nextPageToken?"More older videos available — tap Sync again.":"Channel sync complete.")+" Total reported: "+total.toLocaleString();
+      if(!r.ok||!b.ok)throw new Error(b.error||("Source sync failed (HTTP "+r.status+")"));
+      var lines=(b.channels||[]).map(function(x){
+        return (x.channel?.title||x.channelId)+": "+Number(x.imported||0)+" imported"+(x.error?" · "+x.error:"");
+      });
+      if(out)out.textContent="✓ Synced both sources · "+Number(b.imported||0)+" imported · "+Number(b.skipped||0)+" skipped"+(lines.length?" · "+lines.join(" | "):"");
       await loadMusicLibrary();
       await musicManagerToday();
     }catch(e){
-      out.textContent="YouTube channel sync error: "+e.message;
+      if(out)out.textContent="YouTube source sync error: "+e.message;
     }finally{
       if(button)button.disabled=false;
     }
   }
+
 
   async function musicLibraryAdd(){
     var out=document.getElementById("mlResult");

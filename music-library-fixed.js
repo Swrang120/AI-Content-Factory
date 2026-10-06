@@ -142,73 +142,31 @@
   }
 
 
-  function musicLibraryAdd(){
-    var out=document.getElementById("mlResult");
-    var button=document.getElementById("mlAdd");
-    var audio=document.getElementById("mlAudio")?.files?.[0]||null;
-    var title=(document.getElementById("mlTitle")?.value||"").trim();
+  async function musicLibraryAdd(){
+    var out=document.getElementById("mlResult"),button=document.getElementById("mlAdd");
+    var audio=document.getElementById("mlAudio")?.files?.[0]||null,title=(document.getElementById("mlTitle")?.value||"").trim();
     if(!audio){out.textContent="⚠️ Choose an audio file first.";return;}
     var name=String(audio.name||"").toLowerCase();
-    var isAudio=/^audio\\//i.test(audio.type)||/\\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(name);
-    if(!isAudio){out.textContent="⚠️ Please choose a valid audio file (MP3, WAV, M4A, AAC, OGG or FLAC).";return;}
+    if(!/^audio\\//i.test(audio.type)&&!/\\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(name)){out.textContent="⚠️ Please choose a valid audio file.";return;}
     if(audio.size>100*1024*1024){out.textContent="⚠️ Audio must be 100 MB or smaller.";return;}
-
     if(button)button.disabled=true;
-    if(out)out.textContent="📦 Preparing upload…";
-    var url=mlApi("/api/music/library/upload-master?filename="+encodeURIComponent(audio.name)+"&title="+encodeURIComponent(title));
-    var xhr=new XMLHttpRequest();
-
-    xhr.open("POST",url,true);
-    xhr.withCredentials=true;
-    xhr.setRequestHeader("Content-Type",audio.type||"application/octet-stream");
-    xhr.setRequestHeader("Accept","application/json");
-
-    xhr.upload.onprogress=function(e){
-      if(!out)return;
-      if(e.lengthComputable){
-        var pct=Math.min(99,Math.round((e.loaded/e.total)*100));
-        out.textContent="📤 Uploading original master… "+pct+"% ("+Math.round(e.loaded/1024/1024*10)/10+" / "+Math.round(e.total/1024/1024*10)/10+" MB)";
-      }else{
-        out.textContent="📤 Uploading original master…";
-      }
-    };
-
-    xhr.onload=function(){
-      var b={};
-      try{b=JSON.parse(xhr.responseText||"{}");}catch(_){}
-      if(xhr.status>=200&&xhr.status<300&&b.ok){
-        out.textContent="☁️ Audio uploaded. Saving to Music Library…";
-        setTimeout(function(){
-          out.textContent="✅ "+(b.track?.title||"Song")+" saved successfully and is now the ACTIVE daily promotion track.";
-          var audioEl=document.getElementById("mlAudio"),titleEl=document.getElementById("mlTitle");
-          if(audioEl)audioEl.value="";
-          if(titleEl)titleEl.value="";
-          loadMusicLibrary();
-          musicManagerToday();
-          if(button)button.disabled=false;
-        },350);
-      }else{
-        out.textContent="❌ Upload failed"+(xhr.status?" (HTTP "+xhr.status+")":"")+": "+(b.error||"The server did not accept the upload.");
-        if(button)button.disabled=false;
-      }
-    };
-
-    xhr.onerror=function(){
-      out.textContent="❌ Upload failed: Network/CORS connection error. Please check the backend connection.";
-      if(button)button.disabled=false;
-    };
-    xhr.ontimeout=function(){
-      out.textContent="❌ Upload timed out. The audio may be too large or the server did not respond.";
-      if(button)button.disabled=false;
-    };
-    xhr.timeout=180000;
-
     try{
-      xhr.send(audio);
-    }catch(e){
-      out.textContent="❌ Upload could not start: "+e.message;
-      if(button)button.disabled=false;
-    }
+      out.textContent="🔐 Preparing secure direct upload…";
+      var r=await fetch(mlApi("/api/music/library/upload-token"),{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},credentials:"include",body:JSON.stringify({filename:audio.name,title:title})});
+      var b=await r.json().catch(function(){return {};});
+      if(!r.ok||!b.ok)throw new Error(b.error||("Could not prepare upload (HTTP "+r.status+")"));
+      out.textContent="📤 Uploading original master directly to Blob…";
+      var put=await fetch(b.presignedUrl,{method:"PUT",headers:{"Content-Type":audio.type||"application/octet-stream"},body:audio});
+      if(!put.ok)throw new Error("Vercel Blob rejected the audio upload (HTTP "+put.status+").");
+      out.textContent="☁️ Upload complete. Activating daily promotion…";
+      r=await fetch(mlApi("/api/music/library/activate-upload"),{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},credentials:"include",body:JSON.stringify({id:b.id,pathname:b.pathname,title:b.title})});
+      b=await r.json().catch(function(){return {};});
+      if(!r.ok||!b.ok)throw new Error(b.error||("Could not activate track (HTTP "+r.status+")"));
+      out.textContent="✅ "+(b.track?.title||title||audio.name)+" is now the ACTIVE daily promotion track.";
+      document.getElementById("mlAudio").value="";document.getElementById("mlTitle").value="";
+      await loadMusicLibrary();await musicManagerToday();
+    }catch(e){out.textContent="❌ Upload failed: "+(e&&e.message?e.message:String(e));}
+    finally{if(button)button.disabled=false;}
   }
 
   async function musicAnalyze(id){

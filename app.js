@@ -591,91 +591,6 @@ async function generateVoice(){
   }catch(e){out.textContent="Error: "+e.message;}
 }
 
-
-let musicLibraryPage=0;
-let musicLibrarySort="trend";
-async function loadMusicLibrary(){
-  const tbody=document.getElementById("musicLibraryRows"),meta=document.getElementById("musicLibraryMeta");
-  if(!tbody)return;
-  tbody.innerHTML='<tr><td colspan="8" class="muted">Loading Music Library…</td></tr>';
-  try{
-    const q=document.getElementById("musicLibrarySearch")?.value||"";
-    const r=await fetch(apiUrl("/api/music/library?page="+musicLibraryPage+"&limit=25&sort="+encodeURIComponent(musicLibrarySort)+"&q="+encodeURIComponent(q)),{credentials:"include",cache:"no-store"});
-    const b=await r.json(); if(!r.ok||!b.ok)throw new Error(b.error||"Music Library unavailable");
-    if(meta)meta.textContent=(b.count||0)+" tracks · page "+(Number(b.page)+1)+(b.hasMore?" · more available":""); const countEl=document.getElementById("musicLibraryCount"); if(countEl)countEl.textContent=Number(b.count||0).toLocaleString();
-    tbody.innerHTML=(b.tracks||[]).map(t=>\`<tr>
-      <td><div style="display:flex;align-items:center;gap:10px">\${t.artworkUrl?\`<img src="\${esc(t.artworkUrl)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px">\`:"🎵"}<div><strong>\${esc(t.title)}</strong><br><small>\${esc(t.artist)}</small></div></div></td>
-      <td><span class="badge ready">\${esc(t.rightsStatus==="owned"?"OWNED":t.rightsStatus==="authorized"?"AUTHORIZED":"METADATA")}</span></td>
-      <td>\${Number(t.views||0).toLocaleString()}</td>
-      <td>\${Number(t.viewVelocity||0).toFixed(0)}/day</td>
-      <td><strong>\${Number(t.trendScore||0).toFixed(1)}</strong></td>
-      <td>\${Number(t.promotionCount||0)}</td>
-      <td>\${t.lastUsedAt?new Date(t.lastUsedAt).toLocaleDateString():"Never"}</td>
-      <td><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="small-btn" onclick="musicRefresh('\${t.id}')">↻</button><button class="small-btn" onclick="musicAnalyze('\${t.id}')">🧠 AI</button><button class="small-btn" onclick="musicAttachAudio('\${t.id}')">🎧 Audio</button></div></td>
-    </tr>\`).join("")||'<tr><td colspan="8" class="muted">No tracks yet. Add your first original song above.</td></tr>';
-  }catch(e){tbody.innerHTML='<tr><td colspan="8" class="muted">Music Library error: '+esc(e.message)+'</td></tr>';if(meta)meta.textContent="";}
-}
-function renderMusicLibrary(){
-  title.textContent="Music Library";
-  view.innerHTML=\`<div class="music-library-page">
-    <div class="hero"><p class="eyebrow">ORIGINAL MUSIC INTELLIGENCE</p><h2>🎵 Music Library</h2><p>One dedicated place for your original/authorized tracks. Add Spotify or YouTube links, keep the master audio attached, measure growth, and let the AI Music Manager choose daily promotions.</p></div>
-    <div class="cards music-library-stats">
-      <div class="card"><div class="metric-label">Library</div><div class="metric" id="musicLibraryCount">—</div><div class="metric-note">Scales with database pagination</div></div>
-      <div class="card"><div class="metric-label">Today's AI Pick</div><div class="metric" id="musicTodayScore">—</div><div class="metric-note" id="musicTodayName">Loading…</div></div>
-      <div class="card"><div class="metric-label">Manager</div><div class="metric">ChatGPT + Gemini</div><div class="metric-note">Trend + promotion strategy</div></div>
-    </div>
-    <div class="table-card music-library-add">
-      <div class="section-head"><div><h3>＋ Add Music</h3><span class="muted">The link identifies the release. Upload your original/authorized master separately; the system never extracts audio from Spotify/YouTube.</span></div><span class="badge ready">FULL RIGHTS</span></div>
-      <div class="form-grid"><label>Spotify or YouTube Link<input id="musicLibraryLink" placeholder="https://open.spotify.com/track/... or https://youtu.be/..."></label><label>Rights<select id="musicLibraryRights"><option value="owned">OWNED — my original song</option><option value="authorized">AUTHORIZED</option><option value="metadata_only">METADATA ONLY</option></select></label></div>
-      <div class="form-grid"><label>Original Master Audio<input id="musicLibraryAudio" type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,.mp3,.wav,.m4a"></label><label>Tags<input id="musicLibraryTags" placeholder="romantic, Bodo, sad, 90s melody"></label></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="primary" onclick="musicLibraryAdd()">🎵 Add to Music Library</button><button class="small-btn" onclick="musicManagerToday()">🧠 Ask Music Manager</button></div>
-      <div id="musicLibraryResult" class="muted" style="margin-top:10px">Ready.</div>
-    </div>
-    <div class="table-card">
-      <div class="section-head"><div><h3>Track Intelligence</h3><span class="muted" id="musicLibraryMeta">Loading…</span></div><div style="display:flex;gap:6px;flex-wrap:wrap"><input id="musicLibrarySearch" placeholder="Search title / artist" onkeydown="if(event.key==='Enter'){musicLibraryPage=0;loadMusicLibrary()}"><select onchange="musicLibrarySort=this.value;musicLibraryPage=0;loadMusicLibrary()"><option value="trend">🔥 Trend Score</option><option value="views">👀 Views</option><option value="recent">🆕 Newest</option><option value="used">🔄 Rotation</option></select><button class="small-btn" onclick="musicLibraryPage=Math.max(0,musicLibraryPage-1);loadMusicLibrary()">←</button><button class="small-btn" onclick="musicLibraryPage++;loadMusicLibrary()">→</button></div></div>
-      <div class="table-wrap"><table class="table"><thead><tr><th>Track</th><th>Rights</th><th>Views</th><th>Growth</th><th>Trend</th><th>Promos</th><th>Last Used</th><th>AI</th></tr></thead><tbody id="musicLibraryRows"><tr><td colspan="8">Loading…</td></tr></tbody></table></div>
-    </div>
-    <div class="table-card" id="musicManagerResult"><div class="section-head"><div><h3>🧠 Music Manager</h3><span class="muted">Why today's track is selected and what to promote.</span></div></div><div class="ai-result">Press “Ask Music Manager” to analyze the current best eligible track.</div></div>
-  </div>\`;
-  loadMusicLibrary();
-  musicManagerToday();
-}
-async function musicLibraryAdd(){
-  const out=document.getElementById("musicLibraryResult"),link=(document.getElementById("musicLibraryLink")?.value||"").trim(),rights=document.getElementById("musicLibraryRights")?.value||"owned",tags=(document.getElementById("musicLibraryTags")?.value||"").split(",").map(x=>x.trim()).filter(Boolean),audio=document.getElementById("musicLibraryAudio")?.files?.[0];
-  if(!link){out.textContent="Add a Spotify or YouTube link first.";return;}
-  out.textContent="🎵 Adding track…";
-  try{
-    const isSpotify=/spotify\.com\/track\//i.test(link),isYouTube=/(youtube\.com|youtu\.be)/i.test(link); if(!isSpotify&&!isYouTube){out.textContent="Use a Spotify track link or YouTube video link.";return;} const r=await fetch(apiUrl("/api/music/library/import"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({...(isSpotify?{spotifyUrl:link}:{youtubeUrl:link}),rightsStatus:rights,tags})});
-    const b=await r.json();if(!r.ok||!b.ok)throw new Error(b.error||"Could not add track");
-    let track=b.tracks?.[0];
-    if(audio&&track?.id&&rights!=="metadata_only"){
-      out.textContent="📤 Uploading original master…";
-      const ar=await fetch(apiUrl("/api/music/library/audio?id="+encodeURIComponent(track.id)+"&filename="+encodeURIComponent(audio.name)),{method:"POST",headers:{"Content-Type":audio.type||"audio/mpeg"},credentials:"include",body:audio});
-      const ab=await ar.json();if(!ar.ok||!ab.ok)throw new Error(ab.error||"Audio upload failed");track=ab.track;
-    }
-    out.innerHTML="✓ Added <b>"+esc(track?.title||"track")+"</b> · "+(track?.audioUrl?"master attached":"metadata saved; attach the master audio before automatic promotion");
-    document.getElementById("musicLibraryLink").value="";document.getElementById("musicLibraryAudio").value="";musicLibraryPage=0;loadMusicLibrary();musicManagerToday();
-  }catch(e){out.textContent="Music Library add failed: "+e.message;}
-}
-async function musicAttachAudio(id){
-  const fileInput=document.createElement("input");fileInput.type="file";fileInput.accept="audio/*";
-  fileInput.onchange=async()=>{const file=fileInput.files?.[0];if(!file)return;try{
-    const r=await fetch(apiUrl("/api/music/library/audio?id="+encodeURIComponent(id)+"&filename="+encodeURIComponent(file.name)),{method:"POST",headers:{"Content-Type":file.type||"audio/mpeg"},credentials:"include",body:file});
-    const b=await r.json();if(!r.ok||!b.ok)throw new Error(b.error||"Audio upload failed");alert("Original master attached.");loadMusicLibrary();musicManagerToday();
-  }catch(e){alert("Audio attach failed: "+e.message);}};
-  fileInput.click();
-}
-async function musicRefresh(id){try{const r=await fetch(apiUrl("/api/music/library/"+id+"/refresh"),{method:"POST",credentials:"include"});const b=await r.json();if(!r.ok||!b.ok)throw new Error(b.error||"Refresh failed");loadMusicLibrary();musicManagerToday();}catch(e){alert("Refresh failed: "+e.message);}}
-async function musicAnalyze(id){const out=document.getElementById("musicManagerResult");if(out)out.scrollIntoView({behavior:"smooth",block:"center"});try{const r=await fetch(apiUrl("/api/music/library/"+id+"/analyze"),{method:"POST",credentials:"include"});const b=await r.json();if(!r.ok||!b.ok)throw new Error(b.error||"AI analysis failed");if(out)out.innerHTML="<div class='section-head'><div><h3>🧠 Music Manager Analysis</h3></div></div><pre class='ai-result'>"+esc(JSON.stringify(b.analysis,null,2))+"</pre>";}catch(e){if(out)out.innerHTML="<div class='ai-result'>AI analysis failed: "+esc(e.message)+"</div>";}}
-async function musicManagerToday(){
-  const name=document.getElementById("musicTodayName"),score=document.getElementById("musicTodayScore"),out=document.getElementById("musicManagerResult");if(!name)return;
-  try{
-    const r=await fetch(apiUrl("/api/music/manager/today"),{credentials:"include"});const b=await r.json();if(!r.ok||!b.ok)throw new Error(b.error||"No eligible track");
-    score.textContent=Number(b.track.trendScore||0).toFixed(1);name.textContent=b.track.title+" · "+b.track.artist;
-    if(out)out.innerHTML="<div class='section-head'><div><h3>🧠 Today's Music Manager Decision</h3><span class='muted'>Trend score "+Number(b.track.trendScore||0).toFixed(1)+" · "+esc(b.track.rightsStatus)+"</span></div></div><div class='ai-result'><b>ChatGPT</b><br>"+esc(b.manager.chatgpt||"Unavailable")+"<br><br><b>Gemini</b><br>"+esc(b.manager.gemini||"Unavailable")+"</div>";
-  }catch(e){if(score)score.textContent="—";if(name)name.textContent="No eligible track yet";if(out)out.innerHTML="<div class='ai-result'>"+esc(e.message)+"</div>";}
-}
-
 function renderSettings(){
   title.textContent="Settings";
   view.innerHTML=`<div class="settings-card"><div class="section-head"><div><h3>Automation Controls</h3><span class="muted">One master Online / Offline control. When Online, the AI factory can generate and upload scheduled videos. When Offline, content automation and video uploads stop.</span></div></div><div class="settings-list">${setting("automationOnline","Automation Online","ON = AI workers can run and upload scheduled videos. OFF = workers stay idle and no video upload/publishing runs.",true)}</div></div><div class="settings-card" style="margin-top:16px"><div class="section-head"><div><h3>🛡️ AI Self-Heal</h3><span class="muted">ChatGPT + Google Gemini diagnose runtime failures; the server uses bounded retry/fallback instead of blindly changing code.</span></div><span id="selfHealBadge" class="badge">Checking…</span></div><div id="selfHealInfo" class="queue-meta">Checking reliability layer…</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="small-btn" onclick="checkSelfHeal()">↻ Scan Now</button><button class="small-btn" onclick="fixSelfHealNow()">🛠️ FIX NOW — ChatGPT + Gemini</button></div><pre id="selfHealResult" class="ai-result" style="margin-top:12px">No incident test run yet.</pre></div>`;
@@ -733,6 +648,85 @@ async function loadServerSettings(){
       save();
     }
   }catch(e){}
+}
+
+let musicLibraryPage=0;
+async function renderMusicLibrary(){
+  title.textContent="Music Library";
+  view.innerHTML=
+    '<div class="hero"><p class="eyebrow">ORIGINAL MUSIC INTELLIGENCE</p><h2>🎵 Music Library</h2><p>Manage your original tracks, trend scores, growth and daily AI promotion selection.</p></div>'+
+    '<div class="cards">'+
+      '<div class="card"><div class="metric-label">Library</div><div class="metric" id="musicLibraryCount">—</div><div class="metric-note">Total saved tracks</div></div>'+
+      '<div class="card"><div class="metric-label">Today’s AI Pick</div><div class="metric" id="musicTodayScore">—</div><div class="metric-note" id="musicTodayName">Loading…</div></div>'+
+      '<div class="card"><div class="metric-label">AI Manager</div><div class="metric">ChatGPT + Gemini</div><div class="metric-note">Trend + promotion strategy</div></div>'+
+    '</div>'+
+    '<div class="table-card"><div class="section-head"><div><h3>＋ Add Music</h3><span class="muted">Add a Spotify/YouTube release link and your own master audio.</span></div></div>'+
+      '<div class="form-grid"><label>Spotify or YouTube Link<input id="musicLibraryLink" placeholder="Spotify track or YouTube video URL"></label>'+
+      '<label>Rights<select id="musicLibraryRights"><option value="owned">OWNED — my original song</option><option value="authorized">AUTHORIZED</option><option value="metadata_only">METADATA ONLY</option></select></label></div>'+
+      '<div class="form-grid"><label>Original Master Audio<input id="musicLibraryAudio" type="file" accept="audio/*"></label>'+
+      '<label>Tags<input id="musicLibraryTags" placeholder="romantic, Bodo, sad"></label></div>'+
+      '<button class="primary" id="musicLibraryAddBtn">🎵 Add to Music Library</button><div id="musicLibraryResult" class="muted" style="margin-top:10px">Ready.</div></div>'+
+    '<div class="table-card"><div class="section-head"><div><h3>Track Intelligence</h3><span class="muted" id="musicLibraryMeta">Loading…</span></div>'+
+      '<div><input id="musicLibrarySearch" placeholder="Search title / artist"><button class="small-btn" id="musicLibrarySearchBtn">Search</button></div></div>'+
+      '<div class="table-wrap"><table class="table"><thead><tr><th>Track</th><th>Rights</th><th>Views</th><th>Growth</th><th>Trend</th><th>Promos</th><th>AI</th></tr></thead><tbody id="musicLibraryRows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div></div>'+
+    '<div class="table-card" id="musicManagerResult"><h3>🧠 Music Manager</h3><div class="ai-result">Loading today’s decision…</div></div>';
+  document.getElementById("musicLibraryAddBtn").onclick=musicLibraryAdd;
+  document.getElementById("musicLibrarySearchBtn").onclick=()=>{musicLibraryPage=0;loadMusicLibrary();};
+  await loadMusicLibrary();
+  await musicManagerToday();
+}
+async function loadMusicLibrary(){
+  const rows=document.getElementById("musicLibraryRows"),meta=document.getElementById("musicLibraryMeta");
+  if(!rows)return;
+  try{
+    const q=document.getElementById("musicLibrarySearch")?.value||"";
+    const r=await fetch(apiUrl("/api/music/library?page="+musicLibraryPage+"&limit=25&sort=trend&q="+encodeURIComponent(q)),{credentials:"include",cache:"no-store"});
+    const b=await r.json();
+    if(!r.ok||!b.ok)throw new Error(b.error||"Music Library unavailable");
+    document.getElementById("musicLibraryCount").textContent=Number(b.count||0).toLocaleString();
+    meta.textContent=(b.count||0)+" tracks";
+    rows.innerHTML=(b.tracks||[]).map(t=>'<tr><td><strong>'+esc(t.title||"Untitled")+'</strong><br><small>'+esc(t.artist||"")+'</small></td><td>'+esc(t.rightsStatus||"")+'</td><td>'+Number(t.views||0).toLocaleString()+'</td><td>'+Number(t.viewVelocity||0).toFixed(0)+'/day</td><td><strong>'+Number(t.trendScore||0).toFixed(1)+'</strong></td><td>'+Number(t.promotionCount||0)+'</td><td><button class="small-btn" data-music-ai="'+esc(t.id)+'">🧠 AI</button></td></tr>').join("")||'<tr><td colspan="7">No tracks yet.</td></tr>';
+    rows.querySelectorAll("[data-music-ai]").forEach(btn=>btn.onclick=()=>musicAnalyze(btn.getAttribute("data-music-ai")));
+  }catch(e){rows.innerHTML='<tr><td colspan="7">Music Library error: '+esc(e.message)+'</td></tr>';meta.textContent="";}
+}
+async function musicLibraryAdd(){
+  const out=document.getElementById("musicLibraryResult"),link=(document.getElementById("musicLibraryLink")?.value||"").trim(),rights=document.getElementById("musicLibraryRights")?.value||"owned",audio=document.getElementById("musicLibraryAudio")?.files?.[0],tags=(document.getElementById("musicLibraryTags")?.value||"").split(",").map(x=>x.trim()).filter(Boolean);
+  if(!link){out.textContent="Add a Spotify or YouTube link first.";return;}
+  const isSpotify=/spotify\\.com\\/track\\//i.test(link),isYouTube=/(youtube\\.com|youtu\\.be)/i.test(link);
+  if(!isSpotify&&!isYouTube){out.textContent="Use a valid Spotify track or YouTube video link.";return;}
+  out.textContent="🎵 Saving track…";
+  try{
+    const payload=isSpotify?{spotifyUrl:link,rightsStatus:rights,tags}:{youtubeUrl:link,rightsStatus:rights,tags};
+    const r=await fetch(apiUrl("/api/music/library/import"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(payload)});
+    const b=await r.json();if(!r.ok||!b.ok)throw new Error(b.error||"Could not add track");
+    let track=b.tracks[0];
+    if(audio&&track&&track.id&&rights!=="metadata_only"){
+      out.textContent="📤 Uploading original master…";
+      const ar=await fetch(apiUrl("/api/music/library/audio?id="+encodeURIComponent(track.id)+"&filename="+encodeURIComponent(audio.name)),{method:"POST",headers:{"Content-Type":audio.type||"audio/mpeg"},credentials:"include",body:audio});
+      const ab=await ar.json();if(!ar.ok||!ab.ok)throw new Error(ab.error||"Audio upload failed");track=ab.track;
+    }
+    out.textContent="✓ Added "+(track.title||"track")+(track.audioUrl?" · master attached":" · attach master before automatic promotion");
+    document.getElementById("musicLibraryLink").value="";document.getElementById("musicLibraryAudio").value="";
+    await loadMusicLibrary();await musicManagerToday();
+  }catch(e){out.textContent="Music Library error: "+e.message;}
+}
+async function musicAnalyze(id){
+  const out=document.getElementById("musicManagerResult");if(!out)return;
+  out.scrollIntoView({behavior:"smooth",block:"center"});
+  try{
+    const r=await fetch(apiUrl("/api/music/library/"+encodeURIComponent(id)+"/analyze"),{method:"POST",credentials:"include"}),b=await r.json();
+    if(!r.ok||!b.ok)throw new Error(b.error||"AI analysis failed");
+    out.innerHTML="<h3>🧠 Music Manager Analysis</h3><pre class='ai-result'>"+esc(JSON.stringify(b.analysis,null,2))+"</pre>";
+  }catch(e){out.innerHTML="<h3>🧠 Music Manager</h3><div class='ai-result'>"+esc(e.message)+"</div>";}
+}
+async function musicManagerToday(){
+  const score=document.getElementById("musicTodayScore"),name=document.getElementById("musicTodayName"),out=document.getElementById("musicManagerResult");if(!score)return;
+  try{
+    const r=await fetch(apiUrl("/api/music/manager/today"),{credentials:"include",cache:"no-store"}),b=await r.json();
+    if(!r.ok||!b.ok)throw new Error(b.error||"No eligible track yet");
+    score.textContent=Number(b.track.trendScore||0).toFixed(1);name.textContent=(b.track.title||"Track")+" · "+(b.track.artist||"");
+    out.innerHTML="<h3>🧠 Today's Music Manager Decision</h3><div class='ai-result'><b>ChatGPT</b><br>"+esc(b.manager.chatgpt||"Unavailable")+"<br><br><b>Gemini</b><br>"+esc(b.manager.gemini||"Unavailable")+"</div>";
+  }catch(e){score.textContent="—";name.textContent="No eligible track yet";out.innerHTML="<h3>🧠 Music Manager</h3><div class='ai-result'>"+esc(e.message)+"</div>";}
 }
 function setView(v){document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));({dashboard:renderDashboard,content:renderContent,"music-library":renderMusicLibrary,ai:renderAI,voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings}[v]||renderDashboard)();}
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));

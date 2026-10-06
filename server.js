@@ -1674,10 +1674,18 @@ async function upsertMusicTrack(input){
   row.trend_score=musicTrendScore({...row,promo_views:row.promo_views});
   const lookupColumn=row.spotify_url?"spotify_url":"youtube_url";
   const lookupValue=row[lookupColumn];
-  const {data:existing,error:lookupError}=await supabase.from("music_library").select("id").eq(lookupColumn,lookupValue).maybeSingle();
+  const {data:existing,error:lookupError}=await supabase.from("music_library").select("*").eq(lookupColumn,lookupValue).maybeSingle();
   if(lookupError)throw new Error("Music Library lookup failed: "+lookupError.message);
   let data,error;
   if(existing){
+    // Metadata/channel sync must never erase a manually attached original master
+    // or switch the user's currently active promotion track.
+    if(!String(input.audioUrl||"").trim() && existing.audio_url)row.audio_url=existing.audio_url;
+    row.status=existing.status||row.status;
+    row.promotion_count=Number(existing.promotion_count||row.promotion_count||0);
+    row.promo_views=Number(existing.promo_views||row.promo_views||0);
+    row.last_used_at=existing.last_used_at||null;
+    row.last_promoted_at=existing.last_promoted_at||null;
     ({data,error}=await supabase.from("music_library").update(row).eq("id",existing.id).select("*").single());
   }else{
     ({data,error}=await supabase.from("music_library").insert(row).select("*").single());

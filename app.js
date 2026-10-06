@@ -323,7 +323,65 @@ async function uploadFactoryVideo(){
 }
 function renderContent(){
   title.textContent="Content";
-  view.innerHTML=`<div class="table-card"><div class="section-head"><div><h3>Content Queue</h3><span class="muted">Ideas, planned videos and future AI-generated assets.</span></div><button class="primary" onclick="openModal()">＋ Add Content</button></div><div class="table-card" style="margin:14px 0;background:#0a1726"><div class="section-head"><div><h3>📤 Upload Video to Factory</h3><span class="muted">Add your own video to the media library.</span></div><span class="badge">Max 50 MB</span></div><div class="form-grid"><label>Video title<input id="factoryUploadTitle" placeholder="My original video"></label><label>Video file<input id="factoryUploadFile" type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.avi,.mkv,.mpeg,.mpg,.3gp,.wmv,.flv"></label></div><button class="primary full" onclick="uploadFactoryVideo()">📤 Upload to Factory</button><div id="factoryUploadResult" class="muted" style="margin-top:10px">Nothing uploaded yet.</div></div><table class="table"><thead><tr><th>Title</th><th>Category</th><th>Format</th><th>Language</th><th>Status</th></tr></thead><tbody>${data.content.map(x=>`<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.category)}</td><td>${esc(x.format)}</td><td>${esc(x.language)}</td><td><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></td></tr>`).join("")}</tbody></table></div>`;
+  view.innerHTML=`<div class="table-card">
+    <div class="section-head"><div><h3>Content Queue</h3><span class="muted">Ideas, planned videos and AI-generated assets.</span></div><button class="primary" onclick="openModal()">＋ Add Content</button></div>
+    <div class="table-card" style="margin:14px 0;background:#0a1726">
+      <div class="section-head"><div><h3>🎵 Original Music Promotion</h3><span class="muted">Paste your Spotify track link + upload your original audio. The factory analyzes the song, finds a strong hook, cuts it and builds a YouTube promo.</span></div><span class="badge ready">ORIGINAL SONG ONLY</span></div>
+      <label>Spotify Track Link<input id="musicSpotifyUrl" placeholder="https://open.spotify.com/track/..."></label>
+      <div class="form-grid">
+        <label>Original Song Audio<input id="musicAudioFile" type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,.mp3,.wav,.m4a"></label>
+        <label>Language<select id="musicPromoLanguage"><option>Hindi + Bodo</option><option>Hindi</option><option>Bodo</option><option>English</option></select></label>
+      </div>
+      <label>Promotion Notes<textarea id="musicPromoNotes" rows="2" placeholder="Optional: romantic, emotional, 90s Bollywood feel, artist CTA, etc."></textarea></label>
+      <div id="musicTrackInfo" class="muted" style="margin:8px 0">Spotify metadata will appear here.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="small-btn" onclick="readMusicTrack()">🔎 Read Spotify Track</button>
+        <button class="primary" onclick="createMusicPromotion()">🎬 Create Music Promo</button>
+      </div>
+      <div id="musicPromoResult" class="muted" style="margin-top:10px">The Spotify link identifies the release; the original audio file is used for the actual song clip.</div>
+    </div>
+    <div class="table-card" style="margin:14px 0;background:#0a1726">
+      <div class="section-head"><div><h3>📤 Upload Video to Factory</h3><span class="muted">Add your own video to the media library.</span></div><span class="badge">Max 50 MB</span></div>
+      <div class="form-grid"><label>Video title<input id="factoryUploadTitle" placeholder="My original video"></label><label>Video file<input id="factoryUploadFile" type="file" accept="video/*,.mp4,.mov,.m4v,.webm,.avi,.mkv,.mpeg,.mpg,.3gp,.wmv,.flv"></label></div>
+      <button class="primary full" onclick="uploadFactoryVideo()">📤 Upload to Factory</button><div id="factoryUploadResult" class="muted" style="margin-top:10px">Nothing uploaded yet.</div>
+    </div>
+    <table class="table"><thead><tr><th>Title</th><th>Category</th><th>Format</th><th>Language</th><th>Status</th></tr></thead><tbody>${data.content.map(x=>`<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.category)}</td><td>${esc(x.format)}</td><td>${esc(x.language)}</td><td><span class="badge ${statusClass(x.status)}">${esc(x.status)}</span></td></tr>`).join("")}</tbody></table>
+  </div>`;
+}
+async function readMusicTrack(){
+  const input=document.getElementById("musicSpotifyUrl"),info=document.getElementById("musicTrackInfo");
+  const url=(input?.value||"").trim(); if(!url){info.textContent="Paste a Spotify track link first.";return;}
+  info.textContent="Reading Spotify track…";
+  try{
+    const r=await fetch(apiUrl("/api/music/track?url="+encodeURIComponent(url)),{credentials:"include"});
+    const b=await r.json(); if(!r.ok||!b.ok)throw new Error(b.error||"Spotify metadata lookup failed");
+    info.innerHTML="<b>🎵 "+esc(b.track.title||"Unknown title")+"</b> · "+esc(b.track.artist||"Unknown artist")+"<br><small>Spotify track recognized. Your uploaded original audio will be used for the clip.</small>";
+  }catch(e){info.textContent="Spotify lookup failed: "+e.message;}
+}
+async function uploadMusicAudio(file){
+  const r=await fetch(apiUrl("/api/media/presign"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({filename:file.name,contentType:file.type||"audio/mpeg"})});
+  const b=await r.json(); if(!r.ok||!b.ok)throw new Error(b.error||"Could not prepare audio upload");
+  const put=await fetch(b.uploadUrl,{method:"PUT",headers:{"Content-Type":file.type||"audio/mpeg"},body:file});
+  if(!put.ok)throw new Error("Original audio upload failed (HTTP "+put.status+").");
+  return "https://"+location.host+"/"+b.pathname;
+}
+async function createMusicPromotion(){
+  const spotifyUrl=(document.getElementById("musicSpotifyUrl")?.value||"").trim();
+  const file=document.getElementById("musicAudioFile")?.files?.[0];
+  const language=document.getElementById("musicPromoLanguage")?.value||"Hindi + Bodo";
+  const notes=document.getElementById("musicPromoNotes")?.value||"";
+  const out=document.getElementById("musicPromoResult");
+  if(!spotifyUrl){out.textContent="Paste your Spotify track link first.";return;}
+  if(!file){out.textContent="Upload the original song audio too.";return;}
+  out.textContent="🎵 Uploading original audio…";
+  try{
+    await readMusicTrack();
+    const audioUrl=await uploadMusicAudio(file);
+    out.textContent="🤖 AI is transcribing the song and selecting the strongest hook…";
+    const r=await fetch(apiUrl("/api/music/promotion"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({spotifyUrl,audioUrl,language,notes})});
+    const b=await r.json(); if(!r.ok||!b.ok)throw new Error(b.error||"Music promotion failed");
+    out.innerHTML="✓ <b>"+esc(b.track?.title||"Music promo")+"</b> — "+esc(b.status)+"<br>🎯 Hook: "+esc(b.hook?.hookText||"Selected automatically")+"<br>"+(b.video?.url?'<a href="'+esc(b.video.url)+'" target="_blank" rel="noopener">Open YouTube promo</a>':"Video rendered and queued.");
+  }catch(e){out.textContent="Music promotion failed: "+e.message;}
 }
 function renderCategories(){
   title.textContent="Categories";

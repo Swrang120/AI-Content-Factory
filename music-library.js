@@ -28,35 +28,32 @@
     if(!document.getElementById(styleId)){
       var st=document.createElement("style");
       st.id=styleId;
-      st.textContent=".ml-premium{background:linear-gradient(135deg,#07111f 0%,#0b1730 55%,#17102d 100%);border:1px solid rgba(124,92,255,.25);border-radius:22px;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.28)}.ml-upload{background:linear-gradient(135deg,rgba(18,31,58,.96),rgba(31,18,61,.96));border:1px solid rgba(153,120,255,.38);border-radius:20px;padding:20px;box-shadow:0 12px 35px rgba(77,45,160,.18)}.ml-upload h3{margin:0 0 6px}.ml-upload .muted{color:#aeb8d3}.ml-file{width:100%;padding:14px;border:1px dashed rgba(178,154,255,.65);border-radius:14px;background:rgba(255,255,255,.035);color:#eaf0ff}.ml-title{width:100%;padding:13px 14px;border-radius:12px;border:1px solid rgba(150,132,255,.28);background:rgba(3,8,20,.5);color:#fff;box-sizing:border-box}.ml-btn{width:100%;margin-top:14px;padding:14px 18px;border:0;border-radius:13px;font-weight:800;color:#fff;background:linear-gradient(135deg,#6d5dfc,#a84dff);box-shadow:0 8px 25px rgba(120,76,255,.3)}.ml-status{margin-top:10px;color:#b9c5df;font-size:13px}.ml-active{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;background:rgba(107,91,255,.12);border:1px solid rgba(157,130,255,.25);color:#d8d0ff;font-size:12px;font-weight:700}";
+      st.textContent=".ml-premium{background:linear-gradient(145deg,#07111f,#0b1730 55%,#17102d);border:1px solid rgba(153,120,255,.24);border-radius:24px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.32);overflow:hidden}.ml-hero{padding:8px 4px 20px}.ml-hero h2{margin:6px 0;font-size:28px}.ml-hero p{margin:0;color:#aeb8d3}.ml-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}.ml-stat{padding:16px;border-radius:17px;background:linear-gradient(145deg,rgba(22,35,62,.96),rgba(30,18,56,.9));border:1px solid rgba(157,130,255,.2);min-width:0}.ml-stat-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8997b8}.ml-stat-value{margin-top:7px;font-size:19px;font-weight:800;color:#f5f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ml-stat-note{margin-top:4px;font-size:12px;color:#9eabc8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ml-upload{background:linear-gradient(145deg,rgba(22,31,57,.98),rgba(37,19,66,.95));border:1px solid rgba(168,139,255,.34);border-radius:22px;padding:20px;box-shadow:0 14px 42px rgba(65,37,130,.2)}.ml-active{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;background:linear-gradient(135deg,rgba(118,91,255,.2),rgba(180,72,255,.12));border:1px solid rgba(177,146,255,.28);color:#ded6ff;font-size:11px;font-weight:800;letter-spacing:.05em}.ml-upload h3{margin:14px 0 6px;font-size:21px}.ml-muted{color:#aeb8d3;font-size:13px;line-height:1.5}.ml-field{margin-top:14px}.ml-field label{display:block;color:#c9d1e6;font-size:12px;font-weight:700;margin-bottom:7px}.ml-title{width:100%;padding:13px 14px;border-radius:13px;border:1px solid rgba(150,132,255,.28);background:rgba(3,8,20,.62);color:#fff;box-sizing:border-box;outline:none}.ml-file{width:100%;box-sizing:border-box;padding:13px;border:1px dashed rgba(178,154,255,.55);border-radius:13px;background:rgba(255,255,255,.035);color:#eaf0ff}.ml-btn{width:100%;margin-top:14px;padding:14px 18px;border:0;border-radius:14px;font-weight:850;color:#fff;background:linear-gradient(135deg,#6d5dfc,#a84dff);box-shadow:0 10px 28px rgba(120,76,255,.28)}.ml-status{margin-top:10px;color:#b9c5df;font-size:12px;line-height:1.45}.ml-library{margin-top:14px;padding:18px;border-radius:20px;background:rgba(9,17,31,.72);border:1px solid rgba(145,158,194,.14)}.ml-library-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ml-library-head h3{margin:0}.ml-search-row{display:flex;gap:8px;width:min(100%,360px)}.ml-search-row input{min-width:0;flex:1}.ml-small-btn{border:1px solid rgba(157,130,255,.25);background:rgba(118,91,255,.1);color:#dcd5ff;border-radius:10px;padding:9px 11px;font-weight:700}.ml-table-wrap{overflow:auto;border-radius:14px;border:1px solid rgba(145,158,194,.1)}.ml-table{width:100%;border-collapse:collapse;min-width:640px}.ml-table th,.ml-table td{padding:12px;border-bottom:1px solid rgba(145,158,194,.09);text-align:left;font-size:12px}.ml-table th{color:#8491ae;font-size:10px;text-transform:uppercase;letter-spacing:.07em}.ml-table td{color:#dce4f6}.ml-table small{color:#8f9bb5}.ml-manager{margin-top:14px;padding:18px;border-radius:20px;background:linear-gradient(145deg,rgba(18,27,48,.96),rgba(29,18,51,.94));border:1px solid rgba(153,120,255,.2)}.ml-manager h3{margin:0 0 12px}.ml-ai-box{padding:14px;border-radius:14px;background:rgba(3,8,20,.4);border:1px solid rgba(157,130,255,.13);line-height:1.6;color:#cbd4e8}.ml-pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:10px}.ml-pager-actions{display:flex;gap:7px}@media(max-width:760px){.ml-premium{padding:12px;border-radius:18px}.ml-stat-grid{grid-template-columns:1fr}.ml-hero h2{font-size:24px}.ml-upload,.ml-library,.ml-manager{padding:15px}.ml-library-head{display:block}.ml-search-row{width:100%;margin-top:10px}.ml-table{min-width:590px}}"
       document.head.appendChild(st);
     }
     viewEl.innerHTML=
       '<div class="ml-premium">'+
-        '<div class="hero" style="background:transparent;padding:4px 4px 18px"><p class="eyebrow">ORIGINAL MUSIC PROMOTION</p><h2>🎵 Music Library</h2><p>Upload one master audio. That is the track the system promotes every day.</p></div>'+
-        '<div class="cards">'+
-          '<div class="card"><div class="metric-label">Library</div><div class="metric" id="mlCount">—</div><div class="metric-note">Saved tracks</div></div>'+
-          '<div class="card"><div class="metric-label">Today’s Track</div><div class="metric" id="mlTodayScore">—</div><div class="metric-note" id="mlTodayName">Loading…</div></div>'+
-          '<div class="card"><div class="metric-label">AI Manager</div><div class="metric">ChatGPT + Gemini</div><div class="metric-note">Promotion strategy</div></div>'+
+        '<div class="ml-hero"><p class="eyebrow">ORIGINAL MUSIC • DAILY PROMOTION</p><h2>🎵 Music Library</h2><p>One active song. One simple workflow. Your latest master is promoted every day.</p></div>'+
+        '<div class="ml-stat-grid">'+
+          '<div class="ml-stat"><div class="ml-stat-label">Library</div><div class="ml-stat-value" id="mlCount">—</div><div class="ml-stat-note">Saved tracks</div></div>'+
+          '<div class="ml-stat"><div class="ml-stat-label">Today</div><div class="ml-stat-value" id="mlTodayScore">—</div><div class="ml-stat-note" id="mlTodayName">Loading…</div></div>'+
+          '<div class="ml-stat"><div class="ml-stat-label">AI Strategy</div><div class="ml-stat-value">Smart Manager</div><div class="ml-stat-note">Promotion analysis</div></div>'+
         '</div>'+
         '<div class="ml-upload">'+
           '<div class="ml-active">● ACTIVE DAILY PROMOTION</div>'+
-          '<h3 style="margin-top:12px">Upload New Song</h3>'+
-          '<div class="muted">The newest uploaded audio automatically replaces the previous daily promotion track. Old tracks remain saved.</div>'+
-          '<div style="margin-top:15px"><input id="mlTitle" class="ml-title" placeholder="Song title (optional)"></div>'+
-          '<div style="margin-top:10px"><input id="mlAudio" class="ml-file" type="file" accept="audio/*"></div>'+
+          '<h3>Upload New Song</h3>'+
+          '<div class="ml-muted">Upload your original master. The newest upload automatically becomes the daily promotion track.</div>'+
+          '<div class="ml-field"><label>SONG TITLE <span class="ml-muted">(optional)</span></label><input id="mlTitle" class="ml-title" placeholder="Enter song title"></div>'+
+          '<div class="ml-field"><label>ORIGINAL MASTER AUDIO</label><input id="mlAudio" class="ml-file" type="file" accept="audio/*"></div>'+
           '<button class="ml-btn" id="mlAdd">🎵 Set as Daily Promotion</button>'+
-          '<div id="mlResult" class="ml-status">Ready.</div>'+
+          '<div id="mlResult" class="ml-status">Ready for your next release.</div>'+
         '</div>'+
-        '<div class="table-card" style="margin-top:16px">'+
-          '<div class="section-head"><div><h3>Track Library</h3><span class="muted" id="mlMeta">Loading…</span></div>'+
-            '<div><input id="mlSearch" placeholder="Search title / artist"><button class="small-btn" id="mlSearchBtn">Search</button></div>'+
-          '</div>'+
-          '<div class="table-wrap"><table class="table"><thead><tr><th>Track</th><th>Status</th><th>Views</th><th>Growth</th><th>Trend</th><th>Promos</th><th>AI</th></tr></thead>'+
-          '<tbody id="mlRows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>'+
-          '<div class="section-head" style="margin-top:14px"><span class="muted" id="mlPage">Page 1</span><div><button class="small-btn" id="mlPrev">← Previous</button><button class="small-btn" id="mlNext">Next →</button></div></div>'+
+        '<div class="ml-library">'+
+          '<div class="ml-library-head"><div><h3>Track Library</h3><span class="ml-muted" id="mlMeta">Loading…</span></div><div class="ml-search-row"><input id="mlSearch" class="ml-title" placeholder="Search title or artist"><button class="ml-small-btn" id="mlSearchBtn">Search</button></div></div>'+
+          '<div class="ml-table-wrap"><table class="ml-table"><thead><tr><th>Track</th><th>Status</th><th>Views</th><th>Growth</th><th>Trend</th><th>Promos</th><th>AI</th></tr></thead><tbody id="mlRows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>'+
+          '<div class="ml-pager"><span class="ml-muted" id="mlPage">Page 1</span><div class="ml-pager-actions"><button class="ml-small-btn" id="mlPrev">← Previous</button><button class="ml-small-btn" id="mlNext">Next →</button></div></div>'+
         '</div>'+
-        '<div class="table-card" id="mlManager"><h3>🧠 Music Manager</h3><div class="ai-result">Loading today’s decision…</div></div>'+
+        '<div class="ml-manager" id="mlManager"><h3>🧠 Music Manager</h3><div class="ml-ai-box">Loading today’s decision…</div></div>'+
       '</div>';
 
     document.getElementById("mlAdd").onclick=musicLibraryAdd;

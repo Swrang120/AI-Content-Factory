@@ -18,7 +18,10 @@ const SUPABASE_URL="https://zvtlptvlfzejnmykkcjb.supabase.co";
 // Prefer the explicitly configured current publishable key and never let an old
 // service-role value override the Music Library project/key pair.
 const SUPABASE_KEY=process.env.SUPABASE_PUBLISHABLE_KEY||"";
+const SUPABASE_SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||"";
 const supabase=(SUPABASE_URL&&SUPABASE_KEY)?createClient(SUPABASE_URL,SUPABASE_KEY):null;
+const supabaseAdmin=(SUPABASE_URL&&SUPABASE_SERVICE_KEY)?createClient(SUPABASE_URL,SUPABASE_SERVICE_KEY,{auth:{autoRefreshToken:false,persistSession:false}}):null;
+const MUSIC_STORAGE_BUCKET="music-library";
 const BLOB_TOKEN=process.env.BLOB_READ_WRITE_TOKEN||process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN||"";
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];
 app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io","https://ai-content-factory-swrang120.vercel.app","https://ai-content-factory-git-main-swrang120.vercel.app","https://ai-content-factory-zeta-ruby.vercel.app","https://ai-content-factory-4yj61h1a0-swrang120.vercel.app",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
@@ -567,19 +570,21 @@ async function transcribeMusicAudio(audioUrl){
   if(!r.ok)throw new Error(body?.error?.message||"Music transcription failed");
   return {text:String(body?.text||""),segments:Array.isArray(body?.segments)?body.segments:[]};
 }
-async function createMusicPromotionJob({spotifyUrl,audioUrl,language="Hindi + Bodo",notes="",req}){
-  const meta=await fetchSpotifyTrackMetadata(spotifyUrl);
-  if(!audioUrl)throw new Error("Upload the original song audio too. Spotify links provide track metadata, not a downloadable full song.");
+async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req}){
+  let meta;
+  if(spotifyUrl){ meta=await fetchSpotifyTrackMetadata(spotifyUrl); }
+  else { meta={spotifyUrl:null,title:String(title||"Original Song"),artist:String(artist||"Swrang Swargiary"),thumbnailUrl:thumbnailUrl||null,provider:"Supabase Storage"}; }
+  if(!audioUrl)throw new Error("Original song audio is missing.");
   const transcript=await transcribeMusicAudio(audioUrl);
   const hook=await chooseMusicHook(transcript.segments,meta.title,meta.artist);
   const id=jobId();
   const jobs=loadJobs();
   const topic=(meta.title||"Original Song")+" — Music Promotion";
-  const job={id,status:"music_hook_selected",topic,category:"Music Promotion",language,format:"Short Video",notes:"Spotify: "+meta.spotifyUrl+"\nArtist: "+meta.artist+"\nHook: "+hook.hookText+"\n"+String(notes||""),sourceText:transcript.text,sources:[meta.spotifyUrl],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,manualUpload:true,approved:true,music:{spotifyUrl:meta.spotifyUrl,title:meta.title,artist:meta.artist,thumbnailUrl:meta.thumbnailUrl,audioUrl,hookStartSeconds:hook.startSeconds,hookDurationSeconds:hook.durationSeconds,hookText:hook.hookText}};
+  const job={id,status:"music_hook_selected",topic,category:"Music Promotion",language,format:"Short Video",notes:(meta.spotifyUrl?"Spotify: "+meta.spotifyUrl+"\n":"")+"Artist: "+meta.artist+"\nHook: "+hook.hookText+"\n"+String(notes||""),sourceText:transcript.text,sources:meta.spotifyUrl?[meta.spotifyUrl]:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,manualUpload:true,approved:true,music:{spotifyUrl:meta.spotifyUrl,title:meta.title,artist:meta.artist,thumbnailUrl:meta.thumbnailUrl,audioUrl,hookStartSeconds:hook.startSeconds,hookDurationSeconds:hook.durationSeconds,hookText:hook.hookText}};
   jobs[id]=job;saveJobs(jobs);await persistJob(job);
   await setAgentState("manager","WORKING",10,"Music promotion order received",id);
   await setAgentState("research","WORKING",35,"Analyzing the original song and selecting the strongest hook",id);
-  job.script=hook.hookText||("Listen to "+(meta.title||"this original song")+" by "+(meta.artist||"the artist")+" on Spotify.");
+  job.script=hook.hookText||("Listen to "+(meta.title||"this original song")+" by "+(meta.artist||"the artist")+" — original music.");
   job.status="rendering";job.updatedAt=new Date().toISOString();saveJobs(jobs);await persistJob(job);
   await setAgentState("research","SLEEPING",100,"Best promotion hook selected",id);
   await setAgentState("editor","WORKING",65,"Cutting the original song hook into a promo video",id);
@@ -590,7 +595,7 @@ async function createMusicPromotionJob({spotifyUrl,audioUrl,language="Hindi + Bo
   const settings=await hydrateSettings();
   if(settings.autoPublish){
     await setAgentState("publisher","WORKING",95,"Uploading music promotion to YouTube",id);
-    const youtube=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:(meta.title||"Original Song")+" | Official Music Promo",description:"Original music promotion. Listen on Spotify: "+meta.spotifyUrl+"\nArtist: "+meta.artist,tags:["Music Promotion","Original Music",meta.artist].filter(Boolean),categoryId:"10",privacyStatus:"public",approved:true,automated:true,req});
+    const youtube=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:(meta.title||"Original Song")+" | Official Music Promo",description:"Original music promotion. "+(meta.spotifyUrl?"Listen on Spotify: "+meta.spotifyUrl+"\n":"")+"Artist: "+meta.artist,tags:["Music Promotion","Original Music",meta.artist].filter(Boolean),categoryId:"10",privacyStatus:"public",approved:true,automated:true,req});
     job.youtube=youtube;job.status="published";
   }
   job.updatedAt=new Date().toISOString();saveJobs(jobs);await persistJob(job);
@@ -673,10 +678,9 @@ async function generateAutomaticJob(item,req){
   if(await autoJobExists(id))return {ok:true,skipped:true,jobId:id,reason:"slot_already_created"};
   if(item.category==="Music Promotion"){
     try{
-      await syncConfiguredMusicSourceChannels(req);
       const track=await selectDailyMusicTrack(req);
       const manager=await runMusicManagerAnalysis(track);
-      const result=await createMusicPromotionJob({spotifyUrl:track.spotify_url,audioUrl:track.audio_url,language:item.language,notes:"Daily Music Manager selection. Trend score "+track.trend_score+". AI analysis: "+manager.chatgpt,req});
+      const result=await createMusicPromotionJob({spotifyUrl:track.spotify_url,audioUrl:track.audio_url,title:track.title,artist:track.artist,thumbnailUrl:track.artwork_url,language:item.language,notes:"Daily Music Manager selection. Trend score "+track.trend_score+". AI analysis: "+manager.chatgpt,req});
       if(supabase){
         await supabase.from("music_library").update({promotion_count:Number(track.promotion_count||0)+1,last_promoted_at:new Date().toISOString(),last_used_at:new Date().toISOString(),ai_analysis:manager,updated_at:new Date().toISOString()}).eq("id",track.id);
       }
@@ -1959,48 +1963,49 @@ app.get("/api/music/manager/today",requireAppKey,async(req,res)=>{
 });
 app.post("/api/music/library/upload-token",requireAppKey,async(req,res)=>{
   try{
-    if(!supabase)throw new Error("Supabase is not configured for Music Library.");
-    const {issueSignedToken,presignUrl}=await import("@vercel/blob");
+    if(!supabaseAdmin)throw new Error("Supabase server Storage is not configured. Add SUPABASE_SERVICE_ROLE_KEY in Vercel.");
     const body=req.body&&typeof req.body==="object"?req.body:{};
     const filename=String(body.filename||"original-audio.mp3").replace(/[^a-zA-Z0-9._-]/g,"_");
     const titleRaw=String(body.title||"").trim();
     const title=titleRaw||filename.replace(/\.[^.]+$/,"").replace(/[_-]+/g," ").trim()||"Original Music";
     const id=crypto.randomUUID();
-    const pathname="music-library/"+id+"-"+Date.now()+"-"+filename;
-    const token=await issueSignedToken({operations:["put"],validUntil:Date.now()+15*60*1000});
-    const signed=await presignUrl(token,{pathname,operation:"put",validUntil:Date.now()+15*60*1000});
-    res.json({ok:true,id,title,filename,pathname,presignedUrl:signed.presignedUrl});
+    const pathname="original/"+id+"-"+Date.now()+"-"+filename;
+    const {data,error}=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).createSignedUploadUrl(pathname,{upsert:false});
+    if(error||!data?.token)throw new Error("Could not create Supabase Storage upload URL: "+(error?.message||"unknown error"));
+    const base=SUPABASE_URL.replace(/\/$/,"");
+    const encodedPath=pathname.split("/").map(encodeURIComponent).join("/");
+    const uploadUrl=base+"/storage/v1/object/upload/sign/"+encodeURIComponent(MUSIC_STORAGE_BUCKET)+"/"+encodedPath+"?token="+encodeURIComponent(data.token);
+    const publicUrl=base+"/storage/v1/object/public/"+encodeURIComponent(MUSIC_STORAGE_BUCKET)+"/"+encodedPath;
+    res.json({ok:true,id,title,filename,pathname,uploadUrl,publicUrl});
   }catch(e){
-    console.error("Music master presign failed:",e);
+    console.error("Supabase music presign failed:",e);
     res.status(400).json({ok:false,error:safeErrorMessage(e)});
   }
 });
 
 app.post("/api/music/library/activate-upload",requireAppKey,async(req,res)=>{
   try{
-    if(!supabase)throw new Error("Supabase is not configured for Music Library.");
+    if(!supabaseAdmin)throw new Error("Supabase server Storage is not configured.");
     const pathname=String(req.body?.pathname||"").trim();
     const id=String(req.body?.id||"").trim();
     const title=String(req.body?.title||"Original Music").trim()||"Original Music";
     if(!pathname||!id)throw new Error("Upload session information is missing.");
-    const {head}=await import("@vercel/blob");
-    const blob=await head(pathname,{...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
-    if(!blob?.url)throw new Error("Uploaded audio could not be verified in Vercel Blob.");
+    const folder=pathname.split("/").slice(0,-1).join("/");
+    const filename=pathname.split("/").pop();
+    const {data:objects,error:listError}=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).list(folder,{search:filename,limit:1});
+    if(listError)throw new Error("Supabase Storage verification failed: "+listError.message);
+    if(!Array.isArray(objects)||!objects.some(x=>x.name===filename))throw new Error("Uploaded audio could not be verified in Supabase Storage.");
     const now=new Date().toISOString();
-    const {error:deactivateError}=await supabase.from("music_library").update({status:"paused",updated_at:now}).eq("status","active");
+    const db=supabaseAdmin;
+    const {error:deactivateError}=await db.from("music_library").update({status:"paused",updated_at:now}).eq("status","active");
     if(deactivateError)throw new Error("Could not switch active promotion track: "+deactivateError.message);
-    const row={
-      id,spotify_url:null,youtube_url:null,spotify_track_id:null,youtube_video_id:null,
-      title,artist:"Swrang Swargiary",artwork_url:null,audio_url:blob.url,rights_status:"owned",status:"active",
-      views:0,likes:0,comments:0,view_velocity:0,engagement_rate:0,trend_score:0,promotion_count:0,promo_views:0,
-      last_promoted_at:null,last_used_at:null,last_metrics_at:null,tags:["Original Master"],ai_analysis:null,
-      source_metrics:{upload:"direct_blob"},created_at:now,updated_at:now
-    };
-    const {data,error}=await supabase.from("music_library").insert(row).select("*").single();
+    const audioUrl=SUPABASE_URL.replace(/\/$/,"")+"/storage/v1/object/public/"+encodeURIComponent(MUSIC_STORAGE_BUCKET)+"/"+pathname.split("/").map(encodeURIComponent).join("/");
+    const row={id,spotify_url:null,youtube_url:null,spotify_track_id:null,youtube_video_id:null,title,artist:"Swrang Swargiary",artwork_url:null,audio_url:audioUrl,rights_status:"owned",status:"active",views:0,likes:0,comments:0,view_velocity:0,engagement_rate:0,trend_score:0,promotion_count:0,promo_views:0,last_promoted_at:null,last_used_at:null,last_metrics_at:null,tags:["Original Master"],ai_analysis:null,source_metrics:{upload:"supabase_storage"},created_at:now,updated_at:now};
+    const {data,error}=await db.from("music_library").insert(row).select("*").single();
     if(error)throw new Error("Music Library save failed: "+error.message);
     res.json({ok:true,track:publicMusicTrack(data),activePromotionTrack:true});
   }catch(e){
-    console.error("Music master activation failed:",e);
+    console.error("Supabase music activation failed:",e);
     res.status(400).json({ok:false,error:safeErrorMessage(e)});
   }
 });

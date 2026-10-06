@@ -520,6 +520,81 @@ async function getRemotionBundle(){
   }
   return REMOTION_BUNDLE_PROMISE;
 }
+async function fetchSpotifyTrackMetadata(spotifyUrl){
+  const raw=String(spotifyUrl||"").trim();
+  if(!/^https?:\/\/(open\.)?spotify\.com\/track\/[A-Za-z0-9]+/i.test(raw))throw new Error("Enter a valid Spotify track link.");
+  const url="https://open.spotify.com/oembed?url="+encodeURIComponent(raw);
+  const r=await fetch(url,{headers:{"Accept":"application/json"}});
+  if(!r.ok)throw new Error("Could not read Spotify track metadata (HTTP "+r.status+").");
+  const body=await r.json();
+  const title=String(body?.title||"").trim();
+  const author=String(body?.author_name||"").trim();
+  return {spotifyUrl:raw,title,artist:author,thumbnailUrl:body?.thumbnail_url||null,provider:"Spotify"};
+}
+async function chooseMusicHook(transcriptSegments,title,artist){
+  const segments=Array.isArray(transcriptSegments)?transcriptSegments.filter(x=>x&&x.text):[];
+  if(!segments.length)return {startSeconds:0,durationSeconds:25,hookText:""};
+  const compact=segments.map((x,i)=>({i,start:Number(x.start)||0,end:Number(x.end)||0,text:String(x.text||"").trim().slice(0,240)}));
+  try{
+    const out=await generateWithChatGPT("music_promotion_hook",{title,artist,segments:compact,requirement:"Choose the strongest emotionally memorable/original hook for a short music promotion. Return ONLY JSON: {index,startSeconds,endSeconds,hookText,reason}. Prefer a coherent line or 2-3 connected segments. Never reproduce more lyric text than is present in the supplied transcript."});
+    const cleaned=String(out||"").replace(/^\s*\`\`\`json\s*/i,"").replace(/\s*\`\`\`\s*$/,"").trim();
+    const pick=JSON.parse(cleaned);
+    const start=Math.max(0,Number(pick.startSeconds));
+    const end=Math.max(start+8,Number(pick.endSeconds));
+    return {startSeconds:start,durationSeconds:Math.min(30,end-start),hookText:String(pick.hookText||"").slice(0,500),reason:String(pick.reason||"").slice(0,500)};
+  }catch{
+    const first=compact[0];
+    return {startSeconds:first.start,durationSeconds:Math.min(25,Math.max(8,first.end-first.start)),hookText:first.text,reason:"Fallback hook selection"};
+  }
+}
+async function transcribeMusicAudio(audioUrl){
+  if(!process.env.OPENAI_API_KEY)throw new Error("OPENAI_API_KEY is required to analyze the music hook.");
+  const asset=await fetch(audioUrl);
+  if(!asset.ok)throw new Error("Could not fetch the uploaded original audio.");
+  const buffer=Buffer.from(await asset.arrayBuffer());
+  const blob=new Blob([buffer],{type:asset.headers.get("content-type")||"audio/mpeg"});
+  const form=new FormData();
+  form.append("file",blob,"original-song.mp3");
+  form.append("model",process.env.OPENAI_TRANSCRIBE_MODEL||"gpt-4o-mini-transcribe");
+  form.append("response_format","verbose_json");
+  const r=await fetch("https://api.openai.com/v1/audio/transcriptions",{method:"POST",headers:{Authorization:"Bearer "+process.env.OPENAI_API_KEY},body:form});
+  const body=await r.json();
+  if(!r.ok)throw new Error(body?.error?.message||"Music transcription failed");
+  return {text:String(body?.text||""),segments:Array.isArray(body?.segments)?body.segments:[]};
+}
+async function createMusicPromotionJob({spotifyUrl,audioUrl,language="Hindi + Bodo",notes="",req}){
+  const meta=await fetchSpotifyTrackMetadata(spotifyUrl);
+  if(!audioUrl)throw new Error("Upload the original song audio too. Spotify links provide track metadata, not a downloadable full song.");
+  const transcript=await transcribeMusicAudio(audioUrl);
+  const hook=await chooseMusicHook(transcript.segments,meta.title,meta.artist);
+  const id=jobId();
+  const jobs=loadJobs();
+  const topic=(meta.title||"Original Song")+" — Music Promotion";
+  const job={id,status:"music_hook_selected",topic,category:"Music Promotion",language,format:"Short Video",notes:"Spotify: "+meta.spotifyUrl+"\nArtist: "+meta.artist+"\nHook: "+hook.hookText+"\n"+String(notes||""),sourceText:transcript.text,sources:[meta.spotifyUrl],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,manualUpload:true,approved:true,music:{spotifyUrl:meta.spotifyUrl,title:meta.title,artist:meta.artist,thumbnailUrl:meta.thumbnailUrl,audioUrl,hookStartSeconds:hook.startSeconds,hookDurationSeconds:hook.durationSeconds,hookText:hook.hookText}};
+  jobs[id]=job;saveJobs(jobs);await persistJob(job);
+  await setAgentState("manager","WORKING",10,"Music promotion order received",id);
+  await setAgentState("research","WORKING",35,"Analyzing the original song and selecting the strongest hook",id);
+  job.script=hook.hookText||("Listen to "+(meta.title||"this original song")+" by "+(meta.artist||"the artist")+" on Spotify.");
+  job.status="rendering";job.updatedAt=new Date().toISOString();saveJobs(jobs);await persistJob(job);
+  await setAgentState("research","SLEEPING",100,"Best promotion hook selected",id);
+  await setAgentState("editor","WORKING",65,"Cutting the original song hook into a promo video",id);
+  job.renderedVideoUrl=await renderFactoryVideo(job,req);
+  job.status="rendered";job.updatedAt=new Date().toISOString();saveJobs(jobs);await persistJob(job);
+  await setAgentState("editor","SLEEPING",100,"Music promo video rendered",id);
+  await setAgentState("qa","WORKING",90,"Checking music source and promo metadata",id);
+  const settings=await hydrateSettings();
+  if(settings.autoPublish){
+    await setAgentState("publisher","WORKING",95,"Uploading music promotion to YouTube",id);
+    const youtube=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:(meta.title||"Original Song")+" | Official Music Promo",description:"Original music promotion. Listen on Spotify: "+meta.spotifyUrl+"\nArtist: "+meta.artist,tags:["Music Promotion","Original Music",meta.artist].filter(Boolean),categoryId:"10",privacyStatus:"public",approved:true,automated:true,req});
+    job.youtube=youtube;job.status="published";
+  }
+  job.updatedAt=new Date().toISOString();saveJobs(jobs);await persistJob(job);
+  await setAgentState("qa","SLEEPING",100,"Music promo QA complete",id);
+  await setAgentState("publisher","SLEEPING",100,job.status==="published"?"Music promo published":"Music promo ready",id);
+  await setAgentState("manager","SLEEPING",100,"Music promotion order complete",id);
+  return {ok:true,jobId:id,status:job.status,track:meta,hook,music:job.music,video:job.youtube||null,renderedVideoUrl:job.renderedVideoUrl};
+}
+
 async function renderFactoryVideo(job,req){
   const {createSandbox,addBundleToSandbox,renderMediaOnVercel,uploadToVercelBlob}=await import("@remotion/vercel");
   const bundleDir=await getRemotionBundle();
@@ -528,12 +603,15 @@ async function renderFactoryVideo(job,req){
   const origin=((req.headers["x-forwarded-proto"]||req.protocol)+"//"+req.get("host"));
   const audioUrl=job.voice?.file?new URL(job.voice.file,origin).toString():"";
   const script=typeof job.script==="string"?job.script:(job.script?.output||job.script?.text||JSON.stringify(job.script||""));
+  const musicUrl=job.music?.audioUrl||"";
+  const musicStartSeconds=Math.max(0,Number(job.music?.hookStartSeconds)||0);
+  const musicDurationSeconds=Math.max(1,Number(job.music?.hookDurationSeconds)||25);
   const title=job.title||job.topic||"AI Content Factory";
   const {sandboxFilePath}=await renderMediaOnVercel({
     sandbox,
     serveUrl,
     compositionId:"FactoryVideo",
-    inputProps:{title,script,audioUrl,durationSeconds:45},
+    inputProps:{title,script,audioUrl,musicUrl,musicStartSeconds,musicDurationSeconds,spotifyUrl:job.music?.spotifyUrl||"",artist:job.music?.artist||"",durationSeconds:job.music?30:45},
     codec:"h264",
     outputFile:"/tmp/factory-video.mp4"
   });
@@ -1494,6 +1572,18 @@ app.post("/api/factory/settings",requireAppKey,async(req,res)=>{
     console.error("Settings save failed:",e);
     return res.status(500).json({ok:false,error:safeErrorMessage(e)});
   }
+});
+app.post("/api/music/promotion",requireAppKey,async(req,res)=>{
+  try{
+    const spotifyUrl=String(req.body?.spotifyUrl||"").trim();
+    const audioUrl=String(req.body?.audioUrl||"").trim();
+    const language=String(req.body?.language||"Hindi + Bodo");
+    const notes=String(req.body?.notes||"");
+    if(!spotifyUrl)return res.status(400).json({ok:false,error:"Spotify track link is required."});
+    if(!audioUrl)return res.status(400).json({ok:false,error:"Original song audio is required. Spotify does not provide a full-track download endpoint."});
+    const result=await createMusicPromotionJob({spotifyUrl,audioUrl,language,notes,req});
+    return res.json(result);
+  }catch(e){return res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 app.post("/api/media/presign",requireAppKey,async(req,res)=>{
   try{

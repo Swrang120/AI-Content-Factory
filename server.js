@@ -666,6 +666,20 @@ async function autoJobExists(id){
 async function generateAutomaticJob(item,req){
   const id=autoSlotId(item);
   if(await autoJobExists(id))return {ok:true,skipped:true,jobId:id,reason:"slot_already_created"};
+  if(item.category==="Music Promotion"){
+    try{
+      const track=await selectDailyMusicTrack(req);
+      const manager=await runMusicManagerAnalysis(track);
+      const result=await createMusicPromotionJob({spotifyUrl:track.spotify_url,audioUrl:track.audio_url,language:item.language,notes:"Daily Music Manager selection. Trend score "+track.trend_score+". AI analysis: "+manager.chatgpt,req});
+      if(supabase){
+        await supabase.from("music_library").update({promotion_count:Number(track.promotion_count||0)+1,last_promoted_at:new Date().toISOString(),last_used_at:new Date().toISOString(),ai_analysis:manager,updated_at:new Date().toISOString()}).eq("id",track.id);
+      }
+      return {...result,automaticMusic:true,selectedTrack:publicMusicTrack(track),manager};
+    }catch(error){
+      await setAgentState("manager","ERROR",100,"Music Manager could not select/publish a track: "+safeErrorMessage(error),id);
+      return {ok:false,skipped:true,reason:"music_manager_error",error:safeErrorMessage(error),jobId:id};
+    }
+  }
   const jobs=loadJobs();
   await setAgentState("manager","WORKING",8,"Starting scheduled production",id);
   await setAgentState("research","WORKING",15,"Finding a verified topic and research direction",id);
@@ -1573,6 +1587,230 @@ app.post("/api/factory/settings",requireAppKey,async(req,res)=>{
     return res.status(500).json({ok:false,error:safeErrorMessage(e)});
   }
 });
+
+function parseMusicLink(input){
+  const raw=String(input||"").trim();
+  if(!raw)return {url:null,type:null,id:null};
+  try{
+    const u=new URL(raw);
+    if(u.hostname.includes("spotify.com")){
+      const m=u.pathname.match(/\/track\/([A-Za-z0-9]+)/);
+      return {url:raw,type:m?"spotify":null,id:m?.[1]||null};
+    }
+    if(u.hostname.includes("youtube.com")||u.hostname==="youtu.be"){
+      const id=u.hostname==="youtu.be"?u.pathname.slice(1).split(/[?&#/]/)[0]:(u.searchParams.get("v")||u.pathname.match(/\/shorts\/([^/?]+)/)?.[1]||u.pathname.match(/\/watch\/([^/?]+)/)?.[1]||"");
+      return {url:raw,type:id?"youtube":null,id:id||null};
+    }
+  }catch(_){}
+  return {url:raw,type:null,id:null};
+}
+function clampNumber(v,min=0,max=100){
+  const n=Number(v); return Number.isFinite(n)?Math.max(min,Math.min(max,n)):min;
+}
+function musicTrendScore(track){
+  const velocity=Math.max(0,Number(track.view_velocity)||0);
+  const engagement=Math.max(0,Number(track.engagement_rate)||0);
+  const views=Math.max(0,Number(track.views)||0);
+  const promoViews=Math.max(0,Number(track.promo_views)||0);
+  const freshness=track.last_promoted_at?Math.min(1,Math.max(0,(Date.now()-new Date(track.last_promoted_at).getTime())/(7*86400000))):1;
+  const raw=Math.log10(views+1)*8 + Math.log10(velocity+1)*22 + Math.min(20,engagement*100) + Math.log10(promoViews+1)*5 + freshness*8;
+  return Math.round(clampNumber(raw,0,100)*100)/100;
+}
+async function upsertMusicTrack(input){
+  if(!supabase)throw new Error("Supabase is not configured for Music Library.");
+  const parsedSpotify=parseMusicLink(input.spotifyUrl);
+  const parsedYouTube=parseMusicLink(input.youtubeUrl);
+  if(parsedSpotify.type!=="spotify" && parsedYouTube.type!=="youtube")throw new Error("Add a valid Spotify track link or YouTube video link.");
+  let meta={title:String(input.title||"").trim(),artist:String(input.artist||"").trim(),artworkUrl:String(input.artworkUrl||"").trim()};
+  if(parsedSpotify.type==="spotify"){
+    try{meta=await fetchSpotifyTrackMetadata(parsedSpotify.url);}catch(_){}
+  }
+  let metrics={views:Number(input.views)||0,likes:Number(input.likes)||0,comments:Number(input.comments)||0};
+  if(parsedYouTube.type==="youtube"){
+    try{
+      const yt=await youtube(input.req);
+      const r=await yt.videos.list({part:"snippet,statistics",id:parsedYouTube.id});
+      const v=r.data.items?.[0];
+      if(v){
+        meta.title=meta.title||v.snippet?.title||"";
+        meta.artist=meta.artist||v.snippet?.channelTitle||"";
+        meta.artworkUrl=meta.artworkUrl||v.snippet?.thumbnails?.high?.url||v.snippet?.thumbnails?.default?.url||"";
+        metrics={views:Number(v.statistics?.viewCount||0),likes:Number(v.statistics?.likeCount||0),comments:Number(v.statistics?.commentCount||0)};
+      }
+    }catch(_){}
+  }
+  const engagement=(metrics.views>0)?(metrics.likes+metrics.comments)/metrics.views:0;
+  const row={
+    spotify_url:parsedSpotify.type==="spotify"?parsedSpotify.url:(input.spotifyUrl||null),
+    youtube_url:parsedYouTube.type==="youtube"?parsedYouTube.url:(input.youtubeUrl||null),
+    spotify_track_id:parsedSpotify.type==="spotify"?parsedSpotify.id:(input.spotifyTrackId||null),
+    youtube_video_id:parsedYouTube.type==="youtube"?parsedYouTube.id:(input.youtubeVideoId||null),
+    title:meta.title||"Untitled Track",
+    artist:meta.artist||"Unknown Artist",
+    artwork_url:meta.artworkUrl||null,
+    audio_url:String(input.audioUrl||"").trim()||null,
+    rights_status:["owned","authorized","metadata_only"].includes(String(input.rightsStatus||"owned"))?String(input.rightsStatus||"owned"):"owned",
+    status:"active",
+    views:metrics.views,likes:metrics.likes,comments:metrics.comments,
+    view_velocity:Number(input.viewVelocity)||0,
+    engagement_rate:engagement,
+    promotion_count:Number(input.promotionCount)||0,
+    promo_views:Number(input.promoViews)||0,
+    tags:Array.isArray(input.tags)?input.tags.map(String).slice(0,30):[],
+    source_metrics:{youtube:parsedYouTube.type==="youtube"?metrics:null,spotify:parsedSpotify.type==="spotify"?{available:true}:null},
+    updated_at:new Date().toISOString()
+  };
+  row.trend_score=musicTrendScore({...row,promo_views:row.promo_views});
+  const conflict=row.spotify_url? "spotify_url" : "youtube_url";
+  const {data,error}=await supabase.from("music_library").upsert(row,{onConflict:conflict}).select("*").single();
+  if(error)throw new Error("Music Library save failed: "+error.message);
+  return data;
+}
+function publicMusicTrack(row){
+  return {
+    id:row.id,spotifyUrl:row.spotify_url,youtubeUrl:row.youtube_url,
+    spotifyTrackId:row.spotify_track_id,youtubeVideoId:row.youtube_video_id,
+    title:row.title,artist:row.artist,artworkUrl:row.artwork_url,audioUrl:row.audio_url,
+    rightsStatus:row.rights_status,status:row.status,views:Number(row.views||0),likes:Number(row.likes||0),comments:Number(row.comments||0),
+    viewVelocity:Number(row.view_velocity||0),engagementRate:Number(row.engagement_rate||0),trendScore:Number(row.trend_score||0),
+    promotionCount:Number(row.promotion_count||0),promoViews:Number(row.promo_views||0),
+    lastPromotedAt:row.last_promoted_at,lastUsedAt:row.last_used_at,lastMetricsAt:row.last_metrics_at,
+    tags:row.tags||[],aiAnalysis:row.ai_analysis||null,sourceMetrics:row.source_metrics||null,createdAt:row.created_at,updatedAt:row.updated_at
+  };
+}
+async function refreshMusicTrack(id,req){
+  if(!supabase)throw new Error("Supabase is not configured.");
+  const {data:row,error}=await supabase.from("music_library").select("*").eq("id",id).maybeSingle();
+  if(error||!row)throw new Error("Music track not found.");
+  let metrics={views:Number(row.views||0),likes:Number(row.likes||0),comments:Number(row.comments||0)};
+  const parsed=parseMusicLink(row.youtube_url||"");
+  if(parsed.type==="youtube"){
+    try{
+      const yt=await youtube(req);
+      const r=await yt.videos.list({part:"snippet,statistics",id:parsed.id});
+      const v=r.data.items?.[0];
+      if(v)metrics={views:Number(v.statistics?.viewCount||0),likes:Number(v.statistics?.likeCount||0),comments:Number(v.statistics?.commentCount||0)};
+    }catch(_){}
+  }
+  const prevViews=Number(row.views||0), delta=Math.max(0,metrics.views-prevViews);
+  const velocity=delta/Math.max(1,(row.last_metrics_at?Date.now()-new Date(row.last_metrics_at).getTime():86400000)/86400000);
+  const engagement=metrics.views?(metrics.likes+metrics.comments)/metrics.views:0;
+  const next={...row,views:metrics.views,likes:metrics.likes,comments:metrics.comments,view_velocity:velocity,engagement_rate:engagement,last_metrics_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  next.trend_score=musicTrendScore(next);
+  const {data,error:updateError}=await supabase.from("music_library").update({views:next.views,likes:next.likes,comments:next.comments,view_velocity:next.view_velocity,engagement_rate:next.engagement_rate,trend_score:next.trend_score,last_metrics_at:next.last_metrics_at,source_metrics:{...(row.source_metrics||{}),youtube:parsed.type==="youtube"?metrics:(row.source_metrics?.youtube||null)},updated_at:next.updated_at}).eq("id",id).select("*").single();
+  if(updateError)throw new Error("Music metrics refresh failed: "+updateError.message);
+  return data;
+}
+async function selectDailyMusicTrack(req){
+  if(!supabase)throw new Error("Supabase is not configured.");
+  const {data,error}=await supabase.from("music_library").select("*").eq("status","active").in("rights_status",["owned","authorized"]).not("audio_url","is",null).order("trend_score",{ascending:false}).order("last_used_at",{ascending:true,nullsFirst:true}).limit(100);
+  if(error)throw new Error("Music Library selection failed: "+error.message);
+  if(!data?.length)throw new Error("No eligible original/authorized track with audio is available for today's Music Promotion.");
+  const now=Date.now();
+  const scored=data.map((t,i)=>{
+    const daysSince=t.last_used_at?Math.max(0,(now-new Date(t.last_used_at).getTime())/86400000):999;
+    const cooldown=Math.min(30,daysSince)*1.4;
+    const freshness=i<10?10:0;
+    return {...t,_managerScore:Number(t.trend_score||0)+cooldown+freshness};
+  }).sort((a,b)=>b._managerScore-a._managerScore);
+  return scored[0];
+}
+async function runMusicManagerAnalysis(track){
+  const fields={track:{title:track.title,artist:track.artist,views:track.views,likes:track.likes,comments:track.comments,viewVelocity:track.view_velocity,engagementRate:track.engagement_rate,trendScore:track.trend_score,promotionCount:track.promotion_count,promoViews:track.promo_views},goal:"Choose a promotion angle for this original/authorized track. Explain why it is promising using only supplied metrics. Do not claim guaranteed virality."};
+  const [chat,gemi]=await Promise.allSettled([
+    generateWithChatGPT("music_manager_strategy",fields),
+    fallbackTextGeneration("music_manager_trend_analysis",fields)
+  ]);
+  return {chatgpt:chat.status==="fulfilled"?String(chat.value).slice(0,4000):"Unavailable: "+safeErrorMessage(chat.reason),gemini:gemi.status==="fulfilled"?String(gemi.value).slice(0,4000):"Unavailable: "+safeErrorMessage(gemi.reason)};
+}
+
+
+app.post("/api/music/library/import",requireAppKey,async(req,res)=>{
+  try{
+    const tracks=Array.isArray(req.body?.tracks)?req.body.tracks:[req.body||{}];
+    if(!tracks.length)return res.status(400).json({ok:false,error:"At least one Spotify or YouTube link is required."});
+    const results=[];
+    for(const input of tracks.slice(0,100)){
+      results.push(publicMusicTrack(await upsertMusicTrack({...input,req})));
+    }
+    res.json({ok:true,tracks:results,count:results.length});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.get("/api/music/library",requireAppKey,async(req,res)=>{
+  try{
+    if(!supabase)throw new Error("Supabase is not configured for Music Library.");
+    const limit=Math.max(1,Math.min(100,Number(req.query.limit)||25));
+    const page=Math.max(0,Number(req.query.page)||0);
+    const sort=["trend","views","recent","used"].includes(String(req.query.sort||"trend"))?String(req.query.sort||"trend"):"trend";
+    const q=String(req.query.q||"").trim();
+    let query=supabase.from("music_library").select("*",{count:"exact"});
+    if(q)query=query.or("title.ilike.%"+q.replace(/[%_]/g,"")+"%,artist.ilike.%"+q.replace(/[%_]/g,"")+"%");
+    if(sort==="views")query=query.order("views",{ascending:false});
+    else if(sort==="recent")query=query.order("created_at",{ascending:false});
+    else if(sort==="used")query=query.order("last_used_at",{ascending:true,nullsFirst:true});
+    else query=query.order("trend_score",{ascending:false}).order("updated_at",{ascending:false});
+    const from=page*limit; const to=from+limit-1;
+    const {data,error,count}=await query.range(from,to);
+    if(error)throw new Error(error.message);
+    res.json({ok:true,tracks:(data||[]).map(publicMusicTrack),count:count||0,page,limit,hasMore:(count||0)>to+1});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.get("/api/music/library/:id",requireAppKey,async(req,res)=>{
+  try{
+    const {data,error}=await supabase.from("music_library").select("*").eq("id",req.params.id).maybeSingle();
+    if(error||!data)return res.status(404).json({ok:false,error:"Music track not found."});
+    res.json({ok:true,track:publicMusicTrack(data)});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.patch("/api/music/library/:id",requireAppKey,async(req,res)=>{
+  try{
+    const allowed={title:"title",artist:"artist",spotifyUrl:"spotify_url",youtubeUrl:"youtube_url",audioUrl:"audio_url",artworkUrl:"artwork_url",rightsStatus:"rights_status",status:"status",tags:"tags"};
+    const patch={};
+    for(const [k,col] of Object.entries(allowed))if(req.body?.[k]!==undefined)patch[col]=req.body[k];
+    if(patch.rights_status&&!["owned","authorized","metadata_only"].includes(patch.rights_status))throw new Error("Invalid rights status.");
+    patch.updated_at=new Date().toISOString();
+    const {data,error}=await supabase.from("music_library").update(patch).eq("id",req.params.id).select("*").single();
+    if(error)throw new Error(error.message);
+    res.json({ok:true,track:publicMusicTrack(data)});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.post("/api/music/library/:id/refresh",requireAppKey,async(req,res)=>{
+  try{res.json({ok:true,track:publicMusicTrack(await refreshMusicTrack(req.params.id,req))});}
+  catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.post("/api/music/library/:id/analyze",requireAppKey,async(req,res)=>{
+  try{
+    const {data,error}=await supabase.from("music_library").select("*").eq("id",req.params.id).maybeSingle();
+    if(error||!data)throw new Error("Music track not found.");
+    const analysis=await runMusicManagerAnalysis(data);
+    const {data:updated,error:updateError}=await supabase.from("music_library").update({ai_analysis:analysis,updated_at:new Date().toISOString()}).eq("id",data.id).select("*").single();
+    if(updateError)throw new Error(updateError.message);
+    res.json({ok:true,analysis,track:publicMusicTrack(updated)});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.get("/api/music/manager/today",requireAppKey,async(req,res)=>{
+  try{
+    const track=await selectDailyMusicTrack(req);
+    const manager=await runMusicManagerAnalysis(track);
+    res.json({ok:true,track:publicMusicTrack(track),manager});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.post("/api/music/library/audio",requireAppKey,express.raw({type:["audio/*","application/octet-stream"],limit:"100mb"}),async(req,res)=>{
+  try{
+    const id=String(req.query.id||"").trim();
+    if(!id||!Buffer.isBuffer(req.body)||!req.body.length)return res.status(400).json({ok:false,error:"Track ID and audio file are required."});
+    const {data:track,error}=await supabase.from("music_library").select("id,rights_status").eq("id",id).maybeSingle();
+    if(error||!track)throw new Error("Music track not found.");
+    if(!["owned","authorized"].includes(track.rights_status))throw new Error("Audio can only be attached to owned/authorized tracks.");
+    const filename=String(req.query.filename||"original-audio.mp3").replace(/[^a-zA-Z0-9._-]/g,"_");
+    const {put}=await import("@vercel/blob");
+    const blob=await put("music-library/"+id+"-"+Date.now()+"-"+filename,req.body,{access:"public",contentType:req.headers["content-type"]||"audio/mpeg",...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
+    const {data,error:updateError}=await supabase.from("music_library").update({audio_url:blob.url,updated_at:new Date().toISOString()}).eq("id",id).select("*").single();
+    if(updateError)throw new Error(updateError.message);
+    res.json({ok:true,track:publicMusicTrack(data),url:blob.url});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+
 app.get("/api/music/track",requireAppKey,async(req,res)=>{
   try{
     const meta=await fetchSpotifyTrackMetadata(String(req.query?.url||"").trim());

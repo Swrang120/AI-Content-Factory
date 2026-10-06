@@ -1661,8 +1661,16 @@ async function upsertMusicTrack(input){
     updated_at:new Date().toISOString()
   };
   row.trend_score=musicTrendScore({...row,promo_views:row.promo_views});
-  const conflict=row.spotify_url? "spotify_url" : "youtube_url";
-  const {data,error}=await supabase.from("music_library").upsert(row,{onConflict:conflict}).select("*").single();
+  const lookupColumn=row.spotify_url?"spotify_url":"youtube_url";
+  const lookupValue=row[lookupColumn];
+  const {data:existing,error:lookupError}=await supabase.from("music_library").select("id").eq(lookupColumn,lookupValue).maybeSingle();
+  if(lookupError)throw new Error("Music Library lookup failed: "+lookupError.message);
+  let data,error;
+  if(existing){
+    ({data,error}=await supabase.from("music_library").update(row).eq("id",existing.id).select("*").single());
+  }else{
+    ({data,error}=await supabase.from("music_library").insert(row).select("*").single());
+  }
   if(error)throw new Error("Music Library save failed: "+error.message);
   return data;
 }

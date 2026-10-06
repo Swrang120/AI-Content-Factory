@@ -14,7 +14,7 @@
 
   function mlApi(path){
     if(typeof window.apiUrl === "function") return window.apiUrl(path);
-    var base=window.ACF_BACKEND_URL || localStorage.getItem("acf_backend_url") || "https://ai-content-factory-zeta-ruby.vercel.app";
+    var base=window.ACF_BACKEND_URL || localStorage.getItem("acf_backend_url") || "https://ai-content-factory-swrang120.vercel.app";
     return base.replace(/\/+$/,"")+path;
   }
 
@@ -28,7 +28,7 @@
     if(!document.getElementById(styleId)){
       var st=document.createElement("style");
       st.id=styleId;
-      st.textContent=".ml-premium{background:linear-gradient(145deg,#07111f,#0b1730 55%,#17102d);border:1px solid rgba(153,120,255,.24);border-radius:24px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.32);overflow:hidden}.ml-hero{padding:8px 4px 20px}.ml-hero h2{margin:6px 0;font-size:28px}.ml-hero p{margin:0;color:#aeb8d3}.ml-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}.ml-stat{padding:16px;border-radius:17px;background:linear-gradient(145deg,rgba(22,35,62,.96),rgba(30,18,56,.9));border:1px solid rgba(157,130,255,.2);min-width:0}.ml-stat-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8997b8}.ml-stat-value{margin-top:7px;font-size:19px;font-weight:800;color:#f5f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ml-stat-note{margin-top:4px;font-size:12px;color:#9eabc8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ml-upload{background:linear-gradient(145deg,rgba(22,31,57,.98),rgba(37,19,66,.95));border:1px solid rgba(168,139,255,.34);border-radius:22px;padding:20px;box-shadow:0 14px 42px rgba(65,37,130,.2)}.ml-active{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;background:linear-gradient(135deg,rgba(118,91,255,.2),rgba(180,72,255,.12));border:1px solid rgba(177,146,255,.28);color:#ded6ff;font-size:11px;font-weight:800;letter-spacing:.05em}.ml-upload h3{margin:14px 0 6px;font-size:21px}.ml-muted{color:#aeb8d3;font-size:13px;line-height:1.5}.ml-field{margin-top:14px}.ml-field label{display:block;color:#c9d1e6;font-size:12px;font-weight:700;margin-bottom:7px}.ml-title{width:100%;padding:13px 14px;border-radius:13px;border:1px solid rgba(150,132,255,.28);background:rgba(3,8,20,.62);color:#fff;box-sizing:border-box;outline:none}.ml-file{width:100%;box-sizing:border-box;padding:13px;border:1px dashed rgba(178,154,255,.55);border-radius:13px;background:rgba(255,255,255,.035);color:#eaf0ff}.ml-btn{width:100%;margin-top:14px;padding:14px 18px;border:0;border-radius:14px;font-weight:850;color:#fff;background:linear-gradient(135deg,#6d5dfc,#a84dff);box-shadow:0 10px 28px rgba(120,76,255,.28)}.ml-status{margin-top:10px;color:#b9c5df;font-size:12px;line-height:1.45}.ml-library{margin-top:14px;padding:18px;border-radius:20px;background:rgba(9,17,31,.72);border:1px solid rgba(145,158,194,.14)}.ml-library-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ml-library-head h3{margin:0}.ml-search-row{display:flex;gap:8px;width:min(100%,360px)}.ml-search-row input{min-width:0;flex:1}.ml-small-btn{border:1px solid rgba(157,130,255,.25);background:rgba(118,91,255,.1);color:#dcd5ff;border-radius:10px;padding:9px 11px;font-weight:700}.ml-table-wrap{overflow:auto;border-radius:14px;border:1px solid rgba(145,158,194,.1)}.ml-table{width:100%;border-collapse:collapse;min-width:640px}.ml-table th,.ml-table td{padding:12px;border-bottom:1px solid rgba(145,158,194,.09);text-align:left;font-size:12px}.ml-table th{color:#8491ae;font-size:10px;text-transform:uppercase;letter-spacing:.07em}.ml-table td{color:#dce4f6}.ml-table small{color:#8f9bb5}.ml-manager{margin-top:14px;padding:18px;border-radius:20px;background:linear-gradient(145deg,rgba(18,27,48,.96),rgba(29,18,51,.94));border:1px solid rgba(153,120,255,.2)}.ml-manager h3{margin:0 0 12px}.ml-ai-box{padding:14px;border-radius:14px;background:rgba(3,8,20,.4);border:1px solid rgba(157,130,255,.13);line-height:1.6;color:#cbd4e8}.ml-pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:10px}.ml-pager-actions{display:flex;gap:7px}@media(max-width:760px){.ml-premium{padding:12px;border-radius:18px}.ml-stat-grid{grid-template-columns:1fr}.ml-hero h2{font-size:24px}.ml-upload,.ml-library,.ml-manager{padding:15px}.ml-library-head{display:block}.ml-search-row{width:100%;margin-top:10px}.ml-table{min-width:590px}}"
+      st.textContent=".ml-premium{background:linear-gradient(145deg,#07111f,#0b1730 55%,#17102d);border:1px solid rgba(153,120,255,.24);border-radius:24px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.32);overflow:hidden}.ml-hero{padding:8px 4px 20px}.ml-hero h2{margin:6px 0;font-size:28px}.ml-hero p{margin:0;color:#aeb8d3}.ml-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}.ml-stat{padding:16px;border-radius:17px;background:linear-gradient(145deg,rgba(22,35,62,.96),rgba(30,18,56,.9));border:1px solid rgba(157,130,255,.2);min-width:0}.ml-stat-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8997b8}.ml-stat-value{margin-top:7px;font-size:19px;font-weight:800;color:#f5f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ml-stat-note{margin-top:4px;font-size:12px;color:#9eabc8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ml-upload{background:linear-gradient(145deg,rgba(22,31,57,.98),rgba(37,19,66,.95));border:1px solid rgba(168,139,255,.34);border-radius:22px;padding:20px;box-shadow:0 14px 42px rgba(65,37,130,.2)}.ml-active{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;background:linear-gradient(135deg,rgba(118,91,255,.2),rgba(180,72,255,.12));border:1px solid rgba(177,146,255,.28);color:#ded6ff;font-size:11px;font-weight:800;letter-spacing:.05em}.ml-upload h3{margin:14px 0 6px;font-size:21px}.ml-muted{color:#aeb8d3;font-size:13px;line-height:1.5}.ml-field{margin-top:14px}.ml-field label{display:block;color:#c9d1e6;font-size:12px;font-weight:700;margin-bottom:7px}.ml-title{width:100%;padding:13px 14px;border-radius:13px;border:1px solid rgba(150,132,255,.28);background:rgba(3,8,20,.62);color:#fff;box-sizing:border-box;outline:none}.ml-file{width:100%;box-sizing:border-box;padding:13px;border:1px dashed rgba(178,154,255,.55);border-radius:13px;background:rgba(255,255,255,.035);color:#eaf0ff}.ml-btn{width:100%;margin-top:14px;padding:14px 18px;transition:opacity .2s,transform .1s}.ml-btn:disabled{opacity:.65;cursor:wait}.ml-btn:not(:disabled):active{transform:scale(.99)}border:0;border-radius:14px;font-weight:850;color:#fff;background:linear-gradient(135deg,#6d5dfc,#a84dff);box-shadow:0 10px 28px rgba(120,76,255,.28)}.ml-status{margin-top:10px;color:#b9c5df;font-size:12px;line-height:1.45}.ml-library{margin-top:14px;padding:18px;border-radius:20px;background:rgba(9,17,31,.72);border:1px solid rgba(145,158,194,.14)}.ml-library-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ml-library-head h3{margin:0}.ml-search-row{display:flex;gap:8px;width:min(100%,360px)}.ml-search-row input{min-width:0;flex:1}.ml-small-btn{border:1px solid rgba(157,130,255,.25);background:rgba(118,91,255,.1);color:#dcd5ff;border-radius:10px;padding:9px 11px;font-weight:700}.ml-table-wrap{overflow:auto;border-radius:14px;border:1px solid rgba(145,158,194,.1)}.ml-table{width:100%;border-collapse:collapse;min-width:640px}.ml-table th,.ml-table td{padding:12px;border-bottom:1px solid rgba(145,158,194,.09);text-align:left;font-size:12px}.ml-table th{color:#8491ae;font-size:10px;text-transform:uppercase;letter-spacing:.07em}.ml-table td{color:#dce4f6}.ml-table small{color:#8f9bb5}.ml-manager{margin-top:14px;padding:18px;border-radius:20px;background:linear-gradient(145deg,rgba(18,27,48,.96),rgba(29,18,51,.94));border:1px solid rgba(153,120,255,.2)}.ml-manager h3{margin:0 0 12px}.ml-ai-box{padding:14px;border-radius:14px;background:rgba(3,8,20,.4);border:1px solid rgba(157,130,255,.13);line-height:1.6;color:#cbd4e8}.ml-pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:10px}.ml-pager-actions{display:flex;gap:7px}@media(max-width:760px){.ml-premium{padding:12px;border-radius:18px}.ml-stat-grid{grid-template-columns:1fr}.ml-hero h2{font-size:24px}.ml-upload,.ml-library,.ml-manager{padding:15px}.ml-library-head{display:block}.ml-search-row{width:100%;margin-top:10px}.ml-table{min-width:590px}}"
       document.head.appendChild(st);
     }
     viewEl.innerHTML=
@@ -142,27 +142,72 @@
   }
 
 
-  async function musicLibraryAdd(){
+  function musicLibraryAdd(){
     var out=document.getElementById("mlResult");
+    var button=document.getElementById("mlAdd");
     var audio=document.getElementById("mlAudio")?.files?.[0]||null;
     var title=(document.getElementById("mlTitle")?.value||"").trim();
-    if(!audio){out.textContent="Choose an audio file first.";return;}
-    if(!/^audio\\//i.test(audio.type)){out.textContent="Please choose a valid audio file.";return;}
-    if(audio.size>100*1024*1024){out.textContent="Audio must be 100 MB or smaller.";return;}
-    out.textContent="📤 Uploading original master…";
+    if(!audio){out.textContent="⚠️ Choose an audio file first.";return;}
+    var name=String(audio.name||"").toLowerCase();
+    var isAudio=/^audio\\//i.test(audio.type)||/\\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(name);
+    if(!isAudio){out.textContent="⚠️ Please choose a valid audio file (MP3, WAV, M4A, AAC, OGG or FLAC).";return;}
+    if(audio.size>100*1024*1024){out.textContent="⚠️ Audio must be 100 MB or smaller.";return;}
+
+    if(button)button.disabled=true;
+    if(out)out.textContent="📦 Preparing upload…";
+    var url=mlApi("/api/music/library/upload-master?filename="+encodeURIComponent(audio.name)+"&title="+encodeURIComponent(title));
+    var xhr=new XMLHttpRequest();
+
+    xhr.open("POST",url,true);
+    xhr.withCredentials=true;
+    xhr.setRequestHeader("Content-Type",audio.type||"application/octet-stream");
+    xhr.setRequestHeader("Accept","application/json");
+
+    xhr.upload.onprogress=function(e){
+      if(!out)return;
+      if(e.lengthComputable){
+        var pct=Math.min(99,Math.round((e.loaded/e.total)*100));
+        out.textContent="📤 Uploading original master… "+pct+"% ("+Math.round(e.loaded/1024/1024*10)/10+" / "+Math.round(e.total/1024/1024*10)/10+" MB)";
+      }else{
+        out.textContent="📤 Uploading original master…";
+      }
+    };
+
+    xhr.onload=function(){
+      var b={};
+      try{b=JSON.parse(xhr.responseText||"{}");}catch(_){}
+      if(xhr.status>=200&&xhr.status<300&&b.ok){
+        out.textContent="☁️ Audio uploaded. Saving to Music Library…";
+        setTimeout(function(){
+          out.textContent="✅ "+(b.track?.title||"Song")+" saved successfully and is now the ACTIVE daily promotion track.";
+          var audioEl=document.getElementById("mlAudio"),titleEl=document.getElementById("mlTitle");
+          if(audioEl)audioEl.value="";
+          if(titleEl)titleEl.value="";
+          loadMusicLibrary();
+          musicManagerToday();
+          if(button)button.disabled=false;
+        },350);
+      }else{
+        out.textContent="❌ Upload failed"+(xhr.status?" (HTTP "+xhr.status+")":"")+": "+(b.error||"The server did not accept the upload.");
+        if(button)button.disabled=false;
+      }
+    };
+
+    xhr.onerror=function(){
+      out.textContent="❌ Upload failed: Network/CORS connection error. Please check the backend connection.";
+      if(button)button.disabled=false;
+    };
+    xhr.ontimeout=function(){
+      out.textContent="❌ Upload timed out. The audio may be too large or the server did not respond.";
+      if(button)button.disabled=false;
+    };
+    xhr.timeout=180000;
+
     try{
-      var r=await fetch(mlApi("/api/music/library/upload-master?filename="+encodeURIComponent(audio.name)+"&title="+encodeURIComponent(title)),{
-        method:"POST",headers:{"Content-Type":audio.type||"audio/mpeg"},credentials:"include",body:audio
-      });
-      var b=await r.json().catch(function(){return {};});
-      if(!r.ok||!b.ok)throw new Error(b.error||("Upload failed (HTTP "+r.status+")"));
-      out.textContent="✓ "+(b.track?.title||"Song")+" is now the active daily promotion track.";
-      document.getElementById("mlAudio").value="";
-      document.getElementById("mlTitle").value="";
-      await loadMusicLibrary();
-      await musicManagerToday();
+      xhr.send(audio);
     }catch(e){
-      out.textContent="Music Library error: "+e.message;
+      out.textContent="❌ Upload could not start: "+e.message;
+      if(button)button.disabled=false;
     }
   }
 

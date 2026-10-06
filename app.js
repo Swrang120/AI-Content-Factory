@@ -178,7 +178,7 @@ async function bossCommandRun(){
  AI_ROBOTS.forEach(applyAgentToDom);
  if(badge){badge.textContent="EMPLOYEES WORKING";badge.className="badge ready robot-live-badge";}
  if(result)result.innerHTML="<b>Boss order:</b> "+esc(command)+"<br><span>Assigned: "+ids.map(id=>AI_ROBOTS.find(r=>r.id===id)?.name||id).join(" → ")+"</span>";
- if(/\\b(upload|publish|post|youtube)\\b/i.test(command)){
+ if(/\b(upload|publish|post|youtube)\b/i.test(command)){
    try{
      if(result)result.innerHTML+="<br><span class='boss-output'>📤 Publisher Bot is uploading the latest rendered video…</span>";
      const pr=await fetch(apiUrl("/api/boss/publish-latest"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({command})});

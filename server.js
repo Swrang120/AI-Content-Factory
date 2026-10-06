@@ -740,6 +740,78 @@ app.post("/api/content/sync",requireAppKey,async(req,res)=>{
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 
+app.post("/api/boss/command",requireAppKey,async(req,res)=>{
+  try{
+    const command=String(req.body?.command||"").trim();
+    if(!command)return res.status(400).json({ok:false,error:"command is required"});
+    const settings=await hydrateSettings();
+    if(settings.autoGenerate===false)return res.status(409).json({ok:false,error:"Auto Generate is OFF. Turn Automation/Auto Generate ON first."});
+    if(settings.autoPublish===false)return res.status(409).json({ok:false,error:"Auto Publish is OFF. Turn Auto Publish ON first."});
+
+    const lower=command.toLowerCase();
+    const category=lower.includes("music")||lower.includes("song")||lower.includes("artist")?"Music Promotion":
+      lower.includes("news")||lower.includes("update")?"News & Updates":
+      lower.includes("product")||lower.includes("shop")||lower.includes("promo")?"Product Promotion":
+      lower.includes("sport")||lower.includes("match")||lower.includes("player")?"Sports Information":
+      lower.includes("edit")||lower.includes("capcut")||lower.includes("premiere")?"Editing Knowledge":"AI & Technology";
+    if(!enabledCategory(settings,category))return res.status(409).json({ok:false,error:category+" is disabled. Enable this category first."});
+
+    const id=jobId();
+    const jobs=loadJobs();
+    const job={id,status:"researching",topic:command.slice(0,180),category,language:"Hindi + English",format:"Short Video",notes:"Boss command: "+command,sourceText:"",sources:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),manualUpload:true,auto:true,autoPublish:true,approved:true};
+    jobs[id]=job; saveJobs(jobs); await persistJob(job);
+    await setAgentState("manager","WORKING",10,"Boss order received: "+command.slice(0,180),id);
+
+    let research="";
+    if(category==="News & Updates"||category==="Sports Information"){
+      await setAgentState("research","WORKING",25,"Researching verified information",id);
+      research=await generateWithChatGPT("research_plan",{topic:command,category,language:job.language,format:job.format,notes:job.notes,sourceText:"",sources:[]});
+      job.research=research;
+      await setAgentState("research","SLEEPING",100,"Research complete",id);
+    }
+    await setAgentState("script","WORKING",35,"Writing the Boss-requested script",id);
+    job.script=await generateWithChatGPT("script",{topic:command,category,language:job.language,format:job.format,notes:job.notes,sourceText:"",research,sources:job.sources});
+    await setAgentState("script","SLEEPING",100,"Script complete",id);
+
+    await setAgentState("voice","WORKING",55,"Generating narration",id);
+    await runVoiceForJob(job);
+    if(!job.voice?.file)throw new Error("Voice generation did not produce an audio file.");
+    await setAgentState("voice","SLEEPING",100,"Voice ready",id);
+
+    await setAgentState("editor","WORKING",70,"Rendering the video",id);
+    job.status="rendering"; job.updatedAt=new Date().toISOString(); jobs[id]=job; saveJobs(jobs); await persistJob(job);
+    job.renderedVideoUrl=await renderFactoryVideo(job,req);
+    if(!job.renderedVideoUrl)throw new Error("Video rendering returned no video URL.");
+    job.status="rendered"; job.updatedAt=new Date().toISOString(); jobs[id]=job; saveJobs(jobs); await persistJob(job);
+    await setAgentState("editor","SLEEPING",100,"Video rendered",id);
+
+    await setAgentState("qa","WORKING",85,"Checking Boss video before upload",id);
+    await setAgentState("qa","SLEEPING",100,"QA complete",id);
+
+    await setAgentState("publisher","WORKING",95,"Uploading to YouTube as PUBLIC",id);
+    const youtube=await publishRenderedYouTubeVideo({
+      videoUrl:job.renderedVideoUrl,
+      title:job.topic,
+      description:"Created and published by AI Content Factory Boss command.",
+      tags:["AI Content Factory",category,"Boss Command"],
+      categoryId:"22",
+      privacyStatus:"public",
+      approved:true,
+      automated:true,
+      req
+    });
+    job.youtube=youtube; job.status="published"; job.updatedAt=new Date().toISOString();
+    jobs[id]=job; saveJobs(jobs); await persistJob(job);
+    await setAgentState("publisher","SLEEPING",100,"Published to YouTube",id);
+    await setAgentState("manager","SLEEPING",100,"Boss order completed",id);
+    return res.json({ok:true,jobId:id,status:"published",category,title:job.topic,video:youtube});
+  }catch(e){
+    const msg=safeErrorMessage(e);
+    try{await setAgentState("manager","ERROR",0,"Boss command failed: "+msg,null);}catch(_){}
+    return res.status(500).json({ok:false,error:msg});
+  }
+});
+
 app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
   try{
     const settings=await hydrateSettings();

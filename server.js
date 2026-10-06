@@ -96,7 +96,7 @@ async function saveTokens(tokens){
     fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
   }catch{}
 }
-const DEFAULT_FACTORY_SETTINGS={autoGenerate:true,approval:true,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]};
+const DEFAULT_FACTORY_SETTINGS={autoGenerate:true,approval:true,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true}};
 let settingsCache=null;
 let settingsPersistentLoaded=false;
 function loadSettings(){
@@ -555,11 +555,13 @@ const AUTO_SCHEDULES=[
   {id:"product_promo",category:"Product Promotion",icon:"🛍️",time:"15:00",format:"Promo",language:"Hindi",prompt:"Useful product information or promotion. Clearly distinguish facts from opinions and do not invent specifications, prices or claims."},
   {id:"news_evening",category:"News & Updates",icon:"📰",time:"17:00",format:"Short Video",language:"English",prompt:"Current news explainer. ONLY use verified source material supplied to the job; never invent current events or statistics."},
   {id:"sports_evening",category:"Sports Information",icon:"⚽",time:"19:00",format:"Short Video",language:"English",prompt:"Current sports information/explainer. ONLY use verified source material supplied to the job; never invent scores, schedules or player facts."},
-  {id:"romantic_night",category:"Music Promotion",icon:"💙",time:"21:00",format:"Long Video",language:"Hindi + Bodo",prompt:"Original romantic/sad music story or visual-video concept. Use original text only; no copyrighted song lyrics."}
+  {id:"ai_tech_night",category:"AI & Technology",icon:"🤖",time:"21:00",format:"Short Video",language:"English",prompt:"Practical AI and technology explainer, creator workflow, useful tool or automation idea. Use current verified facts when needed; never invent product capabilities."}
 ];
-function autoScheduleForToday(now=new Date()){
+function categoryKeyFromName(name){const n=String(name||"").toLowerCase();if(n==="music promotion")return "music";if(n==="news & updates"||n==="news")return "news";if(n==="product promotion"||n==="product")return "product";if(n==="sports information"||n==="sports")return "sports";if(n==="editing knowledge"||n==="editing")return "editing";if(n==="ai & technology"||n==="ai technology"||n==="technology")return "tech";return null;}
+function enabledCategory(settings,name){const key=categoryKeyFromName(name);return key?settings?.enabledCategories?.[key]!==false:true;}
+function autoScheduleForToday(now=new Date(),settings=loadSettings()){
   const day=now.toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
-  return AUTO_SCHEDULES.map(x=>({...x,date:day,slot:day+"T"+x.time+":00+05:30"}));
+  return AUTO_SCHEDULES.filter(x=>enabledCategory(settings,x.category)).map(x=>({...x,date:day,slot:day+"T"+x.time+":00+05:30"}));
 }
 const WEEKLY_LIVE_SCHEDULE=[
 {id:"music_monday",day:"Monday",dayIndex:1,icon:"🎵",category:"Music Live",title:"Original Romantic & Sad Music Promotion",prompt:"Promote only original music from the configured artist channels.",sourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"]},
@@ -690,7 +692,7 @@ async function runAutomaticFactory(req){
   const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
   const bossResults=[];
   for(const job of bossDue){try{const youtubeResult=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:job.topic,description:"Uploaded by Boss in AI Content Factory.",tags:["Boss Upload","AI Content Factory"],categoryId:"22",privacyStatus:"public",approved:true,req});job.youtube=youtubeResult;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,videoId:youtubeResult.videoId});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
-  const queued=Object.values(jobs).filter(j=>j.queueItem&&j.status==="queued"&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
+  const queued=Object.values(jobs).filter(j=>j.queueItem&&j.status==="queued"&&enabledCategory(settings,j.category)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
   for(const job of queued){
     try{
       const done=await processQueuedContentJob(job,req);
@@ -702,7 +704,7 @@ async function runAutomaticFactory(req){
     }
   }
   if(!settings.autoGenerate)return {ok:true,enabled:false,bossUploads:bossResults,message:"Auto Generate is OFF."};
-  const items=autoScheduleForToday(now);
+  const items=autoScheduleForToday(now,settings);
   const hourMinute=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now);
   const [nowH,nowM]=hourMinute.split(":").map(Number);
   const due=items.filter(x=>{
@@ -1304,6 +1306,7 @@ async function normalizeAndPersistFactorySettings(input){
   next.liveApproval=next.liveApproval!==false;
   next.liveDurationMinutes=Math.max(1,Math.min(1440,Number(next.liveDurationMinutes)||120));
   next.musicSourceChannels=Array.isArray(next.musicSourceChannels)?next.musicSourceChannels:DEFAULT_FACTORY_SETTINGS.musicSourceChannels;
+  next.enabledCategories={...DEFAULT_FACTORY_SETTINGS.enabledCategories,...(next.enabledCategories&&typeof next.enabledCategories==="object"?next.enabledCategories:{})};
   let source="memory-only";
   try{
     const persisted=await persistSettings(next);

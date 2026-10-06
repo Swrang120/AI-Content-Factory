@@ -1741,6 +1741,107 @@ async function runMusicManagerAnalysis(track){
 }
 
 
+
+function parseYouTubeChannelLink(input){
+  const raw=String(input||"").trim();
+  if(!raw)return {url:null,type:null,value:null};
+  try{
+    const u=new URL(raw);
+    if(!/^(www\.)?(youtube\.com|m\.youtube\.com)$/i.test(u.hostname))return {url:raw,type:null,value:null};
+    const p=u.pathname.replace(/\/+$/,"");
+    const channel=p.match(/^\/channel\/(UC[\w-]+)(?:\/.*)?$/i);
+    if(channel)return {url:raw,type:"id",value:channel[1]};
+    const handle=p.match(/^\/@([^/]+)(?:\/.*)?$/);
+    if(handle)return {url:raw,type:"handle",value:"@"+handle[1]};
+    const user=p.match(/^\/user\/([^/]+)(?:\/.*)?$/i);
+    if(user)return {url:raw,type:"username",value:user[1]};
+  }catch(_){}
+  return {url:raw,type:null,value:null};
+}
+
+async function resolveOwnedYouTubeChannel(yt,channelUrl){
+  const parsed=parseYouTubeChannelLink(channelUrl);
+  if(!parsed.type)throw new Error("Use your YouTube channel URL, such as https://www.youtube.com/@YourChannel.");
+  const mine=await yt.channels.list({part:"id,snippet,contentDetails,statistics",mine:true});
+  const own=mine.data.items?.[0];
+  if(!own?.id)throw new Error("Could not read the connected YouTube channel. Reconnect YouTube first.");
+  let target;
+  if(parsed.type==="id"){
+    target=(await yt.channels.list({part:"id,snippet,contentDetails,statistics",id:parsed.value})).data.items?.[0];
+  }else if(parsed.type==="handle"){
+    target=(await yt.channels.list({part:"id,snippet,contentDetails,statistics",forHandle:parsed.value})).data.items?.[0];
+  }else{
+    target=(await yt.channels.list({part:"id,snippet,contentDetails,statistics",forUsername:parsed.value})).data.items?.[0];
+  }
+  if(!target?.id)throw new Error("YouTube channel was not found.");
+  if(target.id!==own.id)throw new Error("Channel sync only accepts the YouTube channel currently connected to this factory.");
+  return target;
+}
+
+async function importOwnedYouTubeChannelPage({channelUrl,pageToken="",maxVideos=250,rightsStatus="owned",req}){
+  if(!supabase)throw new Error("Supabase is not configured for Music Library.");
+  const yt=await youtube(req);
+  const channel=await resolveOwnedYouTubeChannel(yt,channelUrl);
+  const uploads=channel.contentDetails?.relatedPlaylists?.uploads;
+  if(!uploads)throw new Error("The connected channel has no uploads playlist.");
+  const safeMax=Math.max(1,Math.min(250,Number(maxVideos)||250));
+  const page=await yt.playlistItems.list({
+    part:"snippet,contentDetails",playlistId:uploads,maxResults:50,...(pageToken?{pageToken}:{})
+  });
+  const ids=[];
+  for(const item of page.data.items||[]){
+    const id=item.contentDetails?.videoId;
+    if(id&&!ids.includes(id)&&ids.length<safeMax)ids.push(id);
+  }
+  if(!ids.length)return {channel:{id:channel.id,title:channel.snippet?.title||"",url:"https://www.youtube.com/channel/"+channel.id},imported:0,skipped:0,nextPageToken:page.data.nextPageToken||null,totalResults:Number(page.data.pageInfo?.totalResults||0)};
+  const vr=await yt.videos.list({part:"snippet,statistics",id:ids.join(",")});
+  const videos=vr.data.items||[];
+  let imported=0,skipped=0; const errors=[];
+  for(let start=0;start<videos.length;start+=10){
+    const batch=videos.slice(start,start+10);
+    const results=await Promise.all(batch.map(async v=>{
+      try{
+        await upsertMusicTrack({
+          youtubeUrl:"https://www.youtube.com/watch?v="+v.id,
+          rightsStatus:["owned","authorized","metadata_only"].includes(String(rightsStatus))?String(rightsStatus):"owned",
+          tags:["YouTube Channel Import",channel.snippet?.title||""].filter(Boolean),
+          req,
+          youtubeMeta:{
+            title:v.snippet?.title||"",
+            channelTitle:v.snippet?.channelTitle||channel.snippet?.title||"",
+            artworkUrl:v.snippet?.thumbnails?.high?.url||v.snippet?.thumbnails?.medium?.url||v.snippet?.thumbnails?.default?.url||"",
+            views:Number(v.statistics?.viewCount||0),
+            likes:Number(v.statistics?.likeCount||0),
+            comments:Number(v.statistics?.commentCount||0)
+          }
+        });
+        return true;
+      }catch(error){
+        if(errors.length<5)errors.push(safeErrorMessage(error));
+        return false;
+      }
+    }));
+    for(const ok of results)ok?imported++:skipped++;
+  }
+  return {
+    channel:{id:channel.id,title:channel.snippet?.title||"",url:"https://www.youtube.com/channel/"+channel.id,thumbnailUrl:channel.snippet?.thumbnails?.high?.url||channel.snippet?.thumbnails?.default?.url||null},
+    imported,skipped,nextPageToken:page.data.nextPageToken||null,totalResults:Number(page.data.pageInfo?.totalResults||0),processed:videos.length,errors
+  };
+}
+
+app.post("/api/music/library/import-channel",requireAppKey,async(req,res)=>{
+  try{
+    const channelUrl=String(req.body?.channelUrl||"").trim();
+    if(!channelUrl)return res.status(400).json({ok:false,error:"YouTube channel link is required."});
+    const result=await importOwnedYouTubeChannelPage({
+      channelUrl,pageToken:String(req.body?.pageToken||"").trim(),
+      maxVideos:Math.min(250,Math.max(1,Number(req.body?.maxVideos)||250)),
+      rightsStatus:String(req.body?.rightsStatus||"owned"),req
+    });
+    res.json({ok:true,...result});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+
 app.post("/api/music/library/import",requireAppKey,async(req,res)=>{
   try{
     const tracks=Array.isArray(req.body?.tracks)?req.body.tracks:[req.body||{}];

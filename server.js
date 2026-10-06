@@ -97,6 +97,8 @@ async function saveTokens(tokens){
   }catch{}
 }
 const DEFAULT_FACTORY_SETTINGS={autoGenerate:true,approval:true,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true}};
+const MUSIC_SOURCE_CHANNEL_IDS=["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"];
+const MUSIC_ARTIST_NAMES=["Swrang Swargiary","Santiram Swargiary"];
 let settingsCache=null;
 let settingsPersistentLoaded=false;
 function loadSettings(){
@@ -668,6 +670,7 @@ async function generateAutomaticJob(item,req){
   if(await autoJobExists(id))return {ok:true,skipped:true,jobId:id,reason:"slot_already_created"};
   if(item.category==="Music Promotion"){
     try{
+      await syncConfiguredMusicSourceChannels(req);
       const track=await selectDailyMusicTrack(req);
       const manager=await runMusicManagerAnalysis(track);
       const result=await createMusicPromotionJob({spotifyUrl:track.spotify_url,audioUrl:track.audio_url,language:item.language,notes:"Daily Music Manager selection. Trend score "+track.trend_score+". AI analysis: "+manager.chatgpt,req});
@@ -1778,6 +1781,10 @@ async function importOwnedYouTubeChannelPage({channelUrl,pageToken="",maxVideos=
   if(!supabase)throw new Error("Supabase is not configured for Music Library.");
   const yt=await youtube(req);
   const channel=await resolveOwnedYouTubeChannel(yt,channelUrl);
+  const configuredIds=(loadSettings().musicSourceChannels||MUSIC_SOURCE_CHANNEL_IDS).map(String);
+  if(configuredIds.length && !configuredIds.includes(String(channel.id))){
+    throw new Error("This channel is not configured as a Music Library source.");
+  }
   const uploads=channel.contentDetails?.relatedPlaylists?.uploads;
   if(!uploads)throw new Error("The connected channel has no uploads playlist.");
   const safeMax=Math.max(1,Math.min(250,Number(maxVideos)||250));
@@ -1800,7 +1807,7 @@ async function importOwnedYouTubeChannelPage({channelUrl,pageToken="",maxVideos=
         await upsertMusicTrack({
           youtubeUrl:"https://www.youtube.com/watch?v="+v.id,
           rightsStatus:["owned","authorized","metadata_only"].includes(String(rightsStatus))?String(rightsStatus):"owned",
-          tags:["YouTube Channel Import",channel.snippet?.title||""].filter(Boolean),
+          tags:["YouTube Channel Import",channel.snippet?.title||"",...MUSIC_ARTIST_NAMES].filter(Boolean),
           req,
           youtubeMeta:{
             title:v.snippet?.title||"",
@@ -1824,6 +1831,37 @@ async function importOwnedYouTubeChannelPage({channelUrl,pageToken="",maxVideos=
     imported,skipped,nextPageToken:page.data.nextPageToken||null,totalResults:Number(page.data.pageInfo?.totalResults||0),processed:videos.length,errors
   };
 }
+
+async function syncConfiguredMusicSourceChannels(req){
+  const settings=loadSettings();
+  const channels=(Array.isArray(settings.musicSourceChannels)&&settings.musicSourceChannels.length?settings.musicSourceChannels:MUSIC_SOURCE_CHANNEL_IDS)
+    .filter((id,i,a)=>id&&a.indexOf(id)===i);
+  const results=[];
+  for(const channelId of channels.slice(0,10)){
+    try{
+      const result=await importOwnedYouTubeChannelPage({
+        channelUrl:"https://www.youtube.com/channel/"+channelId,
+        pageToken:"",
+        maxVideos:50,
+        rightsStatus:"owned",
+        req
+      });
+      results.push({channelId,...result});
+    }catch(error){
+      results.push({channelId,imported:0,skipped:0,error:safeErrorMessage(error)});
+    }
+  }
+  return results;
+}
+
+app.post("/api/music/library/sync-sources",requireAppKey,async(req,res)=>{
+  try{
+    const results=await syncConfiguredMusicSourceChannels(req);
+    const imported=results.reduce((n,x)=>n+Number(x.imported||0),0);
+    const skipped=results.reduce((n,x)=>n+Number(x.skipped||0),0);
+    res.json({ok:true,channels:results,imported,skipped});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
 
 app.post("/api/music/library/import-channel",requireAppKey,async(req,res)=>{
   try{

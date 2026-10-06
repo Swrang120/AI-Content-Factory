@@ -147,8 +147,10 @@
     var audio=document.getElementById("mlAudio")?.files?.[0]||null,title=(document.getElementById("mlTitle")?.value||"").trim();
     if(!audio){out.textContent="⚠️ Choose an audio file first.";return;}
     var name=String(audio.name||"").toLowerCase();
-    if(!/^audio\\//i.test(audio.type)&&!/\\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(name)){out.textContent="⚠️ Please choose a valid audio file.";return;}
-    if(audio.size>100*1024*1024){out.textContent="⚠️ Audio must be 100 MB or smaller.";return;}
+    var extMatch=name.match(/\\.(mp3|wav|wave|m4a|aac|ogg|flac)$/i);
+    var allowedMime=/^(audio\\/(mpeg|mp3|wav|x-wav|wave|x-pn-wav|mp4|x-m4a|aac|ogg|flac)|application/octet-stream)$/i.test(String(audio.type||""));
+    if(!allowedMime&&!extMatch){out.textContent="⚠️ Please choose an MP3, WAV, M4A, AAC, OGG or FLAC audio file.";return;}
+    if(audio.size>500*1024*1024){out.textContent="⚠️ Audio must be 500 MB or smaller.";return;}
     if(button)button.disabled=true;
     try{
       out.textContent="🔐 Preparing secure direct upload…";

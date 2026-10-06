@@ -1245,9 +1245,9 @@ app.post("/api/agents/state",requireAppKey,async(req,res)=>{
 });
 app.get("/api/cron/self-heal",async(req,res)=>{
   try{
-    const expected=process.env.CRON_SECRET||"";
+    const expected=process.env.ACF_CRON_SECRET||process.env.CRON_SECRET||"";
     const auth=req.headers.authorization||"";
-    if(!expected)return res.status(503).json({ok:false,error:"CRON_SECRET is not configured on the server."});
+    if(!expected)return res.status(503).json({ok:false,error:"ACF_CRON_SECRET/CRON_SECRET is not configured on the server."});
     if(auth!=="Bearer "+expected)return res.status(401).json({ok:false,error:"Unauthorized cron request"});
     const health=await runFactoryHealthChecks();
     const failed=health.filter(x=>!x.ok);
@@ -1266,9 +1266,9 @@ app.get("/api/cron/self-heal",async(req,res)=>{
 });
 app.get("/api/cron/factory",async(req,res)=>{
   try{
-    const expected=process.env.CRON_SECRET||"";
+    const expected=process.env.ACF_CRON_SECRET||process.env.CRON_SECRET||"";
     const auth=req.headers.authorization||"";
-    if(!expected)return res.status(503).json({ok:false,error:"CRON_SECRET is not configured on the server."});
+    if(!expected)return res.status(503).json({ok:false,error:"ACF_CRON_SECRET/CRON_SECRET is not configured on the server."});
     if(auth!=="Bearer "+expected)return res.status(401).json({ok:false,error:"Unauthorized cron request"});
     const result=await runAutomaticFactory(req);
     res.json(result);

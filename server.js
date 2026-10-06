@@ -1762,9 +1762,6 @@ function parseYouTubeChannelLink(input){
 async function resolveOwnedYouTubeChannel(yt,channelUrl){
   const parsed=parseYouTubeChannelLink(channelUrl);
   if(!parsed.type)throw new Error("Use your YouTube channel URL, such as https://www.youtube.com/@YourChannel.");
-  const mine=await yt.channels.list({part:"id,snippet,contentDetails,statistics",mine:true});
-  const own=mine.data.items?.[0];
-  if(!own?.id)throw new Error("Could not read the connected YouTube channel. Reconnect YouTube first.");
   let target;
   if(parsed.type==="id"){
     target=(await yt.channels.list({part:"id,snippet,contentDetails,statistics",id:parsed.value})).data.items?.[0];
@@ -1774,7 +1771,6 @@ async function resolveOwnedYouTubeChannel(yt,channelUrl){
     target=(await yt.channels.list({part:"id,snippet,contentDetails,statistics",forUsername:parsed.value})).data.items?.[0];
   }
   if(!target?.id)throw new Error("YouTube channel was not found.");
-  if(target.id!==own.id)throw new Error("Channel sync only accepts the YouTube channel currently connected to this factory.");
   return target;
 }
 

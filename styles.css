@@ -155,3 +155,39 @@ linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
 .setting .automation-state{display:inline-flex;align-items:center;justify-content:center;min-width:68px;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.08em;margin-left:8px;border:1px solid rgba(255,255,255,.12)}
 .setting .automation-state.online{color:#63ff9b;background:rgba(43,255,126,.10);border-color:rgba(43,255,126,.28)}
 .setting .automation-state.offline{color:#ff7b86;background:rgba(255,75,92,.10);border-color:rgba(255,75,92,.28)}
+
+/* Mobile command + responsive workspace polish */
+.voice-command-btn{white-space:nowrap}
+.voice-command-btn.voice-listening{color:#fff;border-color:rgba(217,45,63,.7);background:rgba(217,45,63,.16);animation:voicePulse 1s infinite alternate}
+@keyframes voicePulse{to{box-shadow:0 0 18px rgba(217,45,63,.28)}}
+@media(max-width:1200px){
+  .two-col{grid-template-columns:1fr}
+  .cards{grid-template-columns:repeat(2,1fr)}
+  .robot-summary{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:700px){
+  .main{padding:14px 10px 40px;overflow-x:hidden}
+  .view{width:100%;max-width:100%;min-width:0}
+  .topbar{gap:10px;align-items:center}
+  .topbar h1{font-size:20px}
+  .top-actions{gap:6px}
+  .top-actions .primary{font-size:10px;padding:9px 10px}
+  .hero,.table-card,.settings-card,.boss-command,.pixel-office-shell{padding:13px;border-radius:13px}
+  .hero h2{font-size:19px}
+  .cards,.grid,.robot-summary,.robot-grid{grid-template-columns:1fr}
+  .two-col{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}
+  .section-head{gap:10px;align-items:flex-start;flex-wrap:wrap}
+  .platform{align-items:flex-start;gap:10px;flex-wrap:wrap}
+  .platform-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .command-row{display:grid;grid-template-columns:1fr auto;gap:7px}
+  .command-row input{grid-column:1/-1;min-width:0}
+  .command-row .voice-command-btn,.command-row .primary{min-width:0}
+  .queue-row{align-items:flex-start}
+  .queue-row .badge{flex:0 0 auto}
+  .table-card{overflow-x:auto}
+  .table{min-width:560px}
+  .office-toolbar{flex-direction:column;align-items:flex-start;gap:8px}
+  .office-legend{flex-wrap:wrap}
+  .pixel-office-head{gap:10px}
+}

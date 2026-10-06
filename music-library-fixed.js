@@ -158,7 +158,17 @@
       var b=await r.json().catch(function(){return {};});
       if(!r.ok||!b.ok)throw new Error(b.error||("Could not prepare upload (HTTP "+r.status+")"));
       out.textContent="📤 Uploading original master directly to Supabase Storage…";
-      var put=await fetch(b.uploadUrl,{method:"PUT",headers:{"Content-Type":audio.type||"application/octet-stream","x-upsert":"false"},body:audio});
+      // Supabase signed-upload URLs are consumed with the signed token.
+      // Do not append the token to the URL or use the regular object PUT endpoint.
+      var put=await fetch(b.uploadUrl,{
+        method:"POST",
+        headers:{
+          "Content-Type":audio.type||"application/octet-stream",
+          "x-signature":String(b.token||""),
+          "x-upsert":"false"
+        },
+        body:audio
+      });
       if(!put.ok){var uploadText=await put.text().catch(function(){return "";});throw new Error("Supabase Storage rejected the audio upload (HTTP "+put.status+")"+(uploadText?": "+uploadText.slice(0,240):""));}
       out.textContent="☁️ Upload complete. Activating daily promotion…";
       r=await fetch(mlApi("/api/music/library/activate-upload"),{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},credentials:"include",body:JSON.stringify({id:b.id,pathname:b.pathname,title:b.title})});

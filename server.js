@@ -642,6 +642,47 @@ async function generateAutomaticJob(item,req){
   await setAgentState("manager","SLEEPING",100,"Production job complete",id);
   return {ok:true,skipped:false,jobId:id,status:job.status,topic:job.topic,videoUrl:job.renderedVideoUrl||null};
 }
+async function processQueuedContentJob(job,req){
+  const id=job.id;
+  await setAgentState("manager","WORKING",8,"Starting queued content production",id);
+  await setAgentState("research","WORKING",15,"Researching queued content",id);
+  if(!job.research)job.research=await generateWithChatGPT("research_plan",{topic:job.topic,category:job.category,language:job.language,format:job.format,notes:job.notes||"",sourceText:job.sourceText||"",sources:job.sources||[]});
+  await setAgentState("research","SLEEPING",100,"Research complete",id);
+  await setAgentState("script","WORKING",25,"Writing queued content script",id);
+  if(!job.script)job.script=await generateWithChatGPT("script",{topic:job.topic,category:job.category,language:job.language,format:job.format,notes:job.notes||"",research:job.research,sources:job.sources||[]});
+  job.status="script_ready";
+  await setAgentState("script","SLEEPING",100,"Script complete",id);
+  await setAgentState("voice","WORKING",20,"Generating narration audio",id);
+  await runVoiceForJob(job);
+  if(job.voice?.status!=="ready"){job.status="voice_waiting";job.renderError=job.voice?.error||"Voice generation did not complete.";return job;}
+  await setAgentState("voice","SLEEPING",100,"Voice complete",id);
+  await setAgentState("visual","WORKING",25,"Preparing visual plan",id);
+  await setAgentState("editor","WORKING",20,"Rendering the final video",id);
+  job.status="rendering";job.updatedAt=new Date().toISOString();await persistJob(job);
+  await setAgentState("visual","SLEEPING",100,"Visual plan complete",id);
+  job.renderedVideoUrl=await renderFactoryVideo(job,req);
+  job.status="rendered";
+  await setAgentState("editor","SLEEPING",100,"Video render complete",id);
+  await setAgentState("thumb","WORKING",20,"Preparing thumbnail and metadata",id);
+  await setAgentState("qa","WORKING",80,"Checking quality, sources and rights",id);
+  if(job.renderedVideoUrl){
+    await setAgentState("publisher","WORKING",45,"Uploading queued video to connected platforms",id);
+    const youtubeResult=await publishRenderedYouTubeVideo({
+      videoUrl:job.renderedVideoUrl,title:job.topic,
+      description:"Created from your AI Content Factory queue.",
+      tags:[job.category||"AI Content Factory","AI Content Factory"],
+      categoryId:"22",privacyStatus:"public",approved:true,automated:true,req
+    });
+    job.youtube=youtubeResult;job.status="published";
+  }
+  job.updatedAt=new Date().toISOString();
+  await persistJob(job);
+  await setAgentState("qa","SLEEPING",100,"Quality and rights checks complete",id);
+  await setAgentState("publisher","SLEEPING",100,job.status==="published"?"Queued video published":"Waiting for publish",id);
+  await setAgentState("manager","SLEEPING",100,"Queued content job complete",id);
+  return job;
+}
+
 async function runAutomaticFactory(req){
   const settings=await hydrateSettings();
   const jobs=await loadPersistentJobs();
@@ -649,6 +690,17 @@ async function runAutomaticFactory(req){
   const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
   const bossResults=[];
   for(const job of bossDue){try{const youtubeResult=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:job.topic,description:"Uploaded by Boss in AI Content Factory.",tags:["Boss Upload","AI Content Factory"],categoryId:"22",privacyStatus:"public",approved:true,req});job.youtube=youtubeResult;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,videoId:youtubeResult.videoId});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
+  const queued=Object.values(jobs).filter(j=>j.queueItem&&j.status==="queued"&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
+  for(const job of queued){
+    try{
+      const done=await processQueuedContentJob(job,req);
+      jobs[job.id]=done;saveJobs(jobs);
+      return {ok:true,enabled:true,queueProcessed:true,jobId:job.id,status:done.status,bossUploads:bossResults};
+    }catch(e){
+      job.status="error";job.renderError=safeErrorMessage(e);job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job).catch(()=>{});
+      return {ok:false,enabled:true,queueProcessed:true,jobId:job.id,error:safeErrorMessage(e),bossUploads:bossResults};
+    }
+  }
   if(!settings.autoGenerate)return {ok:true,enabled:false,bossUploads:bossResults,message:"Auto Generate is OFF."};
   const items=autoScheduleForToday(now);
   const hourMinute=new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Kolkata",hour:"2-digit",minute:"2-digit",hour12:false}).format(now);
@@ -666,6 +718,25 @@ async function runAutomaticFactory(req){
   }
   return {ok:true,enabled:true,due:due.map(x=>x.category),results,bossUploads:bossResults};
 }
+
+app.post("/api/content/sync",requireAppKey,async(req,res)=>{
+  try{
+    const items=Array.isArray(req.body?.items)?req.body.items:[];
+    const jobs=await loadPersistentJobs();
+    const now=new Date().toISOString();
+    const nextSlot=nextBossUploadSlot();
+    const synced=[];
+    for(const item of items.slice(0,50)){
+      if(!item?.title)continue;
+      const id="queue_"+String(item.id||crypto.randomUUID()).replace(/[^a-zA-Z0-9_-]/g,"_");
+      const existing=jobs[id];
+      if(existing&&["published","rendered","rendering","script_ready","researching"].includes(existing.status))continue;
+      const job={id,status:"queued",topic:String(item.title).slice(0,180),category:String(item.category||"AI Content Factory"),language:String(item.language||"English"),format:String(item.format||"Short Video"),notes:String(item.notes||""),sourceText:"",sources:[],createdAt:existing?.createdAt||now,updatedAt:now,queueItem:true,auto:true,scheduledSlot:existing?.scheduledSlot||nextSlot};
+      jobs[id]=job;saveJobs(jobs);await persistJob(job);synced.push(id);
+    }
+    res.json({ok:true,synced,scheduledSlot:nextSlot});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
 
 app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
   try{

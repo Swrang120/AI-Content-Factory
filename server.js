@@ -667,6 +667,42 @@ async function runAutomaticFactory(req){
   return {ok:true,enabled:true,due:due.map(x=>x.category),results,bossUploads:bossResults};
 }
 
+app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
+  try{
+    const settings=await hydrateSettings();
+    if(!settings.autoPublish)return res.status(409).json({ok:false,error:"Auto Publish is OFF."});
+    const jobs=await loadPersistentJobs();
+    const candidates=Object.values(jobs)
+      .filter(j=>j.renderedVideoUrl&&!["published"].includes(j.status))
+      .sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0));
+    const job=candidates[0];
+    if(!job)return res.status(404).json({ok:false,error:"No rendered video is waiting to be published."});
+    await setAgentState("publisher","WORKING",60,"Boss voice command: publishing "+(job.topic||job.title||"latest video"),job.id);
+    const result=await publishRenderedYouTubeVideo({
+      videoUrl:job.renderedVideoUrl,
+      title:job.topic||job.title||"AI Content Factory",
+      description:job.description||"Published by AI Content Factory Boss command.",
+      tags:Array.isArray(job.tags)&&job.tags.length?job.tags:["AI Content Factory"],
+      categoryId:job.categoryId||"22",
+      privacyStatus:"public",
+      approved:true,
+      automated:true,
+      req
+    });
+    job.youtube=result;
+    job.status="published";
+    job.updatedAt=new Date().toISOString();
+    jobs[job.id]=job;
+    saveJobs(jobs);
+    await persistJob(job);
+    await setAgentState("publisher","SLEEPING",100,"Latest video published",job.id);
+    return res.json({ok:true,jobId:job.id,title:job.topic||job.title,video:result});
+  }catch(e){
+    await setAgentState("publisher","ERROR",0,"Publish failed: "+safeErrorMessage(e),null).catch(()=>{});
+    return res.status(500).json({ok:false,error:safeErrorMessage(e)});
+  }
+});
+
 async function publishRenderedYouTubeVideo(p){
   if(!p?.videoUrl||!p?.title)throw new Error("videoUrl and title are required");
   const settings=await hydrateSettings();

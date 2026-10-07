@@ -1,4 +1,4 @@
-const API_BASE=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://ai-content-factory-gussvkdme-swrang120.vercel.app").replace(/\/+$/,"");
+const API_BASE=(window.ACF_BACKEND_URL||"https://ai-content-factory-gussvkdme-swrang120.vercel.app").replace(/\/+$/,"");
 // Production backend: keep the frontend aligned with the GitHub/Vercel production project.
 const apiUrl=p=>API_BASE+p;
 const KEY="acf_v2";
@@ -440,7 +440,12 @@ function renderAccounts(){
     else {badge.textContent="Not connected";textEl.textContent=s.error||"Connect your YouTube channel";}
   });
 }
-function connectYouTube(){const target=API_BASE+"/auth/youtube";window.location.assign(target);}
+function connectYouTube(){
+  // Never reuse a stale backend URL saved by an older deployment.
+  try{localStorage.removeItem("acf_backend_url");}catch{}
+  const target=API_BASE+"/auth/youtube";
+  window.location.assign(target);
+}
 function connectMeta(){window.location.assign(API_BASE+"/auth/meta");}
 async function metaStatus(){try{const r=await fetch(apiUrl("/api/meta/status"),{credentials:"include",cache:"no-store"});return await r.json();}catch(e){return {ok:false,error:"Backend unavailable: "+e.message};}}
 async function uploadYouTubeTest(){

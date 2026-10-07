@@ -93,19 +93,30 @@
       if(pageEl) pageEl.textContent="Page "+(musicLibraryPage+1)+" of "+pageCount;
 
       rows.innerHTML=tracks.length?tracks.map(function(t){
+        var audioUrl=String(t.audioUrl||t.audio_url||"");
+        var listen=audioUrl
+          ? '<audio class="ml-audio" controls preload="none" src="'+mlEscape(audioUrl)+'"></audio>'
+          : '<small>No audio</small>';
+        var status=(t.status||"inactive")==="active"
+          ? '<span class="ml-active">● ACTIVE</span>'
+          : '<small>PAUSED</small>';
         return '<tr>'+
           '<td><strong>'+mlEscape(t.title||"Untitled")+'</strong><br><small>'+mlEscape(t.artist||"")+'</small></td>'+
-          '<td>'+mlEscape((t.status||"inactive")==="active"?"● ACTIVE":"INACTIVE")+'</td>'+
+          '<td>'+listen+'</td>'+
+          '<td>'+status+'</td>'+
           '<td>'+Number(t.views||0).toLocaleString()+'</td>'+
           '<td>'+Number(t.viewVelocity||t.view_velocity||0).toFixed(0)+'/day</td>'+
           '<td><strong>'+Number(t.trendScore||t.trend_score||0).toFixed(1)+'</strong></td>'+
           '<td>'+Number(t.promotionCount||t.promotion_count||0)+'</td>'+
-          '<td><button class="small-btn" data-ml-ai="'+mlEscape(t.id)+'">🧠 AI</button></td>'+
+          '<td><div class="ml-actions"><button type="button" class="small-btn" data-ml-ai="'+mlEscape(t.id)+'">🧠 AI</button><button type="button" class="small-btn ml-danger" data-ml-delete="'+mlEscape(t.id)+'">🗑️ Delete</button></div></td>'+
         '</tr>';
       }).join(""):'<tr><td colspan="8">No tracks on this page.</td></tr>';
 
       rows.querySelectorAll("[data-ml-ai]").forEach(function(btn){
         btn.onclick=function(){musicAnalyze(btn.getAttribute("data-ml-ai"));};
+      });
+      rows.querySelectorAll("[data-ml-delete]").forEach(function(btn){
+        btn.onclick=function(){musicDelete(btn.getAttribute("data-ml-delete"));};
       });
 
       var prev=document.getElementById("mlPrev"),next=document.getElementById("mlNext");
@@ -260,6 +271,28 @@
       if(button)button.disabled=false;
     }
   }
+  async function musicDelete(id){
+    var row=document.querySelector('[data-ml-delete="'+CSS.escape(String(id))+'"]')?.closest("tr");
+    var title=row?.querySelector("td strong")?.textContent||"this track";
+    if(!confirm("Delete "+title+"?\n\nThis will delete the Music Library record and the linked Supabase Storage audio file when it is a Supabase upload."))return;
+    try{
+      var r=await fetch(mlApi("/api/music/library/"+encodeURIComponent(id)),{
+        method:"DELETE",
+        credentials:"include",
+        headers:{"Accept":"application/json"}
+      });
+      var b=await r.json().catch(function(){return {};});
+      if(!r.ok||!b.ok)throw new Error(b.error||("Delete failed (HTTP "+r.status+")"));
+      var out=document.getElementById("mlResult");
+      if(out)out.textContent="🗑️ Deleted "+title+" from Music Library and removed its linked Supabase Storage file when applicable.";
+      await loadMusicLibrary();
+      await musicManagerToday();
+    }catch(e){
+      var out=document.getElementById("mlResult");
+      if(out)out.textContent="❌ Delete failed: "+(e&&e.message?e.message:String(e));
+    }
+  }
+
   async function musicAnalyze(id){
     var out=document.getElementById("mlManager");
     if(!out) return;

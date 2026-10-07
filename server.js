@@ -1228,8 +1228,12 @@ app.get("/api/youtube/config-status",async(req,res)=>{
   });
 });
 function youtubeOAuthStateSecret(){
-  const secret=String(process.env.GOOGLE_CLIENT_SECRET||process.env.OAUTH_STATE_SECRET||"");
-  if(!secret)throw new Error("OAuth state signing secret is not configured. Set GOOGLE_CLIENT_SECRET on Vercel.");
+  // OAuth state must validate even when Vercel routes the start and callback
+  // through different production serverless instances. Use the stable Google
+  // OAuth client identity for state signing; the client secret remains used
+  // only for the actual authorization-code exchange.
+  const secret=String(process.env.OAUTH_STATE_SECRET||process.env.GOOGLE_CLIENT_ID||"").trim();
+  if(!secret)throw new Error("OAuth state signing secret is not configured. Set GOOGLE_CLIENT_ID on Vercel.");
   return secret;
 }
 function createYouTubeOAuthState(){

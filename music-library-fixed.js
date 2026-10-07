@@ -1,347 +1,145 @@
 (function(){
   "use strict";
 
-  var musicLibraryPage = 0;
+  var page=0;
 
-  function mlEscape(value){
-    return String(value == null ? "" : value)
-      .replace(/&/g,"&amp;")
-      .replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;")
-      .replace(/"/g,"&quot;")
-      .replace(/'/g,"&#39;");
+  function esc(v){
+    return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
   }
 
-  function mlApi(path){
-    if(typeof window.apiUrl === "function") return window.apiUrl(path);
-    var base=window.ACF_BACKEND_URL || localStorage.getItem("acf_backend_url") || "https://ai-content-factory-zeta-ruby.vercel.app";
+  function api(path){
+    var base=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://ai-content-factory-zeta-ruby.vercel.app");
+    if(typeof window.apiUrl==="function") return window.apiUrl(path);
     return base.replace(/\/+$/,"")+path;
   }
 
   function renderMusicLibrary(){
-    var titleEl=document.getElementById("page-title");
-    var viewEl=document.getElementById("view");
-    if(titleEl) titleEl.textContent="Music Library";
-    if(!viewEl) return;
+    var view=document.getElementById("view");
+    var title=document.getElementById("page-title");
+    if(!view) return;
+    if(title) title.textContent="Music Library";
 
-    var styleId="music-library-premium-style";
-    if(!document.getElementById(styleId)){
-      var st=document.createElement("style");
-      st.id=styleId;
-      st.textContent=".ml-premium{background:linear-gradient(145deg,#07111f,#0b1730 55%,#17102d);border:1px solid rgba(153,120,255,.24);border-radius:24px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.32);overflow:hidden}.ml-hero{padding:8px 4px 20px}.ml-hero h2{margin:6px 0;font-size:28px}.ml-hero p{margin:0;color:#aeb8d3}.ml-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}.ml-stat{padding:16px;border-radius:17px;background:linear-gradient(145deg,rgba(22,35,62,.96),rgba(30,18,56,.9));border:1px solid rgba(157,130,255,.2);min-width:0}.ml-stat-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8997b8}.ml-stat-value{margin-top:7px;font-size:19px;font-weight:800;color:#f5f2ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ml-stat-note{margin-top:4px;font-size:12px;color:#9eabc8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ml-upload{background:linear-gradient(145deg,rgba(22,31,57,.98),rgba(37,19,66,.95));border:1px solid rgba(168,139,255,.34);border-radius:22px;padding:20px;box-shadow:0 14px 42px rgba(65,37,130,.2)}.ml-active{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;background:linear-gradient(135deg,rgba(118,91,255,.2),rgba(180,72,255,.12));border:1px solid rgba(177,146,255,.28);color:#ded6ff;font-size:11px;font-weight:800;letter-spacing:.05em}.ml-upload h3{margin:14px 0 6px;font-size:21px}.ml-muted{color:#aeb8d3;font-size:13px;line-height:1.5}.ml-field{margin-top:14px}.ml-field label{display:block;color:#c9d1e6;font-size:12px;font-weight:700;margin-bottom:7px}.ml-title{width:100%;padding:13px 14px;border-radius:13px;border:1px solid rgba(150,132,255,.28);background:rgba(3,8,20,.62);color:#fff;box-sizing:border-box;outline:none}.ml-file{width:100%;box-sizing:border-box;padding:13px;border:1px dashed rgba(178,154,255,.55);border-radius:13px;background:rgba(255,255,255,.035);color:#eaf0ff}.ml-btn{width:100%;margin-top:14px;padding:14px 18px;transition:opacity .2s,transform .1s;border:0;border-radius:14px;font-weight:850;color:#fff;background:linear-gradient(135deg,#6d5dfc,#a84dff);box-shadow:0 10px 28px rgba(120,76,255,.28)}.ml-status{margin-top:10px;color:#b9c5df;font-size:12px;line-height:1.45}.ml-library{margin-top:14px;padding:18px;border-radius:20px;background:rgba(9,17,31,.72);border:1px solid rgba(145,158,194,.14)}.ml-library-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.ml-library-head h3{margin:0}.ml-search-row{display:flex;gap:8px;width:min(100%,360px)}.ml-search-row input{min-width:0;flex:1}.ml-small-btn{border:1px solid rgba(157,130,255,.25);background:rgba(118,91,255,.1);color:#dcd5ff;border-radius:10px;padding:9px 11px;font-weight:700}.ml-table-wrap{overflow:auto;border-radius:14px;border:1px solid rgba(145,158,194,.1)}.ml-table{width:100%;border-collapse:collapse;min-width:640px}.ml-audio{width:180px;max-width:100%;height:32px}.ml-actions{display:flex;gap:7px;flex-wrap:wrap}.ml-danger{border-color:rgba(255,90,90,.35);background:rgba(255,70,70,.09);color:#ffb2b2}.ml-table th,.ml-table td{padding:12px;border-bottom:1px solid rgba(145,158,194,.09);text-align:left;font-size:12px}.ml-table th{color:#8491ae;font-size:10px;text-transform:uppercase;letter-spacing:.07em}.ml-table td{color:#dce4f6}.ml-table small{color:#8f9bb5}.ml-manager{margin-top:14px;padding:18px;border-radius:20px;background:linear-gradient(145deg,rgba(18,27,48,.96),rgba(29,18,51,.94));border:1px solid rgba(153,120,255,.2)}.ml-manager h3{margin:0 0 12px}.ml-ai-box{padding:14px;border-radius:14px;background:rgba(3,8,20,.4);border:1px solid rgba(157,130,255,.13);line-height:1.6;color:#cbd4e8}.ml-pager{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:10px}.ml-pager-actions{display:flex;gap:7px}@media(max-width:760px){.ml-premium{padding:12px;border-radius:18px}.ml-stat-grid{grid-template-columns:1fr}.ml-hero h2{font-size:24px}.ml-upload,.ml-library,.ml-manager{padding:15px}.ml-library-head{display:block}.ml-search-row{width:100%;margin-top:10px}.ml-table{min-width:590px}}"
-      document.head.appendChild(st);
-    }
-    viewEl.innerHTML=
-      '<div class="ml-premium">'+
-        '<div class="ml-hero"><p class="eyebrow">ORIGINAL MUSIC • DAILY PROMOTION</p><h2>🎵 Music Library</h2><p>One active song. One simple workflow. Your latest master is promoted every day.</p></div>'+
-        '<div class="ml-stat-grid">'+
-          '<div class="ml-stat"><div class="ml-stat-label">Library</div><div class="ml-stat-value" id="mlCount">—</div><div class="ml-stat-note">Saved tracks</div></div>'+
-          '<div class="ml-stat"><div class="ml-stat-label">Today</div><div class="ml-stat-value" id="mlTodayScore">—</div><div class="ml-stat-note" id="mlTodayName">Loading…</div></div>'+
-          '<div class="ml-stat"><div class="ml-stat-label">AI Strategy</div><div class="ml-stat-value">Smart Manager</div><div class="ml-stat-note">Promotion analysis</div></div>'+
-        '</div>'+
+    view.innerHTML=
+      '<style id="ml-safe-style">'+
+      '.ml-safe{padding:18px}.ml-safe h2{margin:0 0 8px}.ml-safe p{color:#aeb8d3}.ml-upload,.ml-list{margin-top:16px;padding:16px;border:1px solid rgba(160,140,255,.22);border-radius:16px;background:rgba(10,20,38,.75)}'+
+      '.ml-upload input{width:100%;box-sizing:border-box;margin:7px 0;padding:11px;border-radius:10px;background:#07111f;color:#fff;border:1px solid #34415e}.ml-btn{width:100%;padding:13px;border:0;border-radius:11px;background:#e8b83f;color:#111;font-weight:800}.ml-table{width:100%;border-collapse:collapse}.ml-table th,.ml-table td{padding:11px 7px;text-align:left;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px}.ml-table th{color:#8e9ab4}.ml-audio{width:180px;max-width:100%;height:34px}.ml-active{color:#8ff0a8;font-weight:800}.ml-delete{padding:7px 10px;border-radius:8px;border:1px solid rgba(255,90,90,.4);background:rgba(255,60,60,.1);color:#ffb0b0}.ml-scroll{overflow:auto}.ml-msg{margin-top:10px;font-size:12px}.ml-empty{text-align:center;padding:24px;color:#9ba8c2}'+
+      '</style>'+
+      '<div class="ml-safe">'+
+        '<p class="eyebrow">ORIGINAL MUSIC • DAILY PROMOTION</p>'+
+        '<h2>🎵 Music Library</h2>'+
+        '<p>All uploaded original masters are listed here. The active track is promoted automatically.</p>'+
         '<div class="ml-upload">'+
-          '<div class="ml-active">● ACTIVE DAILY PROMOTION</div>'+
-          '<h3>Upload New Song</h3>'+
-          '<div class="ml-muted">Upload your original master. The newest upload automatically becomes the daily promotion track.</div>'+
-          '<div class="ml-field"><label>SONG TITLE <span class="ml-muted">(optional)</span></label><input id="mlTitle" class="ml-title" placeholder="Enter song title"></div>'+
-          '<div class="ml-field"><label>ORIGINAL MASTER AUDIO</label><input id="mlAudio" class="ml-file" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"></div>'+
-          '<button type="button" class="ml-btn" id="mlAdd">🎵 Set as Daily Promotion</button>'+
-          '<div id="mlResult" class="ml-status">Ready for your next release.</div>'+
+          '<b>Upload New Song</b>'+
+          '<input id="mlSafeTitle" type="text" placeholder="Song title">'+
+          '<input id="mlSafeFile" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac">'+
+          '<button id="mlSafeUpload" class="ml-btn" type="button">🎵 Upload & Set as Daily Promotion</button>'+
+          '<div id="mlSafeMsg" class="ml-msg">Ready.</div>'+
         '</div>'+
-        '<div class="ml-library">'+
-          '<div class="ml-library-head"><div><h3>Track Library</h3><span class="ml-muted" id="mlMeta">Loading…</span></div><div class="ml-search-row"><input id="mlSearch" class="ml-title" placeholder="Search title or artist"><button class="ml-small-btn" id="mlSearchBtn">Search</button></div></div>'+
-          '<div class="ml-table-wrap"><table class="ml-table"><thead><tr><th>Track</th><th>Listen</th><th>Status</th><th>Views</th><th>Growth</th><th>Trend</th><th>Promos</th><th>Actions</th></tr></thead><tbody id="mlRows"><tr><td colspan="8">Loading…</td></tr></tbody></table></div>'+
-          '<div class="ml-pager"><span class="ml-muted" id="mlPage">Page 1</span><div class="ml-pager-actions"><button class="ml-small-btn" id="mlPrev">← Previous</button><button class="ml-small-btn" id="mlNext">Next →</button></div></div>'+
+        '<div class="ml-list">'+
+          '<h3>Track Library</h3>'+
+          '<div class="ml-scroll"><table class="ml-table"><thead><tr><th>Track</th><th>Listen</th><th>Status</th><th>Promos</th><th>Action</th></tr></thead><tbody id="mlSafeRows"><tr><td colspan="5" class="ml-empty">Loading…</td></tr></tbody></table></div>'+
         '</div>'+
-        '<div class="ml-manager" id="mlManager"><h3>🧠 Music Manager</h3><div class="ml-ai-box">Loading today’s decision…</div></div>'+
       '</div>';
 
-    var addBtn=document.getElementById("mlAdd"); if(addBtn){ addBtn.type="button"; addBtn.addEventListener("click",function(e){e.preventDefault();musicLibraryAdd();},{passive:false}); }
-    document.getElementById("mlSearchBtn").onclick=function(){musicLibraryPage=0;loadMusicLibrary();};
-    document.getElementById("mlSearch").addEventListener("keydown",function(e){
-      if(e.key==="Enter"){musicLibraryPage=0;loadMusicLibrary();}
-    });
-    document.getElementById("mlPrev").onclick=function(){
-      if(musicLibraryPage>0){musicLibraryPage--;loadMusicLibrary();}
-    };
-    document.getElementById("mlNext").onclick=function(){musicLibraryPage++;loadMusicLibrary();};
-
-    loadMusicLibrary();
-    musicManagerToday();
+    document.getElementById("mlSafeUpload").onclick=upload;
+    load();
   }
 
-  async function loadMusicLibrary(){
-    var rows=document.getElementById("mlRows");
-    var meta=document.getElementById("mlMeta");
+  async function load(){
+    var rows=document.getElementById("mlSafeRows");
     if(!rows) return;
     try{
-      var q=(document.getElementById("mlSearch")?.value||"").trim();
-      var r=await fetch(mlApi("/api/music/library?page="+musicLibraryPage+"&limit=25&sort=trend&q="+encodeURIComponent(q)),{
-        credentials:"include",cache:"no-store"
-      });
-      var b=await r.json().catch(function(){return {};});
-      if(!r.ok || !b.ok) throw new Error(b.error||("Music Library unavailable (HTTP "+r.status+")"));
-
-      var count=Number(b.count||b.total||0);
+      var r=await fetch(api("/api/music/library?page="+page+"&limit=50&sort=recent"),{credentials:"include",cache:"no-store"});
+      var b=await r.json();
+      if(!r.ok||!b.ok) throw new Error(b.error||("Music Library unavailable: HTTP "+r.status));
       var tracks=Array.isArray(b.tracks)?b.tracks:[];
-      var pageCount=Math.max(1,Math.ceil(count/25));
-
-      var countEl=document.getElementById("mlCount");
-      if(countEl) countEl.textContent=count.toLocaleString();
-      if(meta) meta.textContent=count.toLocaleString()+" tracks";
-      var pageEl=document.getElementById("mlPage");
-      if(pageEl) pageEl.textContent="Page "+(musicLibraryPage+1)+" of "+pageCount;
-
-      rows.innerHTML=tracks.length?tracks.map(function(t){
-        var audioUrl=String(t.audioUrl||t.audio_url||"");
-        var listen=audioUrl
-          ? '<audio class="ml-audio" controls preload="none" src="'+mlEscape(audioUrl)+'"></audio>'
-          : '<small>No audio</small>';
-        var status=(t.status||"inactive")==="active"
-          ? '<span class="ml-active">● ACTIVE</span>'
-          : '<small>PAUSED</small>';
+      if(!tracks.length){
+        rows.innerHTML='<tr><td colspan="5" class="ml-empty">No uploaded music found in the Music Library.</td></tr>';
+        return;
+      }
+      rows.innerHTML=tracks.map(function(t){
+        var audio=String(t.audioUrl||t.audio_url||"");
+        var player=audio?'<audio class="ml-audio" controls preload="none" src="'+esc(audio)+'"></audio>':'<span>No audio</span>';
+        var active=String(t.status||"")=="active";
         return '<tr>'+
-          '<td><strong>'+mlEscape(t.title||"Untitled")+'</strong><br><small>'+mlEscape(t.artist||"")+'</small></td>'+
-          '<td>'+listen+'</td>'+
-          '<td>'+status+'</td>'+
-          '<td>'+Number(t.views||0).toLocaleString()+'</td>'+
-          '<td>'+Number(t.viewVelocity||t.view_velocity||0).toFixed(0)+'/day</td>'+
-          '<td><strong>'+Number(t.trendScore||t.trend_score||0).toFixed(1)+'</strong></td>'+
-          '<td>'+Number(t.promotionCount||t.promotion_count||0)+'</td>'+
-          '<td><div class="ml-actions"><button type="button" class="small-btn" data-ml-ai="'+mlEscape(t.id)+'">🧠 AI</button><button type="button" class="small-btn ml-danger" data-ml-delete="'+mlEscape(t.id)+'">🗑️ Delete</button></div></td>'+
+          '<td><b>'+esc(t.title||"Untitled")+'</b><br><small>'+esc(t.artist||"")+'</small></td>'+
+          '<td>'+player+'</td>'+
+          '<td class="'+(active?"ml-active":"")+'">'+(active?"● ACTIVE":"PAUSED")+'</td>'+
+          '<td>'+Number(t.promotionCount||t.promotion_count||0).toLocaleString()+'</td>'+
+          '<td><button type="button" class="ml-delete" data-delete-id="'+esc(t.id)+'">🗑️ Delete</button></td>'+
         '</tr>';
-      }).join(""):'<tr><td colspan="8">No tracks on this page.</td></tr>';
-
-      rows.querySelectorAll("[data-ml-ai]").forEach(function(btn){
-        btn.onclick=function(){musicAnalyze(btn.getAttribute("data-ml-ai"));};
-      });
-      rows.querySelectorAll("[data-ml-delete]").forEach(function(btn){
-        btn.onclick=function(){musicDelete(btn.getAttribute("data-ml-delete"));};
-      });
-
-      var prev=document.getElementById("mlPrev"),next=document.getElementById("mlNext");
-      if(prev) prev.disabled=musicLibraryPage<=0;
-      if(next) next.disabled=(musicLibraryPage+1)>=pageCount || tracks.length===0;
+      }).join("");
+      var buttons=rows.querySelectorAll("[data-delete-id]");
+      for(var i=0;i<buttons.length;i++){
+        buttons[i].onclick=function(){removeTrack(this.getAttribute("data-delete-id"));};
+      }
     }catch(e){
-      rows.innerHTML='<tr><td colspan="8">Music Library error: '+mlEscape(e.message)+'</td></tr>';
-      if(meta) meta.textContent="Unable to load";
+      rows.innerHTML='<tr><td colspan="5" class="ml-empty">❌ '+esc(e.message||e)+'</td></tr>';
     }
   }
 
-  async function musicLibraryChannelSyncAll(){
-    var out=document.getElementById("mlChannelResult");
-    var button=document.getElementById("mlChannelSyncAll");
-    if(button)button.disabled=true;
-    if(out)out.textContent="🔄 Syncing both configured YouTube music channels…";
+  async function upload(){
+    var msg=document.getElementById("mlSafeMsg");
+    var btn=document.getElementById("mlSafeUpload");
+    var fileEl=document.getElementById("mlSafeFile");
+    var titleEl=document.getElementById("mlSafeTitle");
+    var file=fileEl&&fileEl.files?fileEl.files[0]:null;
+    var songTitle=titleEl?titleEl.value.trim():"";
+    if(!file){msg.textContent="⚠️ Choose an audio file first.";return;}
+    if(file.size>500*1024*1024){msg.textContent="⚠️ Maximum audio size is 500 MB.";return;}
+    btn.disabled=true;
     try{
-      var r=await fetch(mlApi("/api/music/library/sync-sources"),{
-        method:"POST",headers:{"Content-Type":"application/json"},credentials:"include"
+      msg.textContent="🔐 Preparing Supabase Storage upload…";
+      var p=await fetch(api("/api/music/library/upload-token"),{
+        method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({filename:file.name,title:songTitle})
       });
-      var b=await r.json().catch(function(){return {};});
-      if(!r.ok||!b.ok)throw new Error(b.error||("Source sync failed (HTTP "+r.status+")"));
-      var lines=(b.channels||[]).map(function(x){
-        return (x.channel?.title||x.channelId)+": "+Number(x.imported||0)+" imported"+(x.error?" · "+x.error:"");
+      var pb=await p.json();
+      if(!p.ok||!pb.ok) throw new Error(pb.error||("Upload preparation failed: HTTP "+p.status));
+
+      msg.textContent="📤 Uploading to Supabase Storage…";
+      var put=await fetch(pb.signedUrl,{method:"PUT",headers:{"Content-Type":file.type||"application/octet-stream"},body:file});
+      if(!put.ok) throw new Error("Supabase Storage upload failed: HTTP "+put.status);
+
+      msg.textContent="☁️ Saving track to Music Library…";
+      var a=await fetch(api("/api/music/library/activate-upload"),{
+        method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({id:pb.id,pathname:pb.pathname,title:pb.title||songTitle||file.name})
       });
-      if(out)out.textContent="✓ Synced both sources · "+Number(b.imported||0)+" imported · "+Number(b.skipped||0)+" skipped"+(lines.length?" · "+lines.join(" | "):"");
-      await loadMusicLibrary();
-      await musicManagerToday();
+      var ab=await a.json();
+      if(!a.ok||!ab.ok) throw new Error(ab.error||("Music Library save failed: HTTP "+a.status));
+
+      msg.textContent="✅ "+(ab.track&&ab.track.title?ab.track.title:pb.title)+" is now ACTIVE.";
+      fileEl.value="";
+      titleEl.value="";
+      await load();
     }catch(e){
-      if(out)out.textContent="YouTube source sync error: "+e.message;
+      msg.textContent="❌ Upload failed: "+(e.message||e);
     }finally{
-      if(button)button.disabled=false;
+      btn.disabled=false;
     }
   }
 
-
-  function mlB64(value){
-    var bytes=new TextEncoder().encode(String(value==null?"":value));
-    var bin="";
-    for(var i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
-    return btoa(bin);
-  }
-
-  function mlTusUpload(info,file,out){
-    return new Promise(function(resolve,reject){
-      var endpoint=String(info.resumableEndpoint||"").trim();
-      var token=String(info.token||"").trim();
-      var path=String(info.pathname||"").trim();
-      if(!endpoint||!token||!path){reject(new Error("Resumable upload configuration is missing."));return;}
-      var chunkSize=6*1024*1024;
-      var meta="bucketName "+mlB64("music-library")+",objectName "+mlB64(path)+",contentType "+mlB64(file.type||"application/octet-stream");
-      var create=new XMLHttpRequest();
-      create.open("POST",endpoint,true);
-      create.setRequestHeader("Tus-Resumable","1.0.0");
-      create.setRequestHeader("x-signature",token);
-      create.setRequestHeader("x-upsert","false");
-      create.setRequestHeader("Upload-Length",String(file.size));
-      create.setRequestHeader("Upload-Metadata",meta);
-      create.onreadystatechange=function(){
-        if(create.readyState!==4)return;
-        if(create.status<200||create.status>=300){reject(new Error("Supabase resumable upload could not start (HTTP "+create.status+")"));return;}
-        var location=create.getResponseHeader("Location")||create.getResponseHeader("location");
-        if(!location){reject(new Error("Supabase did not return an upload session URL."));return;}
-        sendChunk(location,0);
-      };
-      create.onerror=function(){reject(new Error("Failed to connect to Supabase Storage."));};
-      create.send();
-      function sendChunk(url,offset){
-        if(offset>=file.size){resolve();return;}
-        var end=Math.min(offset+chunkSize,file.size);
-        var xhr=new XMLHttpRequest();
-        xhr.open("PATCH",url,true);
-        xhr.setRequestHeader("Tus-Resumable","1.0.0");
-        xhr.setRequestHeader("Upload-Offset",String(offset));
-        xhr.setRequestHeader("Content-Type","application/offset+octet-stream");
-        xhr.upload.onprogress=function(ev){
-          if(!ev.lengthComputable)return;
-          var pct=Math.min(100,((offset+ev.loaded)/file.size)*100);
-          if(out)out.textContent="📤 Uploading… "+pct.toFixed(1)+"%";
-        };
-        xhr.onreadystatechange=function(){
-          if(xhr.readyState!==4)return;
-          if(xhr.status<200||xhr.status>=300){reject(new Error("Supabase upload chunk failed (HTTP "+xhr.status+")"));return;}
-          var next=Number(xhr.getResponseHeader("Upload-Offset"));
-          if(!Number.isFinite(next)||next<=offset){reject(new Error("Supabase returned an invalid upload offset."));return;}
-          sendChunk(url,next);
-        };
-        xhr.onerror=function(){reject(new Error("Failed to fetch Supabase Storage while uploading."));};
-        xhr.send(file.slice(offset,end));
-      }
-    });
-  }
-
-  async function musicLibraryAdd(){
-    var out=document.getElementById("mlResult"),button=document.getElementById("mlAdd");
-    var audio=document.getElementById("mlAudio")?.files?.[0]||null;
-    var title=(document.getElementById("mlTitle")?.value||"").trim();
-    if(!audio){out.textContent="⚠️ Choose an audio file first.";return;}
-    var name=String(audio.name||"").toLowerCase();
-    var extMatch=name.match(/\\.(mp3|wav|wave|m4a|aac|ogg|flac)$/i);
-    var allowedMime=/^(audio\\/(mpeg|mp3|wav|x-wav|wave|x-pn-wav|mp4|x-m4a|aac|ogg|flac)|application\\/octet-stream)$/i.test(String(audio.type||""));
-    if(!allowedMime&&!extMatch){out.textContent="⚠️ Please choose an MP3, WAV, M4A, AAC, OGG or FLAC audio file.";return;}
-    if(audio.size>500*1024*1024){out.textContent="⚠️ Audio must be 500 MB or smaller.";return;}
-    if(button)button.disabled=true;
+  async function removeTrack(id){
+    if(!id) return;
+    if(!window.confirm("Delete this track from Music Library and its linked Supabase Storage audio file?")) return;
+    var msg=document.getElementById("mlSafeMsg");
     try{
-      out.textContent="🔐 Preparing secure upload…";
-      var prep=await fetch(mlApi("/api/music/library/upload-token"),{
-        method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},
-        credentials:"include",body:JSON.stringify({filename:audio.name,title:title})
-      });
-      var pb=await prep.json().catch(function(){return {};});
-      if(!prep.ok||!pb.ok)throw new Error(pb.error||("Could not prepare upload (HTTP "+prep.status+")"));
-
-      var uploaded=false;
-      // Signed PUT is the simplest path and avoids sending the audio through Vercel.
-      if(pb.signedUrl){
-        out.textContent="📤 Uploading original master…";
-        var put=await fetch(pb.signedUrl,{
-          method:"PUT",
-          headers:{"Content-Type":audio.type||"application/octet-stream"},
-          body:audio
-        });
-        if(put.ok){
-          uploaded=true;
-        }else{
-          // Fall back to the existing resumable TUS path for larger/unstable uploads.
-          out.textContent="↻ Switching to resumable upload…";
-        }
-      }
-      if(!uploaded){
-        await mlTusUpload(pb,audio,out);
-        uploaded=true;
-      }
-      if(!uploaded)throw new Error("Audio upload did not complete.");
-
-      out.textContent="☁️ Upload complete. Activating daily promotion…";
-      var activate=await fetch(mlApi("/api/music/library/activate-upload"),{
-        method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},
-        credentials:"include",
-        body:JSON.stringify({id:pb.id,pathname:pb.pathname,title:pb.title||title||audio.name})
-      });
-      var ab=await activate.json().catch(function(){return {};});
-      if(!activate.ok||!ab.ok)throw new Error(ab.error||("Could not activate track (HTTP "+activate.status+")"));
-      out.textContent="✅ "+(ab.track?.title||title||audio.name)+" is now the ACTIVE daily promotion track.";
-      document.getElementById("mlAudio").value="";
-      document.getElementById("mlTitle").value="";
-      await loadMusicLibrary();
-      await musicManagerToday();
+      msg.textContent="🗑️ Deleting track and linked Supabase audio…";
+      var r=await fetch(api("/api/music/library/"+encodeURIComponent(id)),{method:"DELETE",credentials:"include",headers:{"Accept":"application/json"}});
+      var b=await r.json();
+      if(!r.ok||!b.ok) throw new Error(b.error||("Delete failed: HTTP "+r.status));
+      msg.textContent="✅ Track and linked Supabase audio deleted.";
+      await load();
     }catch(e){
-      out.textContent="❌ Upload failed: "+(e&&e.message?e.message:String(e));
-    }finally{
-      if(button)button.disabled=false;
-    }
-  }
-  async function musicDelete(id){
-    var row=document.querySelector('[data-ml-delete="'+CSS.escape(String(id))+'"]')?.closest("tr");
-    var title=row?.querySelector("td strong")?.textContent||"this track";
-    if(!confirm("Delete "+title+"?\n\nThis will delete the Music Library record and the linked Supabase Storage audio file when it is a Supabase upload."))return;
-    try{
-      var r=await fetch(mlApi("/api/music/library/"+encodeURIComponent(id)),{
-        method:"DELETE",
-        credentials:"include",
-        headers:{"Accept":"application/json"}
-      });
-      var b=await r.json().catch(function(){return {};});
-      if(!r.ok||!b.ok)throw new Error(b.error||("Delete failed (HTTP "+r.status+")"));
-      var out=document.getElementById("mlResult");
-      if(out)out.textContent="🗑️ Deleted "+title+" from Music Library and removed its linked Supabase Storage file when applicable.";
-      await loadMusicLibrary();
-      await musicManagerToday();
-    }catch(e){
-      var out=document.getElementById("mlResult");
-      if(out)out.textContent="❌ Delete failed: "+(e&&e.message?e.message:String(e));
-    }
-  }
-
-  async function musicAnalyze(id){
-    var out=document.getElementById("mlManager");
-    if(!out) return;
-    out.scrollIntoView({behavior:"smooth",block:"center"});
-    try{
-      var r=await fetch(mlApi("/api/music/library/"+encodeURIComponent(id)+"/analyze"),{method:"POST",credentials:"include"});
-      var b=await r.json().catch(function(){return {};});
-      if(!r.ok || !b.ok) throw new Error(b.error||("AI analysis failed (HTTP "+r.status+")"));
-      out.innerHTML="<h3>🧠 Music Manager Analysis</h3><pre class='ai-result'>"+mlEscape(JSON.stringify(b.analysis||b,null,2))+"</pre>";
-    }catch(e){
-      out.innerHTML="<h3>🧠 Music Manager</h3><div class='ai-result'>"+mlEscape(e.message)+"</div>";
-    }
-  }
-
-  async function musicManagerToday(){
-    var score=document.getElementById("mlTodayScore");
-    var name=document.getElementById("mlTodayName");
-    var out=document.getElementById("mlManager");
-    if(!score || !out) return;
-    try{
-      var r=await fetch(mlApi("/api/music/manager/today"),{credentials:"include",cache:"no-store"});
-      var b=await r.json().catch(function(){return {};});
-      if(!r.ok || !b.ok) throw new Error(b.error||("No eligible track yet (HTTP "+r.status+")"));
-      var track=b.track||{};
-      score.textContent=Number(track.trendScore||track.trend_score||0).toFixed(1);
-      name.textContent=(track.title||"Track")+" · "+(track.artist||"");
-      var manager=b.manager||{};
-      out.innerHTML="<h3>🧠 Today's Music Manager Decision</h3><div class='ai-result'><b>ChatGPT</b><br>"+mlEscape(manager.chatgpt||"Unavailable")+"<br><br><b>Gemini</b><br>"+mlEscape(manager.gemini||"Unavailable")+"</div>";
-    }catch(e){
-      score.textContent="—";
-      name.textContent="No eligible track yet";
-      out.innerHTML="<h3>🧠 Music Manager</h3><div class='ai-result'>"+mlEscape(e.message)+"</div>";
+      msg.textContent="❌ Delete failed: "+(e.message||e);
     }
   }
 
   window.renderMusicLibrary=renderMusicLibrary;
-  window.musicLibraryAdd=musicLibraryAdd;
+  window.musicLibraryAdd=upload;
 
-  var originalSetView=window.setView;
-  window.setView=function(v){
-    if(v==="music-library"){
-      document.querySelectorAll(".nav-item").forEach(function(btn){btn.classList.toggle("active",btn.dataset.view===v);});
-      renderMusicLibrary();
-      return;
-    }
-    if(typeof originalSetView==="function") return originalSetView(v);
-  };
-
-  document.querySelectorAll('.nav-item[data-view="music-library"]').forEach(function(btn){
-    btn.addEventListener("click",function(){window.setView("music-library");});
-  });
+  if(document.readyState==="loading"){
+    document.addEventListener("DOMContentLoaded",function(){});
+  }
 })();

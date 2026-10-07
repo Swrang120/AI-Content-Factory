@@ -1244,35 +1244,39 @@ function createYouTubeOAuthState(){
   const signature=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(payload).digest("base64url");
   return payload+"."+signature;
 }
+function youtubeOAuthStateKeys(){
+  const keys=[String(process.env.GOOGLE_CLIENT_SECRET||"").trim(),String(process.env.GOOGLE_CLIENT_ID||"").trim()].filter(Boolean);
+  return [...new Set(keys)];
+}
 function verifyYouTubeOAuthState(state){
   const raw=String(state||"");
   const parts=raw.split(".");
+  const keys=youtubeOAuthStateKeys();
   if(parts.length===2&&parts[0]&&parts[1]){
-    // Current v2 stateless state.
     try{
       const payload=JSON.parse(Buffer.from(parts[0],"base64url").toString("utf8"));
       if(payload?.v===2){
         const issuedAt=Number(payload?.iat||0);
         if(!Number.isFinite(issuedAt)||Math.abs(Date.now()-issuedAt)>=15*60*1000)return false;
-        const expected=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(parts[0]).digest("base64url");
-        if(parts[1].length!==expected.length)return false;
-        return crypto.timingSafeEqual(Buffer.from(parts[1]),Buffer.from(expected));
+        for(const key of keys){
+          const expected=crypto.createHmac("sha256",key).update(parts[0]).digest("base64url");
+          if(parts[1].length===expected.length&&crypto.timingSafeEqual(Buffer.from(parts[1]),Buffer.from(expected)))return true;
+        }
       }
     }catch{}
   }
-
-  // Compatibility with the previous OAuth state format used by older
-  // deployments. This is important while Vercel aliases/instances converge.
-  // Format: <issuedAt>.<nonce>.<hex HMAC>
   if(parts.length===3&&parts[0]&&parts[1]&&parts[2]){
     const issuedAt=Number(parts[0]);
     const nonce=String(parts[1]);
     const signature=String(parts[2]);
     if(!Number.isFinite(issuedAt)||Math.abs(Date.now()-issuedAt)>=15*60*1000||nonce.length<24)return false;
     const payload=parts[0]+"."+parts[1];
-    const expected=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(payload).digest("hex");
-    if(signature.length!==expected.length)return false;
-    try{return crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expected));}catch{return false;}
+    for(const key of keys){
+      const expected=crypto.createHmac("sha256",key).update(payload).digest("hex");
+      if(signature.length===expected.length){
+        try{if(crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))return true;}catch{}
+      }
+    }
   }
   return false;
 }

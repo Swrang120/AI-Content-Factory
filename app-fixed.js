@@ -652,13 +652,22 @@ async function loadServerSettings(){
 function setView(v){
   document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
   if(v==="music-library"){
-    if(typeof window.renderMusicLibrary==="function"){window.renderMusicLibrary();}
+    if(typeof window.renderMusicLibrary==="function"){
+      window.renderMusicLibrary();
+    }else{
+      const view=document.getElementById("view");
+      const title=document.getElementById("page-title");
+      if(title) title.textContent="Music Library";
+      if(view) view.innerHTML='<div class="card"><h2>🎵 Music Library</h2><p>Music Library module is loading… Please refresh once.</p></div>';
+      console.error("Music Library renderer is not loaded.");
+    }
     return;
   }
   var renderers={dashboard:renderDashboard,content:renderContent,ai:renderAI,voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings};
   (renderers[v]||renderDashboard)();
 }
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
+window.setView=setView;
 function openModal(){document.getElementById("categorySelect").innerHTML=data.categories.filter(c=>c.enabled).map(c=>`<option>${esc(c.name)}</option>`).join("");document.getElementById("contentModal").classList.remove("hidden");}
 function closeModal(){document.getElementById("contentModal").classList.add("hidden")}
 document.getElementById("newContentBtn").onclick=openModal;

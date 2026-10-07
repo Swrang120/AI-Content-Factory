@@ -1306,37 +1306,49 @@ app.get("/auth/youtube",async(req,res)=>{
     res.status(500).send("YouTube OAuth configuration error: "+e.message);
   }
 });
-app.get("/api/auth/youtube/callback",(req,res)=>{
-  // Preserve Google's query string when this compatibility alias is used.
-  // Dropping ?code=...&state=... makes the callback look like a missing/invalid OAuth state.
-  const query=String(req.originalUrl||req.url||"").split("?")[1]||"";
-  req.url="/auth/youtube/callback"+(query?"?"+query:"");
-  app._router.handle(req,res);
-});
-app.get("/auth/youtube/callback",async(req,res)=>{
+async function handleYouTubeOAuthCallback(req,res){
   try{
-    if(req.query.error)return res.status(400).send("YouTube authorization denied: "+req.query.error);
+    if(req.query.error){
+      const error=String(req.query.error);
+      const description=String(req.query.error_description||"");
+      return res.status(400).send("YouTube authorization denied: "+error+(description?" — "+description:""));
+    }
     if(!req.query.code)return res.status(400).send("Missing OAuth authorization code.");
     const returnedState=String(req.query.state||"");
     if(!returnedState)return res.status(400).send("Missing OAuth state. Start YouTube connection again.");
+
     const browserState=getCookie(req,"acf_youtube_oauth_state");
     const signedStateValid=verifyYouTubeOAuthState(returnedState);
     const browserStateValid=!!browserState&&browserState===returnedState;
-    // Primary protection is the signed state. The browser cookie is a
-    // short-lived fallback for mobile/Vercel redirect edge cases.
-    if(!signedStateValid&&!browserStateValid)return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
+
+    // Google returns the exact state originally sent. Validate it either by
+    // cryptographic signature or by the short-lived browser-bound cookie.
+    // Both paths are strict; unsigned/unknown state is never accepted.
+    if(!signedStateValid&&!browserStateValid){
+      return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
+    }
 
     const client=oauthClient(CANONICAL_YOUTUBE_REDIRECT_URI);
     const {tokens}=await client.getToken(req.query.code);
     const current=await loadTokens(req);
     await saveTokens({...current,...tokens});
     const refresh=tokens.refresh_token||current?.refresh_token;
-    if(refresh)res.setHeader("Set-Cookie",`acf_youtube_refresh=${encodeURIComponent(refresh)}; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None`);
+    if(refresh){
+      res.setHeader("Set-Cookie",[
+        `acf_youtube_refresh=${encodeURIComponent(refresh)}; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None`,
+        "acf_youtube_oauth_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=None"
+      ]);
+    }else{
+      res.setHeader("Set-Cookie","acf_youtube_oauth_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=None");
+    }
     res.redirect("https://swrang120.github.io/AI-Content-Factory/?youtube=connected");
   }catch(e){
     res.status(500).send("OAuth callback failed: "+e.message);
   }
-});
+}
+
+app.get("/auth/youtube/callback",handleYouTubeOAuthCallback);
+app.get("/api/auth/youtube/callback",handleYouTubeOAuthCallback);
 
 // =========================
 // Meta (Facebook Page + Instagram Professional) OAuth

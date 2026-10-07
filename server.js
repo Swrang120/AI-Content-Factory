@@ -1987,7 +1987,8 @@ app.post("/api/music/library/upload-token",requireAppKey,async(req,res)=>{
       const projectRef=u.hostname.split(".")[0];
       resumableEndpoint="https://"+projectRef+".storage.supabase.co/storage/v1/upload/resumable";
     }catch(_){}
-    res.json({ok:true,id,title,filename:originalFilename,pathname,token:data.token,uploadUrl,publicUrl,resumableEndpoint});
+    const signedUrl=uploadUrl+"?token="+encodeURIComponent(data.token);
+    res.json({ok:true,id,title,filename:originalFilename,pathname,token:data.token,signedUrl,uploadUrl,publicUrl,resumableEndpoint});
   }catch(e){
     console.error("Supabase music presign failed:",e);
     res.status(400).json({ok:false,error:safeErrorMessage(e)});

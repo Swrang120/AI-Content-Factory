@@ -24,7 +24,7 @@ const supabaseAdmin=(SUPABASE_URL&&SUPABASE_SERVICE_KEY)?createClient(SUPABASE_U
 const MUSIC_STORAGE_BUCKET="music-library";
 const BLOB_TOKEN=process.env.BLOB_READ_WRITE_TOKEN||process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN||"";
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];
-app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io","https://ai-content-factory-swrang120.vercel.app","https://ai-content-factory-git-main-swrang120.vercel.app","https://ai-content-factory-zeta-ruby.vercel.app","https://ai-content-factory-4yj61h1a0-swrang120.vercel.app",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
+app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io","https://factory-zeta-ruby.vercel.app","https://ai-content-factory-swrang120.vercel.app","https://ai-content-factory-git-main-swrang120.vercel.app","https://ai-content-factory-zeta-ruby.vercel.app","https://ai-content-factory-4yj61h1a0-swrang120.vercel.app",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
 app.use(express.json({limit:"1mb"}));
 app.use(express.static(ROOT,{
   index:false,
@@ -71,9 +71,10 @@ async function loadTokens(req){
   const browserRefresh=getCookie(req||{headers:{}}, "acf_youtube_refresh");
   if(browserRefresh)return {refresh_token:browserRefresh};
   if(process.env.YOUTUBE_REFRESH_TOKEN)return {refresh_token:process.env.YOUTUBE_REFRESH_TOKEN};
-  if(supabase){
+  const tokenDb=supabaseAdmin||supabase;
+  if(tokenDb){
     try{
-      const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+      const {data,error}=await tokenDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
       if(!error&&data?.tokens){
         const clean={...data.tokens};
         delete clean.__acf_factory_settings;
@@ -84,12 +85,13 @@ async function loadTokens(req){
   try{return JSON.parse(fs.readFileSync(TOKEN_FILE,"utf8"));}catch{return null;}
 }
 async function saveTokens(tokens){
-  if(supabase){
+  const tokenDb=supabaseAdmin||supabase;
+  if(tokenDb){
     try{
-      const {data}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+      const {data}=await tokenDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
       const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
       const merged={...existing,...tokens};
-      const {error}=await supabase.from("youtube_connections").upsert({
+      const {error}=await tokenDb.from("youtube_connections").upsert({
         id:"default",
         tokens:merged,
         updated_at:new Date().toISOString()
@@ -1206,6 +1208,19 @@ app.get("/api/supabase/status",requireAppKey,async(req,res)=>{
   }catch(e){res.json({ok:true,configured:true,connected:false,error:e.message});}
 });
 app.get("/api/health",async(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!(await loadTokens(req)),supabase:!!supabase,settings:await hydrateSettings()}));
+app.get("/api/youtube/config-status",async(req,res)=>{
+  const redirect=String(process.env.YOUTUBE_REDIRECT_URI||"").trim();
+  res.json({
+    ok:true,
+    configured:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&redirect),
+    googleClientIdConfigured:!!process.env.GOOGLE_CLIENT_ID,
+    googleClientSecretConfigured:!!process.env.GOOGLE_CLIENT_SECRET,
+    youtubeRedirectConfigured:!!redirect,
+    youtubeRedirectUri:redirect||null,
+    tokenPersistence:!!(supabaseAdmin||supabase),
+    currentBackend:"https://factory-zeta-ruby.vercel.app"
+  });
+});
 app.get("/auth/youtube",(req,res)=>{
   try{
     const client=oauthClient();
@@ -1223,6 +1238,7 @@ app.get("/auth/youtube",(req,res)=>{
     res.status(500).send("YouTube OAuth configuration error: "+e.message);
   }
 });
+app.get("/api/auth/youtube/callback",(req,res)=>{req.url="/auth/youtube/callback";app._router.handle(req,res);});
 app.get("/auth/youtube/callback",async(req,res)=>{
   try{
     if(req.query.error)return res.status(400).send("YouTube authorization denied: "+req.query.error);

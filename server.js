@@ -1221,22 +1221,35 @@ app.get("/api/youtube/config-status",async(req,res)=>{
     currentBackend:"https://ai-content-factory-gussvkdme-swrang120.vercel.app"
   });
 });
+function youtubeOAuthStateSecret(){
+  const secret=String(process.env.GOOGLE_CLIENT_SECRET||process.env.OAUTH_STATE_SECRET||"");
+  if(!secret)throw new Error("OAuth state signing secret is not configured. Set GOOGLE_CLIENT_SECRET on Vercel.");
+  return secret;
+}
+function createYouTubeOAuthState(){
+  const payload=Buffer.from(JSON.stringify({iat:Date.now(),nonce:crypto.randomBytes(24).toString("hex")})).toString("base64url");
+  const signature=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(payload).digest("base64url");
+  return payload+"."+signature;
+}
+function verifyYouTubeOAuthState(state){
+  const raw=String(state||"");
+  const parts=raw.split(".");
+  if(parts.length!==2||!parts[0]||!parts[1])return false;
+  let payload;
+  try{payload=JSON.parse(Buffer.from(parts[0],"base64url").toString("utf8"));}catch{return false;}
+  const issuedAt=Number(payload?.iat||0);
+  if(!Number.isFinite(issuedAt)||Math.abs(Date.now()-issuedAt)>=10*60*1000)return false;
+  const expected=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(parts[0]).digest("base64url");
+  return parts[1].length===expected.length&&crypto.timingSafeEqual(Buffer.from(parts[1]),Buffer.from(expected));
+}
+
 app.get("/auth/youtube",async(req,res)=>{
   try{
     const client=oauthClient();
-    // Persist the OAuth state in Supabase so the Google -> Vercel callback
-    // works reliably across Vercel's stateless instances and mobile browsers.
-    const state=crypto.randomBytes(32).toString("hex");
-    const issuedAt=Date.now();
-    const tokenDb=supabaseAdmin||supabase;
-    if(!tokenDb)throw new Error("Supabase is required for YouTube OAuth state persistence.");
-    const {data}=await tokenDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
-    const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
-    const tokens={...existing,__acf_youtube_oauth_state:{state,issuedAt}};
-    const {error}=await tokenDb.from("youtube_connections").upsert({
-      id:"default",tokens,updated_at:new Date().toISOString()
-    },{onConflict:"id"});
-    if(error)throw new Error("Could not save OAuth state: "+error.message);
+    // OAuth state is self-contained and signed. This avoids depending on a
+    // database table that may not exist in a fresh/private deployment and is
+    // reliable across Vercel's stateless serverless instances.
+    const state=createYouTubeOAuthState();
     const url=client.generateAuthUrl({
       access_type:"offline",
       prompt:"consent",
@@ -1256,23 +1269,7 @@ app.get("/auth/youtube/callback",async(req,res)=>{
     if(!req.query.code)return res.status(400).send("Missing OAuth authorization code.");
     const returnedState=String(req.query.state||"");
     if(!returnedState)return res.status(400).send("Missing OAuth state. Start YouTube connection again.");
-
-    const tokenDb=supabaseAdmin||supabase;
-    if(!tokenDb)throw new Error("Supabase is required for YouTube OAuth state persistence.");
-    const {data,error}=await tokenDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
-    if(error)throw new Error("Could not read OAuth state: "+error.message);
-    const savedState=data?.tokens?.__acf_youtube_oauth_state;
-    const age=Number(savedState?.issuedAt||0);
-    const stateMatches=typeof savedState?.state==="string"&&savedState.state===returnedState;
-    const stateFresh=Number.isFinite(age)&&Math.abs(Date.now()-age)<10*60*1000;
-    if(!stateMatches||!stateFresh)return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
-
-    // Consume the state before exchanging the code so it cannot be replayed.
-    const existing=data?.tokens&&typeof data.tokens==="object"?{...data.tokens}:{};
-    delete existing.__acf_youtube_oauth_state;
-    const cleared={id:"default",tokens:existing,updated_at:new Date().toISOString()};
-    const {error:clearError}=await tokenDb.from("youtube_connections").upsert(cleared,{onConflict:"id"});
-    if(clearError)throw new Error("Could not clear OAuth state: "+clearError.message);
+    if(!verifyYouTubeOAuthState(returnedState))return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
 
     const client=oauthClient();
     const {tokens}=await client.getToken(req.query.code);

@@ -296,6 +296,7 @@
   }
 
   window.renderMusicLibrary=renderMusicLibrary;
+  window.musicLibraryAdd=musicLibraryAdd;
 
   var originalSetView=window.setView;
   window.setView=function(v){

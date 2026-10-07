@@ -1228,11 +1228,11 @@ app.get("/api/youtube/config-status",async(req,res)=>{
   });
 });
 function youtubeOAuthStateSecret(){
-  // Keep state signing deterministic across Vercel serverless instances and
-  // deployments. The Google client ID is stable for this OAuth application;
-  // the client secret is never used for state signing.
-  const secret=String(process.env.GOOGLE_CLIENT_ID||"").trim();
-  if(!secret)throw new Error("OAuth state signing secret is not configured. GOOGLE_CLIENT_ID is missing on Vercel.");
+  // Use the Google client secret as the stable signing key. It is already
+  // required for this confidential OAuth client and remains identical across
+  // Vercel serverless instances for the same OAuth application.
+  const secret=String(process.env.GOOGLE_CLIENT_SECRET||"").trim();
+  if(!secret)throw new Error("OAuth state signing secret is not configured. GOOGLE_CLIENT_SECRET is missing on Vercel.");
   return secret;
 }
 function createYouTubeOAuthState(){
@@ -1247,15 +1247,34 @@ function createYouTubeOAuthState(){
 function verifyYouTubeOAuthState(state){
   const raw=String(state||"");
   const parts=raw.split(".");
-  if(parts.length!==2||!parts[0]||!parts[1])return false;
-  let payload;
-  try{payload=JSON.parse(Buffer.from(parts[0],"base64url").toString("utf8"));}catch{return false;}
-  if(payload?.v!==2)return false;
-  const issuedAt=Number(payload?.iat||0);
-  if(!Number.isFinite(issuedAt)||Date.now()-issuedAt<0||Date.now()-issuedAt>=15*60*1000)return false;
-  const expected=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(parts[0]).digest("base64url");
-  if(parts[1].length!==expected.length)return false;
-  try{return crypto.timingSafeEqual(Buffer.from(parts[1]),Buffer.from(expected));}catch{return false;}
+  if(parts.length===2&&parts[0]&&parts[1]){
+    // Current v2 stateless state.
+    try{
+      const payload=JSON.parse(Buffer.from(parts[0],"base64url").toString("utf8"));
+      if(payload?.v===2){
+        const issuedAt=Number(payload?.iat||0);
+        if(!Number.isFinite(issuedAt)||Math.abs(Date.now()-issuedAt)>=15*60*1000)return false;
+        const expected=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(parts[0]).digest("base64url");
+        if(parts[1].length!==expected.length)return false;
+        return crypto.timingSafeEqual(Buffer.from(parts[1]),Buffer.from(expected));
+      }
+    }catch{}
+  }
+
+  // Compatibility with the previous OAuth state format used by older
+  // deployments. This is important while Vercel aliases/instances converge.
+  // Format: <issuedAt>.<nonce>.<hex HMAC>
+  if(parts.length===3&&parts[0]&&parts[1]&&parts[2]){
+    const issuedAt=Number(parts[0]);
+    const nonce=String(parts[1]);
+    const signature=String(parts[2]);
+    if(!Number.isFinite(issuedAt)||Math.abs(Date.now()-issuedAt)>=15*60*1000||nonce.length<24)return false;
+    const payload=parts[0]+"."+parts[1];
+    const expected=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(payload).digest("hex");
+    if(signature.length!==expected.length)return false;
+    try{return crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expected));}catch{return false;}
+  }
+  return false;
 }
 
 app.get("/auth/youtube",async(req,res)=>{
@@ -1269,7 +1288,7 @@ app.get("/auth/youtube",async(req,res)=>{
     // This makes the OAuth callback resilient to Vercel/mobile redirect
     // variations while retaining signed-state validation as the primary path.
     res.setHeader("Set-Cookie",[
-      `acf_youtube_oauth_state=${encodeURIComponent(state)}; Max-Age=900; Path=/; HttpOnly; Secure; SameSite=Lax`
+      `acf_youtube_oauth_state=${encodeURIComponent(state)}; Max-Age=900; Path=/; HttpOnly; Secure; SameSite=None`
     ]);
     const url=client.generateAuthUrl({
       access_type:"offline",

@@ -1936,8 +1936,13 @@ app.delete("/api/music/library/:id",requireAppKey,async(req,res)=>{
     const {data:track,error:findError}=await supabaseAdmin.from("music_library").select("*").eq("id",id).maybeSingle();
     if(findError)throw new Error(findError.message);
     if(!track)throw new Error("Music track not found.");
-    if(track.storage_path){
-      const {error:storageError}=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).remove([track.storage_path]);
+    const audioUrl=String(track.audio_url||"");
+    let storagePath="";
+    const marker="/storage/v1/object/public/"+encodeURIComponent(MUSIC_STORAGE_BUCKET)+"/";
+    const markerIndex=audioUrl.indexOf(marker);
+    if(markerIndex>=0)storagePath=decodeURIComponent(audioUrl.slice(markerIndex+marker.length));
+    if(storagePath){
+      const {error:storageError}=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).remove([storagePath]);
       if(storageError)console.warn("Music storage delete warning:",storageError.message);
     }
     const {error:deleteError}=await supabaseAdmin.from("music_library").delete().eq("id",id);
@@ -2029,7 +2034,7 @@ app.post("/api/music/library/activate-upload",requireAppKey,async(req,res)=>{
     const {error:deactivateError}=await db.from("music_library").update({status:"paused",updated_at:now}).eq("status","active");
     if(deactivateError)throw new Error("Could not switch active promotion track: "+deactivateError.message);
     const audioUrl=SUPABASE_URL.replace(/\/$/,"")+"/storage/v1/object/public/"+encodeURIComponent(MUSIC_STORAGE_BUCKET)+"/"+pathname.split("/").map(encodeURIComponent).join("/");
-    const row={id,spotify_url:null,youtube_url:null,spotify_track_id:null,youtube_video_id:null,title,artist:"Swrang Swargiary",artwork_url:null,audio_url:audioUrl,storage_path:pathname,rights_status:"owned",status:"active",views:0,likes:0,comments:0,view_velocity:0,engagement_rate:0,trend_score:0,promotion_count:0,promo_views:0,last_promoted_at:null,last_used_at:null,last_metrics_at:null,tags:["Original Master"],ai_analysis:null,source_metrics:{upload:"supabase_storage"},created_at:now,updated_at:now};
+    const row={id,spotify_url:null,youtube_url:null,spotify_track_id:null,youtube_video_id:null,title,artist:"Swrang Swargiary",artwork_url:null,audio_url:audioUrl,rights_status:"owned",status:"active",views:0,likes:0,comments:0,view_velocity:0,engagement_rate:0,trend_score:0,promotion_count:0,promo_views:0,last_promoted_at:null,last_used_at:null,last_metrics_at:null,tags:["Original Master"],ai_analysis:null,source_metrics:{upload:"supabase_storage"},created_at:now,updated_at:now};
     const {data,error}=await db.from("music_library").insert(row).select("*").single();
     if(error)throw new Error("Music Library save failed: "+error.message);
     res.json({ok:true,track:publicMusicTrack(data),activePromotionTrack:true});

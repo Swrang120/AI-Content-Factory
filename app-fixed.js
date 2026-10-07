@@ -1,4 +1,4 @@
-const API_BASE=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://ai-content-factory-gussvkdme-swrang120.vercel.app").replace(/\/+$/,"");
+const API_BASE=(window.ACF_BACKEND_URL||"https://ai-content-factory-gussvkdme-swrang120.vercel.app").replace(/\/+$/,"");
 const apiUrl=p=>API_BASE+p;
 const KEY="acf_v2";
 const defaultData={
@@ -439,7 +439,7 @@ function renderAccounts(){
     else {badge.textContent="Not connected";textEl.textContent=s.error||"Connect your YouTube channel";}
   });
 }
-function connectYouTube(){const target=API_BASE+"/auth/youtube";window.location.assign(target);}
+function connectYouTube(){try{localStorage.removeItem("acf_backend_url");}catch(_){} const target="https://ai-content-factory-gussvkdme-swrang120.vercel.app/auth/youtube"; window.location.assign(target);}
 function connectMeta(){window.location.assign(API_BASE+"/auth/meta");}
 async function metaStatus(){try{const r=await fetch(apiUrl("/api/meta/status"),{credentials:"include",cache:"no-store"});return await r.json();}catch(e){return {ok:false,error:"Backend unavailable: "+e.message};}}
 async function uploadYouTubeTest(){
@@ -718,7 +718,7 @@ function setView(v){
     loadMusicLibraryModuleAndRender();
     return;
   }
-  var renderers={dashboard:renderDashboard,content:renderContent,ai:renderAI,"youtube-skills":renderYoutubeSkills,voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings};
+  var renderers={dashboard:renderDashboard,content:renderContent,ai:renderAI,"youtube-skills":function(){if(typeof window.renderYoutubeSkills==="function")window.renderYoutubeSkills();else if(view)view.innerHTML="<div class=\"card\"><h2>🎬 YouTube Skills</h2><p class=\"muted\">YouTube Skills module is still loading. Please refresh once after deployment.</p></div>";},voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings};
   (renderers[v]||renderDashboard)();
 }
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));

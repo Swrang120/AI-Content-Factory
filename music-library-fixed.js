@@ -8,7 +8,7 @@
   }
 
   function api(path){
-    var base=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://ai-content-factory-zeta-ruby.vercel.app");
+    var base=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://factory-zeta-ruby.vercel.app");
     if(typeof window.apiUrl==="function") return window.apiUrl(path);
     return base.replace(/\/+$/,"")+path;
   }

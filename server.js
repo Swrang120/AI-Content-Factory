@@ -1902,14 +1902,92 @@ app.post("/api/music/library/import",requireAppKey,async(req,res)=>{
     res.json({ok:true,tracks:results,count:results.length});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
+async function syncMusicStorageToLibrary(){
+  // The Storage bucket is the source of truth for uploaded original masters.
+  // Import any existing audio objects that do not yet have a music_library row.
+  if(!supabaseAdmin)return {ok:false,storageFiles:0,imported:0,reason:"service_role_not_configured"};
+  try{
+    const bucket=MUSIC_STORAGE_BUCKET;
+    const maxFiles=500;
+    const audioExt=/\.(mp3|wav|wave|m4a|aac|ogg|flac)$/i;
+    const files=[];
+    async function walk(folder="",depth=0){
+      if(depth>5||files.length>=maxFiles)return;
+      const {data,error}=await supabaseAdmin.storage.from(bucket).list(folder,{limit:1000,sortBy:{column:"name",order:"asc"}});
+      if(error)throw error;
+      for(const item of (data||[])){
+        const name=String(item?.name||"").trim();
+        if(!name)continue;
+        const fullPath=folder?folder+"/"+name:name;
+        // Supabase Storage folder entries have no object id/metadata; real files do.
+        if(item?.id || item?.metadata){
+          if(audioExt.test(name))files.push({path:fullPath,item});
+        }else if(depth<5){
+          await walk(fullPath,depth+1);
+        }
+        if(files.length>=maxFiles)break;
+      }
+    }
+    await walk();
+    const {data:existing,error:existingError}=await supabaseAdmin
+      .from("music_library").select("id,audio_url");
+    if(existingError)throw existingError;
+    const known=new Set((existing||[]).map(x=>String(x.audio_url||"")));
+    const base=SUPABASE_URL.replace(/\/$/,"");
+    let imported=0;
+    for(const entry of files){
+      const encoded=entry.path.split("/").map(encodeURIComponent).join("/");
+      const audioUrl=base+"/storage/v1/object/public/"+encodeURIComponent(bucket)+"/"+encoded;
+      if(known.has(audioUrl))continue;
+      const filename=entry.path.split("/").pop()||"Original Music.mp3";
+      const title=filename.replace(/\.[^.]+$/,"").replace(/[_-]+/g," ").trim()||"Original Music";
+      const now=new Date().toISOString();
+      const row={
+        id:crypto.randomUUID(),
+        spotify_url:null,youtube_url:null,spotify_track_id:null,youtube_video_id:null,
+        title,artist:"Swrang Swargiary",artwork_url:null,audio_url:audioUrl,
+        rights_status:"owned",status:"paused",
+        views:0,likes:0,comments:0,view_velocity:0,engagement_rate:0,trend_score:0,
+        promotion_count:0,promo_views:0,last_promoted_at:null,last_used_at:null,last_metrics_at:null,
+        tags:["Original Master","Storage Import"],ai_analysis:null,
+        source_metrics:{upload:"supabase_storage_existing",storage_path:entry.path},
+        created_at:entry.item?.created_at||now,updated_at:now
+      };
+      const {error}=await supabaseAdmin.from("music_library").insert(row);
+      if(error){
+        // Do not stop the whole library because one legacy object has bad metadata.
+        console.warn("Music Storage import skipped:",entry.path,error.message);
+        continue;
+      }
+      known.add(audioUrl);
+      imported++;
+    }
+    return {ok:true,storageFiles:files.length,imported};
+  }catch(error){
+    console.warn("Music Storage sync warning:",safeErrorMessage(error));
+    return {ok:false,storageFiles:0,imported:0,error:safeErrorMessage(error)};
+  }
+}
+
+app.post("/api/music/library/sync-storage",requireAppKey,async(req,res)=>{
+  try{
+    const result=await syncMusicStorageToLibrary();
+    res.json(result);
+  }catch(e){
+    res.status(500).json({ok:false,error:safeErrorMessage(e)});
+  }
+});
+
 app.get("/api/music/library",requireAppKey,async(req,res)=>{
   try{
-    if(!supabase)throw new Error("Supabase is not configured for Music Library.");
+    if(!supabase&&!supabaseAdmin)throw new Error("Supabase is not configured for Music Library.");
+    await syncMusicStorageToLibrary();
     const limit=Math.max(1,Math.min(100,Number(req.query.limit)||25));
     const page=Math.max(0,Number(req.query.page)||0);
     const sort=["trend","views","recent","used"].includes(String(req.query.sort||"trend"))?String(req.query.sort||"trend"):"trend";
     const q=String(req.query.q||"").trim();
-    let query=supabase.from("music_library").select("*",{count:"exact"});
+    const db=supabaseAdmin||supabase;
+    let query=db.from("music_library").select("*",{count:"exact"});
     if(q)query=query.or("title.ilike.%"+q.replace(/[%_]/g,"")+"%,artist.ilike.%"+q.replace(/[%_]/g,"")+"%");
     if(sort==="views")query=query.order("views",{ascending:false});
     else if(sort==="recent")query=query.order("created_at",{ascending:false});

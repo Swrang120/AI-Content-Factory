@@ -24,7 +24,7 @@ const supabaseAdmin=(SUPABASE_URL&&SUPABASE_SERVICE_KEY)?createClient(SUPABASE_U
 const MUSIC_STORAGE_BUCKET="music-library";
 const BLOB_TOKEN=process.env.BLOB_READ_WRITE_TOKEN||process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN||"";
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];
-app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io","https://ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-factory-4yj61h1a0-swrang120.vercel.app",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
+app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io","https://ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-factory-4yj61h1a0-swrang120.vercel.app",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
 app.use(express.json({limit:"1mb"}));
 app.use(express.static(ROOT,{
   index:false,
@@ -1258,7 +1258,9 @@ app.get("/auth/youtube/callback",async(req,res)=>{
     const expectedSignature=statePayload&&process.env.GOOGLE_CLIENT_SECRET
       ?crypto.createHmac("sha256",process.env.GOOGLE_CLIENT_SECRET).update(statePayload).digest("hex")
       :"";
-    const validState=!!statePayload&&nonce.length>=24&&Number.isFinite(issuedAt)&&Math.abs(Date.now()-issuedAt)<10*60*1000&&crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expectedSignature));
+    const signatureLengthOk=signature.length===expectedSignature.length;
+    const signatureMatches=signatureLengthOk&&crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expectedSignature));
+    const validState=!!statePayload&&nonce.length>=24&&Number.isFinite(issuedAt)&&Math.abs(Date.now()-issuedAt)<10*60*1000&&signatureMatches;
     if(!validState)return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
     const client=oauthClient();
     const {tokens}=await client.getToken(req.query.code);

@@ -686,28 +686,36 @@ async function musicLibraryFallbackUpload(){
     if(out)out.textContent="❌ Upload failed: "+(e?.message||String(e));
   }finally{if(btn)btn.disabled=false;}
 }
+function loadMusicLibraryModuleAndRender(){
+  if(typeof window.renderMusicLibrary==="function"){
+    window.renderMusicLibrary();
+    return;
+  }
+  const view=document.getElementById("view");
+  const title=document.getElementById("page-title");
+  if(title) title.textContent="Music Library";
+  if(view) view.innerHTML='<div class="card" style="max-width:760px"><p class="eyebrow">ORIGINAL MUSIC • DAILY PROMOTION</p><h2>🎵 Music Library</h2><p class="muted">Loading Music Library…</p></div>';
+  const existing=document.getElementById("music-library-module-loader");
+  if(existing){
+    existing.addEventListener("load",function(){if(typeof window.renderMusicLibrary==="function")window.renderMusicLibrary();});
+    return;
+  }
+  const s=document.createElement("script");
+  s.id="music-library-module-loader";
+  s.src="music-library-fixed.js?v=20261008e";
+  s.onload=function(){
+    if(typeof window.renderMusicLibrary==="function") window.renderMusicLibrary();
+    else if(view) view.innerHTML='<div class="card"><h2>🎵 Music Library</h2><p class="muted">Music Library module failed to initialize. Refresh once.</p></div>';
+  };
+  s.onerror=function(){
+    if(view) view.innerHTML='<div class="card"><h2>🎵 Music Library</h2><p class="muted">Music Library module could not be loaded. Please refresh after deployment.</p></div>';
+  };
+  document.head.appendChild(s);
+}
 function setView(v){
   document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.view===v));
   if(v==="music-library"){
-    if(typeof window.renderMusicLibrary==="function"){
-      window.renderMusicLibrary();
-    }else{
-      const view=document.getElementById("view");
-      const title=document.getElementById("page-title");
-      if(title) title.textContent="Music Library";
-      if(view) view.innerHTML=`<div class="card" style="max-width:760px">
-        <p class="eyebrow">ORIGINAL MUSIC • DAILY PROMOTION</p>
-        <h2>🎵 Music Library</h2>
-        <p class="muted">The full Music Library module is still loading, but the upload control is ready here.</p>
-        <label>Song title <input id="mlFallbackTitle" placeholder="Enter song title"></label>
-        <label style="margin-top:12px">Original master audio <input id="mlFallbackAudio" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"></label>
-        <button class="primary full" id="mlFallbackAdd" type="button" style="margin-top:12px">🎵 Upload & Set as Daily Promotion</button>
-        <div id="mlFallbackResult" class="muted" style="margin-top:10px">Ready for your next release.</div>
-      </div>`;
-      const fb=document.getElementById("mlFallbackAdd");
-      if(fb)fb.addEventListener("click",musicLibraryFallbackUpload);
-      console.error("Music Library renderer is not loaded.");
-    }
+    loadMusicLibraryModuleAndRender();
     return;
   }
   var renderers={dashboard:renderDashboard,content:renderContent,ai:renderAI,voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings};

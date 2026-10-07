@@ -1,19 +1,34 @@
 // Vercel serverless entrypoint for the Express application.
-// If the app fails during module initialization, return JSON instead of
-// Vercel's generic FUNCTION_INVOCATION_FAILED page so the real cause is visible.
 let app;
+let researchHub;
 try {
   app = require("../server");
+  researchHub = require("./research-hub");
 } catch (error) {
   console.error("AI Content Factory server initialization failed:", error);
-  app = (req, res) => {
+  app = null;
+  researchHub = null;
+}
+
+module.exports = async (req, res) => {
+  try {
+    if (researchHub) {
+      const handled = await researchHub.handler(req, res);
+      if (handled !== null) return;
+    }
+    if (app) return app(req, res);
     res.statusCode = 500;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.end(JSON.stringify({
       ok: false,
-      error: "Server initialization failed",
-      detail: error && error.message ? error.message : String(error)
+      error: "Server initialization failed"
     }));
-  };
-}
-module.exports = app;
+  } catch (error) {
+    console.error("AI Content Factory request failed:", error);
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.end(JSON.stringify({ ok:false, error:String(error?.message || error) }));
+    }
+  }
+};

@@ -77,7 +77,7 @@
       if(typeof window.renderMusicLibrary === "function") return;
       function esc(v){return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
       function api(path){
-        var base=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://factory-zeta-ruby.vercel.app");
+        var base=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://ai-content-factory-gussvkdme-swrang120.vercel.app");
         return (typeof window.apiUrl==="function"?window.apiUrl(path):base.replace(/\/+$/,"")+path);
       }
       async function load(){

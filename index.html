@@ -68,6 +68,16 @@
   </div>
 
   <script src="app-fixed.js?v=20261008b"></script>
-  <script src="music-library-fixed.js?v=20261007a"></script>
+  <script src="music-library-fixed.js?v=20261008c"></script>
+  <script>
+    window.addEventListener("load",function(){
+      if(typeof window.renderMusicLibrary!=="function"){
+        var s=document.createElement("script");
+        s.src="music-library-fixed.js?v=20261008c-retry";
+        s.onerror=function(){console.error("Music Library module could not be loaded.");};
+        document.body.appendChild(s);
+      }
+    });
+  </script>
 </body>
 </html>

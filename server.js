@@ -24,7 +24,7 @@ const supabaseAdmin=(SUPABASE_URL&&SUPABASE_SERVICE_KEY)?createClient(SUPABASE_U
 const MUSIC_STORAGE_BUCKET="music-library";
 const BLOB_TOKEN=process.env.BLOB_READ_WRITE_TOKEN||process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN||"";
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/youtube.force-ssl"];
-app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io","https://factory-zeta-ruby.vercel.app","https://ai-content-factory-swrang120.vercel.app","https://ai-content-factory-git-main-swrang120.vercel.app","https://ai-content-factory-zeta-ruby.vercel.app","https://ai-content-factory-4yj61h1a0-swrang120.vercel.app",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
+app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io","https://ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-factory-4yj61h1a0-swrang120.vercel.app",process.env.FRONTEND_URL].filter(Boolean);if(origin&&allowed.includes(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
 app.use(express.json({limit:"1mb"}));
 app.use(express.static(ROOT,{
   index:false,
@@ -1218,7 +1218,7 @@ app.get("/api/youtube/config-status",async(req,res)=>{
     youtubeRedirectConfigured:!!redirect,
     youtubeRedirectUri:redirect||null,
     tokenPersistence:!!(supabaseAdmin||supabase),
-    currentBackend:"https://factory-zeta-ruby.vercel.app"
+    currentBackend:"https://ai-content-factory-gussvkdme-swrang120.vercel.app"
   });
 });
 app.get("/auth/youtube",(req,res)=>{
@@ -1352,7 +1352,7 @@ app.get("/auth/meta/callback",async(req,res)=>{
 });
 // Meta Webhook verification for Facebook/Instagram integrations.
 // Configure META_WEBHOOK_VERIFY_TOKEN on Vercel and use this callback:
-// https://ai-content-factory-zeta-ruby.vercel.app/api/meta/webhook
+// https://ai-content-ai-content-factory-gussvkdme-swrang120.vercel.app/api/meta/webhook
 app.get("/api/meta/webhook",(req,res)=>{
   const mode=String(req.query["hub.mode"]||"");
   const token=String(req.query["hub.verify_token"]||"");

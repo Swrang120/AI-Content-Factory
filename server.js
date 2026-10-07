@@ -1264,7 +1264,7 @@ app.get("/auth/youtube",async(req,res)=>{
     // This makes the OAuth callback resilient to Vercel/mobile redirect
     // variations while retaining signed-state validation as the primary path.
     res.setHeader("Set-Cookie",[
-      `acf_youtube_oauth_state=${encodeURIComponent(state)}; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax`
+      `acf_youtube_oauth_state=${encodeURIComponent(state)}; Max-Age=900; Path=/; HttpOnly; Secure; SameSite=None`
     ]);
     const url=client.generateAuthUrl({
       access_type:"offline",

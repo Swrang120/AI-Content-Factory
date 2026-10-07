@@ -49,6 +49,10 @@
     var rows=document.getElementById("mlSafeRows");
     if(!rows) return;
     try{
+      var sync=await fetch(api("/api/music/library/sync-storage"),{
+        method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:"{}"
+      });
+      await sync.json().catch(function(){});
       var r=await fetch(api("/api/music/library?page="+page+"&limit=50&sort=recent"),{credentials:"include",cache:"no-store"});
       var b=await r.json();
       if(!r.ok||!b.ok) throw new Error(b.error||("Music Library unavailable: HTTP "+r.status));

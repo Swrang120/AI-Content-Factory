@@ -1250,6 +1250,12 @@ app.get("/auth/youtube",async(req,res)=>{
     // database table that may not exist in a fresh/private deployment and is
     // reliable across Vercel's stateless serverless instances.
     const state=createYouTubeOAuthState();
+    // Keep a short-lived browser-bound copy as a second validation path.
+    // This makes the OAuth callback resilient to Vercel/mobile redirect
+    // variations while retaining signed-state validation as the primary path.
+    res.setHeader("Set-Cookie",[
+      `acf_youtube_oauth_state=${encodeURIComponent(state)}; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax`
+    ]);
     const url=client.generateAuthUrl({
       access_type:"offline",
       prompt:"consent",
@@ -1269,7 +1275,12 @@ app.get("/auth/youtube/callback",async(req,res)=>{
     if(!req.query.code)return res.status(400).send("Missing OAuth authorization code.");
     const returnedState=String(req.query.state||"");
     if(!returnedState)return res.status(400).send("Missing OAuth state. Start YouTube connection again.");
-    if(!verifyYouTubeOAuthState(returnedState))return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
+    const browserState=getCookie(req,"acf_youtube_oauth_state");
+    const signedStateValid=verifyYouTubeOAuthState(returnedState);
+    const browserStateValid=!!browserState&&browserState===returnedState;
+    // Primary protection is the signed state. The browser cookie is a
+    // short-lived fallback for mobile/Vercel redirect edge cases.
+    if(!signedStateValid&&!browserStateValid)return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
 
     const client=oauthClient();
     const {tokens}=await client.getToken(req.query.code);

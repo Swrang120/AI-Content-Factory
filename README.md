@@ -79,3 +79,5 @@ Veryfi's Make app is a document OCR/data-extraction integration, not a general w
 - [ ] QA/copyright automation
 - [ ] Scheduler
 - [ ] Analytics worker
+
+<!-- VERCEL_REBUILD_TRIGGER: 2026-10-07 backend bootstrap + YouTube OAuth repair -->

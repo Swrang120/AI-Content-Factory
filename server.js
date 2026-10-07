@@ -570,7 +570,7 @@ async function transcribeMusicAudio(audioUrl){
   if(!r.ok)throw new Error(body?.error?.message||"Music transcription failed");
   return {text:String(body?.text||""),segments:Array.isArray(body?.segments)?body.segments:[]};
 }
-async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req}){
+async async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req}){
   let meta;
   if(spotifyUrl){ meta=await fetchSpotifyTrackMetadata(spotifyUrl); }
   else { meta={spotifyUrl:null,title:String(title||"Original Song"),artist:String(artist||"Swrang Swargiary"),thumbnailUrl:thumbnailUrl||null,provider:"Supabase Storage"}; }

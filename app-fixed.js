@@ -718,7 +718,7 @@ function setView(v){
     loadMusicLibraryModuleAndRender();
     return;
   }
-  var renderers={dashboard:renderDashboard,content:renderContent,ai:renderAI,voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings};
+  var renderers={dashboard:renderDashboard,content:renderContent,ai:renderAI,"youtube-skills":renderYoutubeSkills,voice:renderVoice,robots:renderRobots,boss:renderBossRoom,categories:renderCategories,schedule:renderSchedule,accounts:renderAccounts,settings:renderSettings};
   (renderers[v]||renderDashboard)();
 }
 document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));

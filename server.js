@@ -1902,66 +1902,6 @@ app.post("/api/music/library/import",requireAppKey,async(req,res)=>{
     res.json({ok:true,tracks:results,count:results.length});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
-app.post("/api/music/library/sync-storage",requireAppKey,async(req,res)=>{
-  try{
-    if(!supabaseAdmin)throw new Error("Supabase server is not configured for Storage sync.");
-    const bucket=supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET);
-    const files=[];
-    async function walk(folder,depth){
-      if(depth>4)return;
-      const {data,error}=await bucket.list(folder,{limit:1000,sortBy:{column:"name",order:"asc"}});
-      if(error)throw new Error("Storage listing failed: "+error.message);
-      for(const item of (data||[])){
-        if(!item||!item.name)continue;
-        const child=folder?folder+"/"+item.name:item.name;
-        const isFolder=!item.metadata && !item.id;
-        if(isFolder){await walk(child,depth+1);continue;}
-        const lower=item.name.toLowerCase();
-        if(!/\\.(mp3|wav|m4a|aac|ogg|flac|mp4|mpeg|webm)$/i.test(lower))continue;
-        files.push({
-          pathname:child,
-          name:item.name,
-          created_at:item.created_at||item.updated_at||new Date().toISOString(),
-          updated_at:item.updated_at||item.created_at||new Date().toISOString()
-        });
-      }
-    }
-    await walk("",0);
-    const {data:existing,error:existingError}=await supabaseAdmin.from("music_library").select("id,audio_url,title,status");
-    if(existingError)throw new Error("Music Library lookup failed: "+existingError.message);
-    const known=new Set((existing||[]).map(x=>String(x.audio_url||"")));
-    const imported=[];
-    const skipped=[];
-    for(const file of files.slice(0,500)){
-      const audioUrl=SUPABASE_URL.replace(/\\/$/,"")+"/storage/v1/object/public/"+encodeURIComponent(MUSIC_STORAGE_BUCKET)+"/"+file.pathname.split("/").map(encodeURIComponent).join("/");
-      if(known.has(audioUrl)){skipped.push(file.pathname);continue;}
-      const base=file.name.replace(/\\.[^.]+$/,"").replace(/[-_]+/g," ").replace(/\\s+/g," ").trim();
-      const id=crypto.randomUUID();
-      const now=new Date().toISOString();
-      const row={
-        id,spotify_url:null,youtube_url:null,spotify_track_id:null,youtube_video_id:null,
-        title:base||"Original Music",artist:"Swrang Swargiary",artwork_url:null,audio_url:audioUrl,
-        rights_status:"owned",status:"paused",views:0,likes:0,comments:0,view_velocity:0,
-        engagement_rate:0,trend_score:0,promotion_count:0,promo_views:0,last_promoted_at:null,
-        last_used_at:null,last_metrics_at:null,tags:["Original Master","Storage Import"],ai_analysis:null,
-        source_metrics:{upload:"supabase_storage_existing"},created_at:file.created_at||now,updated_at:now
-      };
-      const {data:rowData,error:insertError}=await supabaseAdmin.from("music_library").insert(row).select("*").single();
-      if(insertError){
-        skipped.push(file.pathname);
-        console.warn("Music storage import skipped:",file.pathname,insertError.message);
-        continue;
-      }
-      known.add(audioUrl);
-      imported.push(publicMusicTrack(rowData));
-    }
-    res.json({ok:true,storageFiles:files.length,imported:imported.length,skipped:skipped.length,tracks:imported});
-  }catch(e){
-    console.error("Music storage sync failed:",e);
-    res.status(400).json({ok:false,error:safeErrorMessage(e)});
-  }
-});
-
 app.get("/api/music/library",requireAppKey,async(req,res)=>{
   try{
     if(!supabase)throw new Error("Supabase is not configured for Music Library.");

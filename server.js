@@ -48,11 +48,15 @@ app.get("/app.js",(req,res)=>{
   res.setHeader("Cache-Control","public, max-age=3600");
   res.sendFile(file);
 });
-function oauthClient(){
-  if(!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET||!process.env.YOUTUBE_REDIRECT_URI){
-    throw new Error("YouTube OAuth is not configured. Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and YOUTUBE_REDIRECT_URI on Vercel.");
+const CANONICAL_YOUTUBE_REDIRECT_URI="https://ai-content-factory-gussvkdme-swrang120.vercel.app/auth/youtube/callback";
+function oauthClient(redirectOverride){
+  if(!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET){
+    throw new Error("YouTube OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on Vercel.");
   }
-  return new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID,process.env.GOOGLE_CLIENT_SECRET,process.env.YOUTUBE_REDIRECT_URI);
+  // Use one canonical callback URL for both authorization and token exchange.
+  // This prevents Vercel alias/preview redirects from creating a state mismatch.
+  const redirect=redirectOverride||CANONICAL_YOUTUBE_REDIRECT_URI;
+  return new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID,process.env.GOOGLE_CLIENT_SECRET,redirect);
 }
 function requireAppKey(req,res,next){
   if(!process.env.APP_API_KEY)return next();
@@ -1215,8 +1219,10 @@ app.get("/api/youtube/config-status",async(req,res)=>{
     configured:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&redirect),
     googleClientIdConfigured:!!process.env.GOOGLE_CLIENT_ID,
     googleClientSecretConfigured:!!process.env.GOOGLE_CLIENT_SECRET,
-    youtubeRedirectConfigured:!!redirect,
-    youtubeRedirectUri:redirect||null,
+    youtubeRedirectConfigured:true,
+    youtubeRedirectUri:CANONICAL_YOUTUBE_REDIRECT_URI,
+    configuredRedirectUri:redirect||null,
+    redirectMatchesCanonical:!redirect||redirect===CANONICAL_YOUTUBE_REDIRECT_URI,
     tokenPersistence:!!(supabaseAdmin||supabase),
     currentBackend:"https://ai-content-factory-gussvkdme-swrang120.vercel.app"
   });
@@ -1245,7 +1251,7 @@ function verifyYouTubeOAuthState(state){
 
 app.get("/auth/youtube",async(req,res)=>{
   try{
-    const client=oauthClient();
+    const client=oauthClient(CANONICAL_YOUTUBE_REDIRECT_URI);
     // OAuth state is self-contained and signed. This avoids depending on a
     // database table that may not exist in a fresh/private deployment and is
     // reliable across Vercel's stateless serverless instances.
@@ -1282,7 +1288,7 @@ app.get("/auth/youtube/callback",async(req,res)=>{
     // short-lived fallback for mobile/Vercel redirect edge cases.
     if(!signedStateValid&&!browserStateValid)return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
 
-    const client=oauthClient();
+    const client=oauthClient(CANONICAL_YOUTUBE_REDIRECT_URI);
     const {tokens}=await client.getToken(req.query.code);
     const current=await loadTokens(req);
     await saveTokens({...current,...tokens});

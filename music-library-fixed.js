@@ -102,8 +102,9 @@
       if(!p.ok||!pb.ok) throw new Error(pb.error||("Upload preparation failed: HTTP "+p.status));
 
       msg.textContent="📤 Uploading to Supabase Storage…";
-      var put=await fetch(pb.signedUrl,{method:"PUT",headers:{"Content-Type":file.type||"application/octet-stream"},body:file});
-      if(!put.ok) throw new Error("Supabase Storage upload failed: HTTP "+put.status);
+      var mime=file.type||({mp3:"audio/mpeg",wav:"audio/wav",m4a:"audio/mp4",aac:"audio/aac",ogg:"audio/ogg",flac:"audio/flac"}[(file.name.split(".").pop()||"").toLowerCase()]||"audio/mpeg");
+      var put=await fetch(pb.signedUrl,{method:"PUT",headers:{"Content-Type":mime,"Cache-Control":"max-age=3600","x-upsert":"false"},body:file});
+      if(!put.ok){var uploadDetail=await put.text().catch(function(){return "";});throw new Error("Supabase Storage upload failed: HTTP "+put.status+(uploadDetail?" — "+uploadDetail.slice(0,300):""));}
 
       msg.textContent="☁️ Saving track to Music Library…";
       var a=await fetch(api("/api/music/library/activate-upload"),{

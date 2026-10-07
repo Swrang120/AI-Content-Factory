@@ -1283,7 +1283,13 @@ app.get("/auth/youtube",async(req,res)=>{
     res.status(500).send("YouTube OAuth configuration error: "+e.message);
   }
 });
-app.get("/api/auth/youtube/callback",(req,res)=>{req.url="/auth/youtube/callback";app._router.handle(req,res);});
+app.get("/api/auth/youtube/callback",(req,res)=>{
+  // Preserve Google's query string when this compatibility alias is used.
+  // Dropping ?code=...&state=... makes the callback look like a missing/invalid OAuth state.
+  const query=String(req.originalUrl||req.url||"").split("?")[1]||"";
+  req.url="/auth/youtube/callback"+(query?"?"+query:"");
+  app._router.handle(req,res);
+});
 app.get("/auth/youtube/callback",async(req,res)=>{
   try{
     if(req.query.error)return res.status(400).send("YouTube authorization denied: "+req.query.error);

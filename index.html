@@ -67,14 +67,86 @@
     </div>
   </div>
 
-  <script src="app-fixed.js?v=20261008e"></script>
-  <script src="music-library-fixed.js?v=20261008e"></script>
+  <script src="app-fixed.js?v=20261009a"></script>
+  <script src="music-library-fixed.js?v=20261009a"></script>
   <script src="live-status.js?v=20261008a"></script>
+  <script>
+    // Hard fallback: keep Music Library available even if the optional module
+    // is stale/cached or fails to initialize.
+    (function(){
+      if(typeof window.renderMusicLibrary === "function") return;
+      function esc(v){return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+      function api(path){
+        var base=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://factory-zeta-ruby.vercel.app");
+        return (typeof window.apiUrl==="function"?window.apiUrl(path):base.replace(/\/+$/,"")+path);
+      }
+      async function load(){
+        var rows=document.getElementById("acfMusicRows"),msg=document.getElementById("acfMusicMsg");
+        if(!rows)return;
+        try{
+          var r=await fetch(api("/api/music/library?page=0&limit=50&sort=recent"),{credentials:"include",cache:"no-store"});
+          var b=await r.json();
+          if(!r.ok||!b.ok)throw new Error(b.error||("HTTP "+r.status));
+          var tracks=Array.isArray(b.tracks)?b.tracks:[];
+          if(!tracks.length){rows.innerHTML='<tr><td colspan="5" class="ml-empty">No uploaded music found.</td></tr>';return;}
+          rows.innerHTML=tracks.map(function(t){
+            var audio=String(t.audioUrl||t.audio_url||"");
+            return '<tr><td><b>'+esc(t.title||"Untitled")+'</b><br><small>'+esc(t.artist||"")+'</small></td><td>'+(audio?'<audio controls preload="none" style="width:180px;max-width:100%" src="'+esc(audio)+'"></audio>':"No audio")+'</td><td>'+(String(t.status||"")==="active"?'<span style="color:#8ff0a8;font-weight:800">● ACTIVE</span>':"PAUSED")+'</td><td>'+Number(t.promotionCount||t.promotion_count||0).toLocaleString()+'</td><td><button type="button" data-del="'+esc(t.id)+'" style="padding:7px 10px;border-radius:8px;border:1px solid rgba(255,90,90,.4);background:rgba(255,60,60,.1);color:#ffb0b0">🗑️ Delete</button></td></tr>';
+          }).join("");
+          rows.querySelectorAll("[data-del]").forEach(function(btn){btn.onclick=function(){remove(btn.getAttribute("data-del"));};});
+        }catch(e){rows.innerHTML='<tr><td colspan="5" class="ml-empty">❌ '+esc(e.message||e)+'</td></tr>';}
+      }
+      async function remove(id){
+        if(!id||!confirm("Delete this track and its linked Supabase Storage audio file?"))return;
+        var msg=document.getElementById("acfMusicMsg");
+        if(msg)msg.textContent="🗑️ Deleting…";
+        try{
+          var r=await fetch(api("/api/music/library/"+encodeURIComponent(id)),{method:"DELETE",credentials:"include",headers:{"Accept":"application/json"}});
+          var b=await r.json();
+          if(!r.ok||!b.ok)throw new Error(b.error||("HTTP "+r.status));
+          if(msg)msg.textContent="✅ Track deleted.";
+          load();
+        }catch(e){if(msg)msg.textContent="❌ Delete failed: "+(e.message||e);}
+      }
+      async function upload(){
+        var file=document.getElementById("acfMusicFile")?.files?.[0],title=document.getElementById("acfMusicTitle")?.value.trim()||"",msg=document.getElementById("acfMusicMsg"),btn=document.getElementById("acfMusicUpload");
+        if(!file){if(msg)msg.textContent="⚠️ Choose an audio file first.";return;}
+        if(file.size>500*1024*1024){if(msg)msg.textContent="⚠️ Maximum audio size is 500 MB.";return;}
+        btn.disabled=true;
+        try{
+          msg.textContent="🔐 Preparing upload…";
+          var p=await fetch(api("/api/music/library/upload-token"),{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({filename:file.name,title:title})});
+          var pb=await p.json();
+          if(!p.ok||!pb.ok)throw new Error(pb.error||("HTTP "+p.status));
+          msg.textContent="📤 Uploading to Supabase Storage…";
+          var put=await fetch(pb.signedUrl,{method:"PUT",headers:{"Content-Type":file.type||"application/octet-stream"},body:file});
+          if(!put.ok)throw new Error("Storage upload failed: HTTP "+put.status);
+          msg.textContent="☁️ Saving track…";
+          var a=await fetch(api("/api/music/library/activate-upload"),{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:pb.id,pathname:pb.pathname,title:pb.title||title||file.name})});
+          var ab=await a.json();
+          if(!a.ok||!ab.ok)throw new Error(ab.error||("HTTP "+a.status));
+          msg.textContent="✅ "+(ab.track?.title||pb.title||file.name)+" is now ACTIVE.";
+          document.getElementById("acfMusicFile").value="";document.getElementById("acfMusicTitle").value="";
+          load();
+        }catch(e){msg.textContent="❌ Upload failed: "+(e.message||e);}
+        finally{btn.disabled=false;}
+      }
+      function render(){
+        var view=document.getElementById("view"),title=document.getElementById("page-title");if(!view)return;
+        if(title)title.textContent="Music Library";
+        view.innerHTML='<style>.acf-ml{padding:18px}.acf-ml .box{margin-top:16px;padding:16px;border:1px solid rgba(160,140,255,.22);border-radius:16px;background:rgba(10,20,38,.75)}.acf-ml input{width:100%;box-sizing:border-box;margin:7px 0;padding:11px;border-radius:10px;background:#07111f;color:#fff;border:1px solid #34415e}.acf-ml .btn{width:100%;padding:13px;border:0;border-radius:11px;background:#e8b83f;color:#111;font-weight:800}.acf-ml table{width:100%;border-collapse:collapse}.acf-ml th,.acf-ml td{padding:11px 7px;text-align:left;border-bottom:1px solid rgba(255,255,255,.08);font-size:12px}.acf-ml th{color:#8e9ab4}.acf-ml .scroll{overflow:auto}.ml-empty{text-align:center;padding:24px;color:#9ba8c2}</style><div class="acf-ml"><p class="eyebrow">ORIGINAL MUSIC • DAILY PROMOTION</p><h2>🎵 Music Library</h2><p class="muted">Upload original masters, listen to them, and manage the active daily promotion track.</p><div class="box"><b>Upload New Song</b><input id="acfMusicTitle" type="text" placeholder="Song title"><input id="acfMusicFile" type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"><button id="acfMusicUpload" class="btn" type="button">🎵 Upload & Set as Daily Promotion</button><div id="acfMusicMsg" style="margin-top:10px;font-size:12px">Ready.</div></div><div class="box"><h3>Track Library</h3><div class="scroll"><table><thead><tr><th>Track</th><th>Listen</th><th>Status</th><th>Promos</th><th>Action</th></tr></thead><tbody id="acfMusicRows"><tr><td colspan="5" class="ml-empty">Loading…</td></tr></tbody></table></div></div></div>';
+        document.getElementById("acfMusicUpload").onclick=upload;
+        load();
+      }
+      window.renderMusicLibrary=render;
+      window.musicLibraryAdd=upload;
+    })();
+  </script>
   <script>
     window.addEventListener("load",function(){
       if(typeof window.renderMusicLibrary!=="function"){
         var s=document.createElement("script");
-        s.src="music-library-fixed.js?v=20261008d-retry";
+        s.src="music-library-fixed.js?v=20261009a-retry";
         s.onerror=function(){console.error("Music Library module could not be loaded.");};
         document.body.appendChild(s);
       }

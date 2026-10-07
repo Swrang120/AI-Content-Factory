@@ -2131,6 +2131,261 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
 });
 app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube(req);const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
 app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishRenderedYouTubeVideo(p);res.json({ok:true,published:true,...result});}catch(e){const code=e.message==="Auto Publish is OFF."||e.message==="Human approval is required before publishing."?409:500;res.status(code).json({ok:false,published:false,error:e.message});}});
+
+/* =========================
+   YOUTUBE LIVE AUTOMATION
+   Orchestration lives in Vercel; FFmpeg runs on a dedicated worker.
+   Stream credentials are never returned to browser/dashboard clients.
+========================= */
+const LIVE_TZ="Asia/Kolkata";
+const LIVE_START_HOUR=14;
+const LIVE_END_HOUR=16;
+const LIVE_PREP_MINUTES=5;
+const LIVE_STATE_KEY="__acf_live_jobs";
+
+function liveWorkerAuthorized(req){
+  const expected=String(process.env.LIVE_WORKER_TOKEN||"").trim();
+  if(!expected)return {ok:false,status:503,error:"LIVE_WORKER_TOKEN is not configured on the server."};
+  const supplied=String(req.headers["x-live-worker-token"]||"").trim();
+  if(!supplied||supplied!==expected)return {ok:false,status:401,error:"Unauthorized live worker."};
+  return {ok:true};
+}
+async function readLiveJobs(){
+  if(!supabase)return {};
+  try{
+    const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+    if(error)throw error;
+    const value=data?.tokens?.[LIVE_STATE_KEY];
+    return value&&typeof value==="object"?value:{};
+  }catch(error){
+    console.error("Live state read warning:",safeErrorMessage(error));
+    return {};
+  }
+}
+async function writeLiveJobs(jobs){
+  if(!supabase)throw new Error("Supabase is required for persistent YouTube Live state.");
+  const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+  if(error)throw error;
+  const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
+  const tokens={...existing,[LIVE_STATE_KEY]:jobs};
+  const saved=await supabase.from("youtube_connections").upsert({id:"default",tokens,updated_at:new Date().toISOString()},{onConflict:"id"});
+  if(saved.error)throw saved.error;
+  return jobs;
+}
+function liveLocalParts(date=new Date()){
+  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:LIVE_TZ,year:"numeric",month:"2-digit",day:"2-digit",weekday:"long"}).formatToParts(date);
+  const get=k=>parts.find(x=>x.type===k)?.value;
+  return {year:Number(get("year")),month:Number(get("month")),day:Number(get("day")),weekday:get("weekday")};
+}
+function liveDateKey(date=new Date()){
+  const p=liveLocalParts(date);
+  return p.year+"-"+String(p.month).padStart(2,"0")+"-"+String(p.day).padStart(2,"0");
+}
+function liveDateTime(dateKey,hour,minute=0){
+  const [y,m,d]=String(dateKey).split("-").map(Number);
+  // India has no DST. Build the UTC instant for Asia/Kolkata explicitly.
+  return new Date(Date.UTC(y,m-1,d,hour-5,minute-30,0));
+}
+function liveScheduleForDate(dateKey){
+  const p=liveLocalParts(liveDateTime(dateKey,12,0));
+  const dayName=p.weekday;
+  const base=weeklyLiveSchedule().find(x=>String(x.day).toLowerCase()===String(dayName).toLowerCase())||null;
+  return base||{id:"daily_"+dateKey,day:dayName,dayIndex:new Date(dateKey+"T00:00:00Z").getUTCDay(),category:"AI Content Factory Live",title:"AI Content Factory Live",prompt:"Original AI Content Factory programming."};
+}
+function safeLiveJob(job){
+  if(!job)return null;
+  return {
+    id:job.id,dateKey:job.dateKey,day:job.day,title:job.title,description:job.description,
+    scheduledStartTime:job.scheduledStartTime,scheduledEndTime:job.scheduledEndTime,
+    status:job.status,broadcastId:job.broadcastId||null,streamId:job.streamId||null,
+    youtubeUrl:job.broadcastId?"https://www.youtube.com/watch?v="+job.broadcastId:null,
+    mediaType:job.mediaType||null,mediaUrl:job.mediaUrl||null,workerStatus:job.workerStatus||"waiting",
+    createdAt:job.createdAt,updatedAt:job.updatedAt,error:job.error||null
+  };
+}
+async function selectLiveMedia(dateKey){
+  // Monday is reserved for original/authorized music. The worker can turn an
+  // audio master into a simple video stream without downloading third-party music.
+  const schedule=liveScheduleForDate(dateKey);
+  if(String(schedule.day).toLowerCase()==="monday" && supabase){
+    const {data,error}=await supabase.from("music_library").select("*").eq("status","active").in("rights_status",["owned","authorized"]).not("audio_url","is",null).order("last_promoted_at",{ascending:true,nullsFirst:true}).limit(1);
+    if(!error&&data?.[0]?.audio_url){
+      return {mediaType:"audio",mediaUrl:data[0].audio_url,mediaTitle:data[0].title||"Original Music Live",rightsStatus:data[0].rights_status||"owned",trackId:data[0].id};
+    }
+  }
+  if(supabase){
+    const {data,error}=await supabase.from("content_jobs").select("id,topic,rendered_video_url,updated_at").not("rendered_video_url","is",null).order("updated_at",{ascending:false}).limit(10);
+    if(!error&&data?.length){
+      const item=data.find(x=>x.rendered_video_url);
+      if(item)return {mediaType:"video",mediaUrl:item.rendered_video_url,mediaTitle:item.topic||"AI Content Factory Live",jobId:item.id};
+    }
+  }
+  return null;
+}
+async function createYouTubeLiveJob({dateKey,privacyStatus}={}){
+  const targetDate=dateKey||liveDateKey(new Date(Date.now()+LIVE_PREP_MINUTES*60000));
+  const existingJobs=await readLiveJobs();
+  const existing=existingJobs[targetDate];
+  if(existing && ["scheduled","worker_claimed","starting","live"].includes(existing.status))return safeLiveJob(existing);
+  const settings=await hydrateSettings();
+  if(!settings.liveAutomation && process.env.LIVE_AUTOMATION_ENABLED!=="true"){
+    throw new Error("Live Automation is OFF. Enable liveAutomation in Factory Settings or set LIVE_AUTOMATION_ENABLED=true.");
+  }
+  const media=await selectLiveMedia(targetDate);
+  if(!media)throw new Error("No live media package is ready. Create a rendered video first; Monday also requires an active original/authorized music master.");
+  const schedule=liveScheduleForDate(targetDate);
+  const start=liveDateTime(targetDate,LIVE_START_HOUR,0);
+  const end=liveDateTime(targetDate,LIVE_END_HOUR,0);
+  if(start.getTime()<=Date.now())throw new Error("The live start time for "+targetDate+" has already passed.");
+  const yt=await youtube({});
+  const privacy=String(privacyStatus||process.env.YOUTUBE_LIVE_PRIVACY||"private");
+  if(!["private","unlisted","public"].includes(privacy))throw new Error("Invalid YOUTUBE_LIVE_PRIVACY.");
+  const title=String(schedule.title||"AI Content Factory Live").slice(0,100);
+  const description=("AI Content Factory · "+String(schedule.category||"Live")+" · Original/authorized programming.").slice(0,5000);
+  const broadcast=await yt.liveBroadcasts.insert({
+    part:"snippet,status,contentDetails",
+    requestBody:{
+      snippet:{title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),categoryId:"22"},
+      status:{privacyStatus:privacy},
+      contentDetails:{enableAutoStart:false,enableAutoStop:false,enableDvr:true,recordFromStart:true}
+    }
+  });
+  const stream=await yt.liveStreams.insert({
+    part:"snippet,cdn,contentDetails",
+    requestBody:{
+      snippet:{title:title+" · Stream"},
+      cdn:{frameRate:"30fps",ingestionType:"rtmp",resolution:"1080p"},
+      contentDetails:{isReusable:false}
+    }
+  });
+  await yt.liveBroadcasts.bind({
+    part:"id,contentDetails",
+    id:broadcast.data.id,
+    streamId:stream.data.id
+  });
+  const ingestion=stream.data.cdn?.ingestionInfo||{};
+  if(!ingestion.ingestionAddress||!ingestion.streamName)throw new Error("YouTube did not return RTMP ingestion information.");
+  const job={
+    id:"live_"+targetDate+"_"+Date.now().toString(36),
+    dateKey:targetDate,day:schedule.day,title,description,
+    scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),
+    status:"scheduled",workerStatus:"waiting",
+    broadcastId:broadcast.data.id,streamId:stream.data.id,
+    ingestionAddress:ingestion.ingestionAddress,streamName:ingestion.streamName,
+    mediaType:media.mediaType,mediaUrl:media.mediaUrl,mediaTitle:media.mediaTitle||title,
+    trackId:media.trackId||null,sourceJobId:media.jobId||null,
+    privacyStatus:privacy,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
+  };
+  existingJobs[targetDate]=job;
+  await writeLiveJobs(existingJobs);
+  return safeLiveJob(job);
+}
+async function transitionLiveBroadcast(job,broadcastStatus){
+  const yt=await youtube({});
+  const result=await yt.liveBroadcasts.transition({part:"id,status",id:job.broadcastId,broadcastStatus});
+  return result.data;
+}
+async function runLiveScheduler(){
+  const now=new Date();
+  const settings=await hydrateSettings();
+  const automation=settings.liveAutomation||process.env.LIVE_AUTOMATION_ENABLED==="true";
+  if(!automation)return {ok:true,skipped:true,reason:"Live Automation is OFF.",at:now.toISOString()};
+  const dateKey=liveDateKey(now);
+  const start=liveDateTime(dateKey,LIVE_START_HOUR,0);
+  const prep=liveDateTime(dateKey,LIVE_START_HOUR, -LIVE_PREP_MINUTES);
+  if(now<prep)return {ok:true,skipped:true,reason:"Before live preparation window.",dateKey,prepareAt:prep.toISOString()};
+  if(now>=liveDateTime(dateKey,LIVE_END_HOUR,0))return {ok:true,skipped:true,reason:"Today's live window has ended.",dateKey};
+  try{
+    const job=await createYouTubeLiveJob({dateKey});
+    return {ok:true,scheduled:true,dateKey,job};
+  }catch(error){
+    return {ok:false,dateKey,error:safeErrorMessage(error)};
+  }
+}
+
+app.get("/api/live/status",async(req,res)=>{
+  try{
+    const jobs=await readLiveJobs();
+    const keys=Object.keys(jobs).sort().reverse();
+    const recent=keys.slice(0,7).map(k=>safeLiveJob(jobs[k]));
+    const settings=await hydrateSettings();
+    res.json({ok:true,timeZone:LIVE_TZ,startTime:"14:00",endTime:"16:00",workerConfigured:!!process.env.LIVE_WORKER_TOKEN,automationEnabled:!!(settings.liveAutomation||process.env.LIVE_AUTOMATION_ENABLED==="true"),jobs:recent});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
+
+app.post("/api/live/create",requireAppKey,async(req,res)=>{
+  try{
+    const job=await createYouTubeLiveJob({dateKey:String(req.body?.dateKey||"").trim()||undefined,privacyStatus:req.body?.privacyStatus});
+    res.json({ok:true,job});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+
+/* Worker-only endpoints. These never return the raw YouTube stream key to dashboard clients. */
+app.get("/api/live/worker/claim",async(req,res)=>{
+  const auth=liveWorkerAuthorized(req); if(!auth.ok)return res.status(auth.status).json({ok:false,error:auth.error});
+  try{
+    const jobs=await readLiveJobs();
+    const now=Date.now();
+    const job=Object.values(jobs).filter(x=>x&&["scheduled","worker_claimed","starting","live"].includes(x.status)).sort((a,b)=>new Date(a.scheduledStartTime)-new Date(b.scheduledStartTime))[0];
+    if(!job)return res.json({ok:true,job:null});
+    const prep=new Date(job.scheduledStartTime).getTime()-LIVE_PREP_MINUTES*60000;
+    if(now<prep)return res.json({ok:true,job:null,next:{id:job.id,startTime:job.scheduledStartTime}});
+    const next={...job,status:job.status==="scheduled"?"worker_claimed":job.status,workerStatus:"claimed",updatedAt:new Date().toISOString()};
+    jobs[job.dateKey]=next; await writeLiveJobs(jobs);
+    // The raw RTMP target is only exposed to a request authenticated with LIVE_WORKER_TOKEN.
+    return res.json({ok:true,job:{...safeLiveJob(next),ingestionAddress:next.ingestionAddress,streamName:next.streamName,rtmpUrl:next.ingestionAddress+"/"+next.streamName}});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.post("/api/live/worker/start",async(req,res)=>{
+  const auth=liveWorkerAuthorized(req); if(!auth.ok)return res.status(auth.status).json({ok:false,error:auth.error});
+  try{
+    const id=String(req.body?.id||""); if(!id)return res.status(400).json({ok:false,error:"Live job id is required."});
+    const jobs=await readLiveJobs(); const job=Object.values(jobs).find(x=>x?.id===id);
+    if(!job)return res.status(404).json({ok:false,error:"Live job not found."});
+    const live=await transitionLiveBroadcast(job,"live");
+    job.status="live";job.workerStatus="streaming";job.updatedAt=new Date().toISOString();job.lastYouTubeStatus=live?.status?.lifeCycleStatus||"live";
+    jobs[job.dateKey]=job;await writeLiveJobs(jobs);
+    res.json({ok:true,job:safeLiveJob(job),youtubeStatus:live?.status?.lifeCycleStatus||null});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.post("/api/live/worker/finish",async(req,res)=>{
+  const auth=liveWorkerAuthorized(req); if(!auth.ok)return res.status(auth.status).json({ok:false,error:auth.error});
+  try{
+    const id=String(req.body?.id||""); if(!id)return res.status(400).json({ok:false,error:"Live job id is required."});
+    const jobs=await readLiveJobs(); const job=Object.values(jobs).find(x=>x?.id===id);
+    if(!job)return res.status(404).json({ok:false,error:"Live job not found."});
+    let live=null;
+    if(job.broadcastId){
+      try{live=await transitionLiveBroadcast(job,"complete");}catch(error){
+        // A worker restart may call finish twice; treat an already-complete broadcast as idempotent.
+        if(!/redundantTransition|invalidTransition/i.test(safeErrorMessage(error)))throw error;
+      }
+    }
+    job.status="completed";job.workerStatus="finished";job.updatedAt=new Date().toISOString();job.completedAt=new Date().toISOString();
+    jobs[job.dateKey]=job;await writeLiveJobs(jobs);
+    res.json({ok:true,job:safeLiveJob(job),youtubeStatus:live?.status?.lifeCycleStatus||"complete"});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.post("/api/live/worker/error",async(req,res)=>{
+  const auth=liveWorkerAuthorized(req); if(!auth.ok)return res.status(auth.status).json({ok:false,error:auth.error});
+  try{
+    const id=String(req.body?.id||"");const jobs=await readLiveJobs();const job=Object.values(jobs).find(x=>x?.id===id);
+    if(!job)return res.status(404).json({ok:false,error:"Live job not found."});
+    job.status="error";job.workerStatus="error";job.error=safeErrorMessage(req.body?.error||"Worker error");job.updatedAt=new Date().toISOString();
+    jobs[job.dateKey]=job;await writeLiveJobs(jobs);res.json({ok:true,job:safeLiveJob(job)});
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
+
+app.get("/api/cron/live",async(req,res)=>{
+  try{
+    const expected=process.env.ACF_CRON_SECRET||process.env.CRON_SECRET||"";
+    const auth=req.headers.authorization||"";
+    if(!expected)return res.status(503).json({ok:false,error:"ACF_CRON_SECRET/CRON_SECRET is not configured on the server."});
+    if(auth!=="Bearer "+expected)return res.status(401).json({ok:false,error:"Unauthorized cron request"});
+    res.json(await runLiveScheduler());
+  }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
+
 app.use((err,req,res,next)=>{const incident=rememberIncident(err,{route:req.originalUrl||req.url,operation:req.method+" "+(req.route?.path||"unknown"),status:500});diagnoseIncident(incident).catch(()=>{});if(res.headersSent)return next(err);res.status(500).json({ok:false,error:safeErrorMessage(err),selfHeal:{enabled:SELF_HEAL_ENABLED,incidentId:incident.id}});});
 app.get("/",(req,res)=>{
   // Serve the dashboard explicitly. Using a synchronous read here avoids

@@ -1224,7 +1224,10 @@ app.get("/api/youtube/config-status",async(req,res)=>{
 app.get("/auth/youtube",(req,res)=>{
   try{
     const client=oauthClient();
-    const state=crypto.randomBytes(32).toString("hex");
+    const issuedAt=Date.now();
+    const nonce=crypto.randomBytes(32).toString("hex");
+    const statePayload=String(issuedAt)+"."+nonce;
+    const state=statePayload+"."+crypto.createHmac("sha256",process.env.GOOGLE_CLIENT_SECRET).update(statePayload).digest("hex");
     setCookie(res,"acf_youtube_state",state,600);
     const url=client.generateAuthUrl({
       access_type:"offline",
@@ -1243,8 +1246,20 @@ app.get("/auth/youtube/callback",async(req,res)=>{
   try{
     if(req.query.error)return res.status(400).send("YouTube authorization denied: "+req.query.error);
     if(!req.query.code)return res.status(400).send("Missing OAuth authorization code.");
-    const expected=getCookie(req,"acf_youtube_state");
-    if(!expected||expected!==String(req.query.state||""))return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
+    // Vercel is stateless and some mobile browsers/webviews can drop the
+    // temporary OAuth cookie during the Google -> callback redirect. Verify
+    // the state cryptographically instead of depending only on that cookie.
+    const returnedState=String(req.query.state||"");
+    const parts=returnedState.split(".");
+    const issuedAt=Number(parts[0]||0);
+    const nonce=String(parts[1]||"");
+    const signature=String(parts[2]||"");
+    const statePayload=parts.length===3?parts[0]+"."+parts[1]:"";
+    const expectedSignature=statePayload&&process.env.GOOGLE_CLIENT_SECRET
+      ?crypto.createHmac("sha256",process.env.GOOGLE_CLIENT_SECRET).update(statePayload).digest("hex")
+      :"";
+    const validState=!!statePayload&&nonce.length>=24&&Number.isFinite(issuedAt)&&Math.abs(Date.now()-issuedAt)<10*60*1000&&crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expectedSignature));
+    if(!validState)return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
     const client=oauthClient();
     const {tokens}=await client.getToken(req.query.code);
     const existing=await loadTokens(req);

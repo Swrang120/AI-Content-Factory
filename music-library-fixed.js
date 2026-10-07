@@ -201,32 +201,65 @@
 
   async function musicLibraryAdd(){
     var out=document.getElementById("mlResult"),button=document.getElementById("mlAdd");
-    var audio=document.getElementById("mlAudio")?.files?.[0]||null,title=(document.getElementById("mlTitle")?.value||"").trim();
+    var audio=document.getElementById("mlAudio")?.files?.[0]||null;
+    var title=(document.getElementById("mlTitle")?.value||"").trim();
     if(!audio){out.textContent="⚠️ Choose an audio file first.";return;}
     var name=String(audio.name||"").toLowerCase();
     var extMatch=name.match(/\\.(mp3|wav|wave|m4a|aac|ogg|flac)$/i);
-    var allowedMime=/^(audio\\/(mpeg|mp3|wav|x-wav|wave|x-pn-wav|mp4|x-m4a|aac|ogg|flac)|application/octet-stream)$/i.test(String(audio.type||""));
+    var allowedMime=/^(audio\\/(mpeg|mp3|wav|x-wav|wave|x-pn-wav|mp4|x-m4a|aac|ogg|flac)|application\\/octet-stream)$/i.test(String(audio.type||""));
     if(!allowedMime&&!extMatch){out.textContent="⚠️ Please choose an MP3, WAV, M4A, AAC, OGG or FLAC audio file.";return;}
     if(audio.size>500*1024*1024){out.textContent="⚠️ Audio must be 500 MB or smaller.";return;}
     if(button)button.disabled=true;
     try{
-      out.textContent="🔐 Preparing secure direct upload…";
-      var r=await fetch(mlApi("/api/music/library/upload-token"),{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},credentials:"include",body:JSON.stringify({filename:audio.name,title:title})});
-      var b=await r.json().catch(function(){return {};});
-      if(!r.ok||!b.ok)throw new Error(b.error||("Could not prepare upload (HTTP "+r.status+")"));
-      out.textContent="📤 Uploading original master to Supabase Storage…";
-      await mlTusUpload(b,audio,out);
-      out.textContent="☁️ Upload complete. Activating daily promotion…";
-      r=await fetch(mlApi("/api/music/library/activate-upload"),{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},credentials:"include",body:JSON.stringify({id:b.id,pathname:b.pathname,title:b.title})});
-      b=await r.json().catch(function(){return {};});
-      if(!r.ok||!b.ok)throw new Error(b.error||("Could not activate track (HTTP "+r.status+")"));
-      out.textContent="✅ "+(b.track?.title||title||audio.name)+" is now the ACTIVE daily promotion track.";
-      document.getElementById("mlAudio").value="";document.getElementById("mlTitle").value="";
-      await loadMusicLibrary();await musicManagerToday();
-    }catch(e){out.textContent="❌ Upload failed: "+(e&&e.message?e.message:String(e));}
-    finally{if(button)button.disabled=false;}
-  }
+      out.textContent="🔐 Preparing secure upload…";
+      var prep=await fetch(mlApi("/api/music/library/upload-token"),{
+        method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},
+        credentials:"include",body:JSON.stringify({filename:audio.name,title:title})
+      });
+      var pb=await prep.json().catch(function(){return {};});
+      if(!prep.ok||!pb.ok)throw new Error(pb.error||("Could not prepare upload (HTTP "+prep.status+")"));
 
+      var uploaded=false;
+      // Signed PUT is the simplest path and avoids sending the audio through Vercel.
+      if(pb.signedUrl){
+        out.textContent="📤 Uploading original master…";
+        var put=await fetch(pb.signedUrl,{
+          method:"PUT",
+          headers:{"Content-Type":audio.type||"application/octet-stream"},
+          body:audio
+        });
+        if(put.ok){
+          uploaded=true;
+        }else{
+          // Fall back to the existing resumable TUS path for larger/unstable uploads.
+          out.textContent="↻ Switching to resumable upload…";
+        }
+      }
+      if(!uploaded){
+        await mlTusUpload(pb,audio,out);
+        uploaded=true;
+      }
+      if(!uploaded)throw new Error("Audio upload did not complete.");
+
+      out.textContent="☁️ Upload complete. Activating daily promotion…";
+      var activate=await fetch(mlApi("/api/music/library/activate-upload"),{
+        method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},
+        credentials:"include",
+        body:JSON.stringify({id:pb.id,pathname:pb.pathname,title:pb.title||title||audio.name})
+      });
+      var ab=await activate.json().catch(function(){return {};});
+      if(!activate.ok||!ab.ok)throw new Error(ab.error||("Could not activate track (HTTP "+activate.status+")"));
+      out.textContent="✅ "+(ab.track?.title||title||audio.name)+" is now the ACTIVE daily promotion track.";
+      document.getElementById("mlAudio").value="";
+      document.getElementById("mlTitle").value="";
+      await loadMusicLibrary();
+      await musicManagerToday();
+    }catch(e){
+      out.textContent="❌ Upload failed: "+(e&&e.message?e.message:String(e));
+    }finally{
+      if(button)button.disabled=false;
+    }
+  }
   async function musicAnalyze(id){
     var out=document.getElementById("mlManager");
     if(!out) return;

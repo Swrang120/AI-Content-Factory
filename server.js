@@ -1221,14 +1221,22 @@ app.get("/api/youtube/config-status",async(req,res)=>{
     currentBackend:"https://ai-content-factory-gussvkdme-swrang120.vercel.app"
   });
 });
-app.get("/auth/youtube",(req,res)=>{
+app.get("/auth/youtube",async(req,res)=>{
   try{
     const client=oauthClient();
+    // Persist the OAuth state in Supabase so the Google -> Vercel callback
+    // works reliably across Vercel's stateless instances and mobile browsers.
+    const state=crypto.randomBytes(32).toString("hex");
     const issuedAt=Date.now();
-    const nonce=crypto.randomBytes(32).toString("hex");
-    const statePayload=String(issuedAt)+"."+nonce;
-    const state=statePayload+"."+crypto.createHmac("sha256",process.env.GOOGLE_CLIENT_SECRET).update(statePayload).digest("hex");
-    setCookie(res,"acf_youtube_state",state,600);
+    const tokenDb=supabaseAdmin||supabase;
+    if(!tokenDb)throw new Error("Supabase is required for YouTube OAuth state persistence.");
+    const {data}=await tokenDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+    const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
+    const tokens={...existing,__acf_youtube_oauth_state:{state,issuedAt}};
+    const {error}=await tokenDb.from("youtube_connections").upsert({
+      id:"default",tokens,updated_at:new Date().toISOString()
+    },{onConflict:"id"});
+    if(error)throw new Error("Could not save OAuth state: "+error.message);
     const url=client.generateAuthUrl({
       access_type:"offline",
       prompt:"consent",
@@ -1246,30 +1254,32 @@ app.get("/auth/youtube/callback",async(req,res)=>{
   try{
     if(req.query.error)return res.status(400).send("YouTube authorization denied: "+req.query.error);
     if(!req.query.code)return res.status(400).send("Missing OAuth authorization code.");
-    // Vercel is stateless and some mobile browsers/webviews can drop the
-    // temporary OAuth cookie during the Google -> callback redirect. Verify
-    // the state cryptographically instead of depending only on that cookie.
     const returnedState=String(req.query.state||"");
-    const parts=returnedState.split(".");
-    const issuedAt=Number(parts[0]||0);
-    const nonce=String(parts[1]||"");
-    const signature=String(parts[2]||"");
-    const statePayload=parts.length===3?parts[0]+"."+parts[1]:"";
-    const expectedSignature=statePayload&&process.env.GOOGLE_CLIENT_SECRET
-      ?crypto.createHmac("sha256",process.env.GOOGLE_CLIENT_SECRET).update(statePayload).digest("hex")
-      :"";
-    const signatureLengthOk=signature.length===expectedSignature.length;
-    const signatureMatches=signatureLengthOk&&crypto.timingSafeEqual(Buffer.from(signature),Buffer.from(expectedSignature));
-    const validState=!!statePayload&&nonce.length>=24&&Number.isFinite(issuedAt)&&Math.abs(Date.now()-issuedAt)<10*60*1000&&signatureMatches;
-    if(!validState)return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
+    if(!returnedState)return res.status(400).send("Missing OAuth state. Start YouTube connection again.");
+
+    const tokenDb=supabaseAdmin||supabase;
+    if(!tokenDb)throw new Error("Supabase is required for YouTube OAuth state persistence.");
+    const {data,error}=await tokenDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+    if(error)throw new Error("Could not read OAuth state: "+error.message);
+    const savedState=data?.tokens?.__acf_youtube_oauth_state;
+    const age=Number(savedState?.issuedAt||0);
+    const stateMatches=typeof savedState?.state==="string"&&savedState.state===returnedState;
+    const stateFresh=Number.isFinite(age)&&Math.abs(Date.now()-age)<10*60*1000;
+    if(!stateMatches||!stateFresh)return res.status(400).send("OAuth state validation failed. Start YouTube connection again.");
+
+    // Consume the state before exchanging the code so it cannot be replayed.
+    const existing=data?.tokens&&typeof data.tokens==="object"?{...data.tokens}:{};
+    delete existing.__acf_youtube_oauth_state;
+    const cleared={id:"default",tokens:existing,updated_at:new Date().toISOString()};
+    const {error:clearError}=await tokenDb.from("youtube_connections").upsert(cleared,{onConflict:"id"});
+    if(clearError)throw new Error("Could not clear OAuth state: "+clearError.message);
+
     const client=oauthClient();
     const {tokens}=await client.getToken(req.query.code);
-    const existing=await loadTokens(req);
-    await saveTokens({...existing,...tokens});
-    const refresh=tokens.refresh_token||existing?.refresh_token;
-    const cookies=["acf_youtube_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"];
-    if(refresh)cookies.push("acf_youtube_refresh="+encodeURIComponent(refresh)+"; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None");
-    res.setHeader("Set-Cookie",cookies);
+    const current=await loadTokens(req);
+    await saveTokens({...current,...tokens});
+    const refresh=tokens.refresh_token||current?.refresh_token;
+    if(refresh)res.setHeader("Set-Cookie",`acf_youtube_refresh=${encodeURIComponent(refresh)}; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=None`);
     res.redirect("https://swrang120.github.io/AI-Content-Factory/?youtube=connected");
   }catch(e){
     res.status(500).send("OAuth callback failed: "+e.message);

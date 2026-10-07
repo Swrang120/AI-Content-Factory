@@ -14,7 +14,7 @@
 
   function mlApi(path){
     if(typeof window.apiUrl === "function") return window.apiUrl(path);
-    var base=window.ACF_BACKEND_URL || localStorage.getItem("acf_backend_url") || "https://ai-content-factory-swrang120.vercel.app";
+    var base=window.ACF_BACKEND_URL || localStorage.getItem("acf_backend_url") || "https://ai-content-factory-zeta-ruby.vercel.app";
     return base.replace(/\/+$/,"")+path;
   }
 

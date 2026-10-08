@@ -1216,7 +1216,7 @@ app.get("/api/youtube/config-status",async(req,res)=>{
   const redirect=String(process.env.YOUTUBE_REDIRECT_URI||"").trim();
   res.json({
     ok:true,
-    configured:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&redirect),
+    configured:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET),
     googleClientIdConfigured:!!process.env.GOOGLE_CLIENT_ID,
     googleClientSecretConfigured:!!process.env.GOOGLE_CLIENT_SECRET,
     youtubeRedirectConfigured:true,
@@ -1227,10 +1227,13 @@ app.get("/api/youtube/config-status",async(req,res)=>{
     currentBackend:"https://ai-content-factory-gussvkdme-swrang120.vercel.app"
   });
 });
-function youtubeOAuthStateSecret(){
-  const secret=String(process.env.YOUTUBE_OAUTH_STATE_SECRET||process.env.GOOGLE_CLIENT_SECRET||"").trim();
-  if(!secret)throw new Error("OAuth state signing secret is not configured. Add YOUTUBE_OAUTH_STATE_SECRET or GOOGLE_CLIENT_SECRET on Vercel.");
-  return secret;
+function youtubeOAuthStateSecrets(){
+  const values=[
+    process.env.YOUTUBE_OAUTH_STATE_SECRET,
+    process.env.GOOGLE_CLIENT_SECRET
+  ].map(v=>String(v||"").trim()).filter(Boolean);
+  if(!values.length)throw new Error("OAuth state signing secret is not configured. Add GOOGLE_CLIENT_SECRET on Vercel.");
+  return [...new Set(values)];
 }
 function createYouTubeOAuthState(){
   const payload=Buffer.from(JSON.stringify({
@@ -1238,7 +1241,7 @@ function createYouTubeOAuthState(){
     iat:Date.now(),
     nonce:crypto.randomBytes(32).toString("hex")
   })).toString("base64url");
-  const signature=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(payload).digest("base64url");
+  const signature=crypto.createHmac("sha256",youtubeOAuthStateSecrets()[0]).update(payload).digest("base64url");
   return payload+"."+signature;
 }
 function verifyYouTubeOAuthState(state){
@@ -1250,9 +1253,12 @@ function verifyYouTubeOAuthState(state){
     if(payload?.v!==3)return false;
     const issuedAt=Number(payload?.iat||0);
     if(!Number.isFinite(issuedAt)||Date.now()-issuedAt<0||Date.now()-issuedAt>=15*60*1000)return false;
-    const expected=crypto.createHmac("sha256",youtubeOAuthStateSecret()).update(parts[0]).digest("base64url");
-    if(parts[1].length!==expected.length)return false;
-    return crypto.timingSafeEqual(Buffer.from(parts[1],"utf8"),Buffer.from(expected,"utf8"));
+    for(const secret of youtubeOAuthStateSecrets()){
+      const expected=crypto.createHmac("sha256",secret).update(parts[0]).digest("base64url");
+      if(parts[1].length!==expected.length)continue;
+      if(crypto.timingSafeEqual(Buffer.from(parts[1],"utf8"),Buffer.from(expected,"utf8")))return true;
+    }
+    return false;
   }catch{return false;}
 }
 

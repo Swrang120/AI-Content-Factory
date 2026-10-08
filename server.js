@@ -48,7 +48,9 @@ app.get("/app.js",(req,res)=>{
   res.setHeader("Cache-Control","public, max-age=3600");
   res.sendFile(file);
 });
-const CANONICAL_YOUTUBE_REDIRECT_URI="https://ai-content-factory-gussvkdme-swrang120.vercel.app/auth/youtube/callback";
+const VERCEL_PRODUCTION_HOST=String(process.env.YOUTUBE_REDIRECT_HOST||process.env.VERCEL_PROJECT_PRODUCTION_URL||"").trim().replace(/^https?:\\/\\//,"").replace(/\\/+$/,"");
+const CANONICAL_YOUTUBE_REDIRECT_URI=String(process.env.YOUTUBE_REDIRECT_URI||"").trim()||
+  (VERCEL_PRODUCTION_HOST?"https://"+VERCEL_PRODUCTION_HOST+"/auth/youtube/callback":"https://ai-content-factory-gussvkdme-swrang120.vercel.app/auth/youtube/callback");
 function oauthClient(redirectOverride){
   if(!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET){
     throw new Error("YouTube OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on Vercel.");
@@ -1347,6 +1349,13 @@ async function handleYouTubeOAuthCallback(req,res){
   }
 }
 
+app.get("/api/auth/youtube/callback",(req,res)=>{
+  // Vercel rewrite compatibility: preserve Google's code/state query string
+  // before handing the request to the canonical callback route.
+  const query=String(req.originalUrl||req.url||"").split("?")[1]||"";
+  req.url="/auth/youtube/callback"+(query?"?"+query:"");
+  return handleYouTubeOAuthCallback(req,res);
+});
 app.get("/auth/youtube/callback",handleYouTubeOAuthCallback);
 app.get("/api/auth/youtube/callback",handleYouTubeOAuthCallback);
 

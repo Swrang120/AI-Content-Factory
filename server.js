@@ -1357,7 +1357,6 @@ app.get("/api/auth/youtube/callback",(req,res)=>{
   return handleYouTubeOAuthCallback(req,res);
 });
 app.get("/auth/youtube/callback",handleYouTubeOAuthCallback);
-app.get("/api/auth/youtube/callback",handleYouTubeOAuthCallback);
 
 // =========================
 // Meta (Facebook Page + Instagram Professional) OAuth

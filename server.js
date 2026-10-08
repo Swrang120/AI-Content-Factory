@@ -48,7 +48,7 @@ app.get("/app.js",(req,res)=>{
   res.setHeader("Cache-Control","public, max-age=3600");
   res.sendFile(file);
 });
-const VERCEL_PRODUCTION_HOST=String(process.env.YOUTUBE_REDIRECT_HOST||process.env.VERCEL_PROJECT_PRODUCTION_URL||"").trim().replace(/^https?:\\/\\//,"").replace(/\\/+$/,"");
+const VERCEL_PRODUCTION_HOST=String(process.env.YOUTUBE_REDIRECT_HOST||process.env.VERCEL_PROJECT_PRODUCTION_URL||"").trim().replace(/^https?:\/\//,"").replace(/\/+$/,"");
 const CANONICAL_YOUTUBE_REDIRECT_URI=String(process.env.YOUTUBE_REDIRECT_URI||"").trim()||
   (VERCEL_PRODUCTION_HOST?"https://"+VERCEL_PRODUCTION_HOST+"/auth/youtube/callback":"https://ai-content-factory-gussvkdme-swrang120.vercel.app/auth/youtube/callback");
 function oauthClient(redirectOverride){

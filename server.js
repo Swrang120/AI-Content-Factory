@@ -48,12 +48,7 @@ app.get("/app.js",(req,res)=>{
   res.setHeader("Cache-Control","public, max-age=3600");
   res.sendFile(file);
 });
-let VERCEL_PRODUCTION_HOST=String(process.env.YOUTUBE_REDIRECT_HOST||process.env.VERCEL_PROJECT_PRODUCTION_URL||"").trim();
-if(VERCEL_PRODUCTION_HOST.indexOf("https://")===0)VERCEL_PRODUCTION_HOST=VERCEL_PRODUCTION_HOST.slice(8);
-if(VERCEL_PRODUCTION_HOST.indexOf("http://")===0)VERCEL_PRODUCTION_HOST=VERCEL_PRODUCTION_HOST.slice(7);
-while(VERCEL_PRODUCTION_HOST.endsWith("/"))VERCEL_PRODUCTION_HOST=VERCEL_PRODUCTION_HOST.slice(0,-1);
-const CANONICAL_YOUTUBE_REDIRECT_URI=String(process.env.YOUTUBE_REDIRECT_URI||"").trim()||
-  (VERCEL_PRODUCTION_HOST?"https://"+VERCEL_PRODUCTION_HOST+"/auth/youtube/callback":"https://ai-content-factory-gussvkdme-swrang120.vercel.app/auth/youtube/callback");
+const CANONICAL_YOUTUBE_REDIRECT_URI="https://ai-content-factory-gussvkdme-swrang120.vercel.app/auth/youtube/callback";
 function oauthClient(redirectOverride){
   if(!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET){
     throw new Error("YouTube OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on Vercel.");

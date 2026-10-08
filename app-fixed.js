@@ -439,7 +439,7 @@ function renderAccounts(){
     else {badge.textContent="Not connected";textEl.textContent=s.error||"Connect your YouTube channel";}
   });
 }
-function connectYouTube(){try{localStorage.removeItem("acf_backend_url");}catch(_){} const target="https://ai-content-factory-gussvkdme-swrang120.vercel.app/auth/youtube"; window.location.assign(target);}
+function connectYouTube(){try{localStorage.removeItem("acf_backend_url");}catch(_){} window.location.assign(API_BASE+"/auth/youtube");}
 function connectMeta(){window.location.assign(API_BASE+"/auth/meta");}
 async function metaStatus(){try{const r=await fetch(apiUrl("/api/meta/status"),{credentials:"include",cache:"no-store"});return await r.json();}catch(e){return {ok:false,error:"Backend unavailable: "+e.message};}}
 async function uploadYouTubeTest(){

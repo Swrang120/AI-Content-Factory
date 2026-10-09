@@ -257,6 +257,7 @@ function renderDashboard(){
     </div>
   </div>`;
   metaStatus().then(s=>{const fb=document.getElementById("fbBadge"),ig=document.getElementById("igBadge"),ft=document.getElementById("fbStatusText"),it=document.getElementById("igStatusText"); if(!fb||!ig)return; if(s.connected&&s.page){fb.textContent="Connected";fb.className="badge ready";if(ft)ft.textContent="Page: "+s.page.name; if(s.instagram){ig.textContent="Connected";ig.className="badge ready";if(it)it.textContent="Instagram Professional connected";}else{ig.textContent="Needs IG";if(it)it.textContent="Connect an Instagram Professional account to the Facebook Page.";}}else{fb.textContent=s.configured?"Not connected":"Setup needed";ig.textContent=s.configured?"Not connected":"Setup needed";}});
+  loadBufferStatus();
   youtubeStatus().then(s=>{
     const badge=document.getElementById("dashboardYtBadge");
     const textEl=document.getElementById("dashboardYtText");
@@ -422,6 +423,7 @@ function renderAccounts(){
     <div class="section-head"><div><h3>Connected Platforms</h3><span class="muted">YouTube uses OAuth; secrets stay server-side.</span></div></div>
     <div class="platform"><div><div class="platform-name">YouTube</div><small id="ytStatusText">Checking connection…</small></div><div class="platform-actions"><span id="ytBadge" class="badge">Checking</span><button class="small-btn" onclick="connectYouTube()">Connect</button></div></div>
     <div class="platform"><div><div class="platform-name">Automation</div><small>Master control for scheduled AI workers and video uploads.</small></div><span class="badge ${data.settings.automationOnline!==false?"ready":""}">${data.settings.automationOnline!==false?"ONLINE":"OFFLINE"}</span></div>
+    <div class="platform"><div><div class="platform-name">Buffer · Auto Publisher</div><small id="bufferStatusText">Checking Buffer API and connected channels…</small><div id="bufferChannels" class="muted" style="margin-top:6px;font-size:12px"></div></div><div class="platform-actions"><span id="bufferBadge" class="badge">Checking</span><button class="small-btn" onclick="loadBufferStatus()">Refresh</button></div></div>
     <div class="platform"><div><div class="platform-name">Facebook</div><small id="fbStatusText">Meta Page publishing</small></div><div class="platform-actions"><span id="fbBadge" class="badge">Checking</span><button class="small-btn" onclick="connectMeta()">Connect Meta</button></div></div>
     <div class="platform"><div><div class="platform-name">Instagram</div><small id="igStatusText">Instagram Professional/Reels publishing</small></div><div class="platform-actions"><span id="igBadge" class="badge">Checking</span><button class="small-btn" onclick="connectMeta()">Connect Meta</button></div></div>
     <div class="table-card" style="margin-top:14px">
@@ -440,6 +442,32 @@ function renderAccounts(){
   });
 }
 function connectYouTube(){try{localStorage.removeItem("acf_backend_url");}catch(_){} window.location.assign(API_BASE+"/auth/youtube");}
+async function loadBufferStatus(){
+  const badge=document.getElementById("bufferBadge");
+  const textEl=document.getElementById("bufferStatusText");
+  const channelsEl=document.getElementById("bufferChannels");
+  if(!badge||!textEl)return;
+  badge.textContent="Checking";badge.className="badge";
+  textEl.textContent="Checking Buffer API and connected channels…";
+  if(channelsEl)channelsEl.textContent="";
+  try{
+    const r=await fetch(apiUrl("/api/buffer/status"),{credentials:"include",cache:"no-store"});
+    const b=await r.json();
+    if(!r.ok||!b.ok)throw new Error(b.error||"Buffer connection check failed");
+    if(!b.configured){
+      badge.textContent="Setup needed";
+      textEl.textContent="Add BUFFER_API_KEY to Vercel Production Environment Variables, then redeploy.";
+      return;
+    }
+    const channels=Array.isArray(b.supportedChannels)?b.supportedChannels:[];
+    badge.textContent="API connected";badge.className="badge ready";
+    textEl.textContent=channels.length+" supported channel(s) found in Buffer.";
+    if(channelsEl)channelsEl.textContent=channels.length?channels.map(x=>(x.service||"channel").toUpperCase()+": "+(x.displayName||x.name||x.descriptor)+(x.isDisconnected?" (disconnected)":x.isLocked?" (locked)":"")).join(" · "):"Connect YouTube, Instagram Professional/Creator, and a Facebook Page inside Buffer.";
+  }catch(e){
+    badge.textContent="Not connected";
+    textEl.textContent=e.message||"Buffer API unavailable.";
+  }
+}
 function connectMeta(){window.location.assign(API_BASE+"/auth/meta");}
 async function metaStatus(){try{const r=await fetch(apiUrl("/api/meta/status"),{credentials:"include",cache:"no-store"});return await r.json();}catch(e){return {ok:false,error:"Backend unavailable: "+e.message};}}
 async function uploadYouTubeTest(){

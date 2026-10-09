@@ -459,15 +459,30 @@ async function loadBufferStatus(){
       textEl.textContent="Add BUFFER_API_KEY to Vercel Production Environment Variables, then redeploy.";
       return;
     }
-    const channels=Array.isArray(b.supportedChannels)?b.supportedChannels:[];
+    const allChannels=Array.isArray(b.channels)?b.channels:[];
+    const supported=allChannels.filter(x=>["youtube","instagram","facebook"].includes(String(x.service||"").toLowerCase()));
     badge.textContent="API connected";badge.className="badge ready";
-    textEl.textContent=channels.length+" supported channel(s) found in Buffer.";
-    if(channelsEl)channelsEl.textContent=channels.length?channels.map(x=>(x.service||"channel").toUpperCase()+": "+(x.displayName||x.name||x.descriptor)+(x.isDisconnected?" (disconnected)":x.isLocked?" (locked)":"")).join(" · "):"Connect YouTube, Instagram Professional/Creator, and a Facebook Page inside Buffer.";
+    textEl.textContent=allChannels.length+" total Buffer account(s) found · "+supported.length+" supported for publishing.";
+    if(channelsEl)channelsEl.innerHTML=allChannels.length?allChannels.map(x=>{
+      const service=String(x.service||"channel").toLowerCase();
+      const label=(x.displayName||x.name||x.descriptor||"Unnamed channel");
+      const supportedHere=["youtube","instagram","facebook"].includes(service);
+      const state=x.isDisconnected?"Disconnected":x.isLocked?"Locked":x.isQueuePaused?"Queue paused":"Connected";
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--border,#ddd)"><div><strong>'+esc(label)+'</strong><div class="muted" style="font-size:11px">'+esc((x.organizationName||"Buffer organization")+" · "+service.toUpperCase())+'</div></div><span class="badge '+(!x.isDisconnected&&!x.isLocked?"ready":"")+'">'+esc(state)+(supportedHere?"":" · view only")+'</span></div>';
+    }).join(""):"No Buffer channels found yet. Add/connect accounts inside Buffer, then refresh here.";
   }catch(e){
     badge.textContent="Not connected";
     textEl.textContent=e.message||"Buffer API unavailable.";
   }
 }
+let bufferAutoRefreshTimer=null;
+function startBufferAutoRefresh(){
+  if(bufferAutoRefreshTimer)clearInterval(bufferAutoRefreshTimer);
+  bufferAutoRefreshTimer=setInterval(()=>{
+    if(document.querySelector('.nav-item.active')?.dataset.view==="accounts")loadBufferStatus();
+  },30000);
+}
+startBufferAutoRefresh();
 function connectMeta(){window.location.assign(API_BASE+"/auth/meta");}
 async function metaStatus(){try{const r=await fetch(apiUrl("/api/meta/status"),{credentials:"include",cache:"no-store"});return await r.json();}catch(e){return {ok:false,error:"Backend unavailable: "+e.message};}}
 async function uploadYouTubeTest(){

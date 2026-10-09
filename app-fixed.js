@@ -434,6 +434,7 @@ function renderAccounts(){
       <div id="ytUploadResult" class="muted" style="margin-top:10px">First connect YouTube above.</div>
     </div>
   </div>`;
+  loadBufferStatus();
   youtubeStatus().then(s=>{
     const badge=document.getElementById("ytBadge"), textEl=document.getElementById("ytStatusText");
     if(!badge||!textEl)return;

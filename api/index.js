@@ -1,6 +1,7 @@
 // Vercel serverless entrypoint for the Express application.
 let app = null;
 let researchHub = null;
+let bufferHub = null;
 let serverInitError = null;
 let researchInitError = null;
 
@@ -14,6 +15,12 @@ try {
 }
 
 try {
+  bufferHub = require("./buffer");
+} catch (error) {
+  console.error("AI Content Factory Buffer adapter initialization failed:", error);
+}
+
+try {
   researchHub = require("./research-hub");
 } catch (error) {
   researchInitError = error;
@@ -22,6 +29,10 @@ try {
 
 module.exports = async (req, res) => {
   try {
+    if (bufferHub && String(req.url || "").startsWith("/api/buffer/")) {
+      return await bufferHub.handler(req, res);
+    }
+
     if (researchHub) {
       try {
         const handled = await researchHub.handler(req, res);

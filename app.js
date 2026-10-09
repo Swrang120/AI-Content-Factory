@@ -200,13 +200,13 @@ async function bossCommandRun(){
      const pr=await fetch(apiUrl("/api/boss/command"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({command})});
      const pb=await pr.json().catch(()=>({}));
      if(!pr.ok||!pb.ok)throw new Error(pb.error||"Boss video command failed");
-     if(result)result.innerHTML+="<br><span class='boss-output'>✓ Video created and published to YouTube: "+esc(pb.title||"Boss video")+"<br><a href='"+esc(pb.video?.url||"")+"' target='_blank' rel='noopener'>Open YouTube video</a></span>";
+     if(result)result.innerHTML+="<br><span class='boss-output'>✓ Hindi video generated and sent to Buffer queue for YouTube, Instagram and Facebook Page. Check Buffer Queue for each channel. Status: "+esc(pb.status||"sent_to_buffer")+"</span>";
    }catch(e){if(result)result.innerHTML+="<br><span class='boss-output'>Boss video failed: "+esc(e.message)+"</span>";}
  }
  try{await fetch(apiUrl("/api/agents/state"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({agents:changes})});}catch(_){}
  try{
    if(w.includes("script")||w.includes("idea")||w.includes("content")||w.includes("video")){
-     const r=await fetch(apiUrl("/api/ai/generate"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({task:"boss_command",topic:command,category:"AI Content Factory",language:"English",format:"Short Video",notes:"Boss command. Return a concise actionable production brief; do not invent current facts."})});
+     const r=await fetch(apiUrl("/api/ai/generate"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({task:"boss_command",topic:command,category:"AI Content Factory",language:"Hindi",format:"Short Video",notes:"Boss command. Return a concise actionable production brief in Hindi; do not invent current facts."})});
      const s=await r.json();
      if(s.ok&&result)result.innerHTML+="<br><span class='boss-output'>AI Manager result: "+esc(s.output).replace(/\n/g,"<br>")+"</span>";
    }

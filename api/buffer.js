@@ -11,6 +11,9 @@ function applyCors(req, res) {
   if (allowed.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
+    // The frontend uses fetch(..., { credentials: "include" }); CORS must
+    // explicitly allow credentials or browsers report a generic "Failed to fetch".
+    res.setHeader("Access-Control-Allow-Credentials", "true");
   }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-API-Key");

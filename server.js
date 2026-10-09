@@ -163,8 +163,7 @@ async function persistSettings(settings){
       created_at:now,
       updated_at:now
     };
-    const {error}=await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
-    if(error)throw new Error(error.message);
+    await upsertContentJobSchemaSafe(row);
     settingsPersistentLoaded=true;
     return {ok:true};
   }catch(error){
@@ -249,11 +248,31 @@ function decodeJobRow(data){
     youtube:data.youtube||null,createdAt:data.created_at,updatedAt:data.updated_at,...meta
   };
 }
+async function upsertContentJobSchemaSafe(row){
+  if(!supabase)return;
+  let payload={...row};
+  for(let attempt=0;attempt<8;attempt++){
+    const {error}=await supabase.from("content_jobs").upsert(payload,{onConflict:"id"});
+    if(!error)return;
+    const message=String(error.message||"");
+    const match=message.match(/Could not find the ['"]([^'"]+)['"] column of ['"]content_jobs['"] in the schema cache/i);
+    if(!match)throw new Error(message);
+    const missing=match[1];
+    delete payload[missing];
+    // Older deployments/schema versions have used both names. Treat approval
+    // as optional metadata so a schema mismatch cannot stop video generation.
+    if(missing==="approval"||missing==="approved"){
+      delete payload.approval;
+      delete payload.approved;
+    }
+    if(Object.keys(payload).length===Object.keys(row).length)throw new Error(message);
+  }
+  throw new Error("Supabase content_jobs write failed after removing unsupported schema columns.");
+}
 async function persistJob(job){
   if(!supabase)return;
   const row={id:job.id,status:job.status,topic:job.topic||"",category:job.category||"",language:job.language||"English",format:job.format||"Long Video",notes:encodeJobNotes(job),source_text:job.sourceText||"",sources:job.sources||[],research:job.research||null,script:job.script||null,voice:job.voice||null,rendered_video_url:job.renderedVideoUrl||null,approved:!!job.approved,youtube:job.youtube||null,created_at:job.createdAt||new Date().toISOString(),updated_at:job.updatedAt||new Date().toISOString()};
-  const {error}=await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
-  if(error)throw new Error("Supabase content_jobs write failed: "+error.message);
+  try{await upsertContentJobSchemaSafe(row);}catch(error){throw new Error("Supabase content_jobs write failed: "+error.message);}
 }
 async function getJobFromSupabase(id){
   if(!supabase)return null;

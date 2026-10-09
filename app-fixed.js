@@ -1,4 +1,4 @@
-const API_BASE=(window.ACF_BACKEND_URL||"https://ai-content-factory-gussvkdme-swrang120.vercel.app").replace(/\/+$/,"");
+const API_BASE=(window.ACF_BACKEND_URL||"https://ai-content-factory-zeta-ruby.vercel.app").replace(/\/+$/,"");
 const apiUrl=p=>API_BASE+p;
 const KEY="acf_v2";
 const defaultData={

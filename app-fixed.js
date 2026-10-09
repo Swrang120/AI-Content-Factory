@@ -788,7 +788,7 @@ function loadMusicLibraryModuleAndRender(){
   }
   const s=document.createElement("script");
   s.id="music-library-module-loader";
-  s.src="music-library-fixed.js?v=20261008e";
+  s.src="music-library-fixed.js?v=20261009f";
   s.onload=function(){
     if(typeof window.renderMusicLibrary==="function") window.renderMusicLibrary();
     else if(view) view.innerHTML='<div class="card"><h2>🎵 Music Library</h2><p class="muted">Music Library module failed to initialize. Refresh once.</p></div>';

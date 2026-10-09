@@ -894,23 +894,17 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
     await setAgentState("qa","WORKING",85,"Checking Boss video before upload",id);
     await setAgentState("qa","SLEEPING",100,"QA complete",id);
 
-    await setAgentState("publisher","WORKING",95,"Uploading to YouTube as PUBLIC",id);
-    const youtube=await publishRenderedYouTubeVideo({
+    await setAgentState("publisher","WORKING",95,"Sending finished video to Buffer connected channels",id);
+    const buffer=await publishVideoToBuffer({
       videoUrl:job.renderedVideoUrl,
       title:job.topic,
-      description:"Created and published by AI Content Factory Boss command.",
-      tags:["AI Content Factory",category,"Boss Command"],
-      categoryId:"22",
-      privacyStatus:"public",
-      approved:true,
-      automated:true,
-      req
+      description:"Created by AI Content Factory from your Boss command. Category: "+category
     });
-    job.youtube=youtube; job.status="published"; job.updatedAt=new Date().toISOString();
+    job.buffer=buffer; job.status="published"; job.updatedAt=new Date().toISOString();
     jobs[id]=job; saveJobs(jobs); await persistJob(job);
-    await setAgentState("publisher","SLEEPING",100,"Published to YouTube",id);
+    await setAgentState("publisher","SLEEPING",100,"Video accepted by Buffer on "+buffer.successfulChannels+" channel(s)",id);
     await setAgentState("manager","SLEEPING",100,"Boss order completed",id);
-    return res.json({ok:true,jobId:id,status:"published",category,title:job.topic,video:youtube});
+    return res.json({ok:true,jobId:id,status:"sent_to_buffer",category,title:job.topic,buffer});
   }catch(e){
     const msg=safeErrorMessage(e);
     try{await setAgentState("manager","ERROR",0,"Boss command failed: "+msg,null);}catch(_){}

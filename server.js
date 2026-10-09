@@ -974,7 +974,11 @@ async function publishVideoToBuffer(p){
     if(service==="youtube")metadata.youtube={title:String(p.title).slice(0,100),category:"Entertainment",privacy:"public"};
     if(service==="instagram")metadata.instagram={postType:"reel"};
     if(service==="facebook")metadata.facebook={postType:"reel"};
-    const variables={input:{channelId:ch.id,text:String(p.description||p.title||"").slice(0,2200),assets:[{url:p.videoUrl,type:"video"}],schedulingType:"automatic",mode:"shareNow",metadata,aiAssisted:true,saveToDraft:false}};
+    const videoUrl=String(p.videoUrl||"").trim();
+    let parsedVideoUrl;
+    try{parsedVideoUrl=new URL(videoUrl);}catch{throw new Error("Buffer video URL must be a valid public HTTPS URL.");}
+    if(parsedVideoUrl.protocol!=="https:")throw new Error("Buffer video URL must use HTTPS.");
+    const variables={input:{channelId:ch.id,text:String(p.description||p.title||"").slice(0,2200),assets:[{video:{url:videoUrl,metadata:{title:String(p.title).slice(0,100)}}}],schedulingType:"automatic",mode:"shareNow",needsApproval:false,metadata,aiAssisted:true,saveToDraft:false}};
     try{
       const d=await gql("mutation ACFCreatePost($input: CreatePostInput!) { createPost(input:$input) { ... on PostActionSuccess { post { id status dueAt text channelId } } ... on MutationError { message } } }",variables);
       const post=d.createPost;

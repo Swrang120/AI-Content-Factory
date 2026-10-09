@@ -249,10 +249,14 @@ function decodeJobRow(data){
   };
 }
 async function upsertContentJobSchemaSafe(row){
-  if(!supabase)return;
+  // content_jobs writes must use the server-only service-role client so the
+  // intended backend operation is not blocked by end-user RLS policies.
+  // Never expose SUPABASE_SERVICE_ROLE_KEY to the browser.
+  const writer=supabaseAdmin;
+  if(!writer)throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing from Vercel runtime environment.");
   let payload={...row};
   for(let attempt=0;attempt<8;attempt++){
-    const {error}=await supabase.from("content_jobs").upsert(payload,{onConflict:"id"});
+    const {error}=await writer.from("content_jobs").upsert(payload,{onConflict:"id"});
     if(!error)return;
     const message=String(error.message||"");
     const match=message.match(/Could not find the ['"]([^'"]+)['"] column of ['"]content_jobs['"] in the schema cache/i);

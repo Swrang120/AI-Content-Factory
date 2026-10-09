@@ -965,7 +965,7 @@ async function publishVideoToBuffer(p){
     const d=await gql("query ACFChannels($input: ChannelsInput!) { channels(input:$input) { id name displayName service isDisconnected isLocked isQueuePaused } }",{input:{organizationId:org.id}});
     for(const ch of d.channels||[])channels.push({...ch,organizationId:org.id});
   }
-  const supported=channels.filter(ch=>["youtube","instagram","facebook"].includes(String(ch.service||"").toLowerCase())&&!ch.isDisconnected&&!ch.isLocked&&!ch.isQueuePaused);
+  const supported=channels.filter(ch=>["youtube","instagram","facebook","linkedin"].includes(String(ch.service||"").toLowerCase())&&!ch.isDisconnected&&!ch.isLocked&&!ch.isQueuePaused);
   if(!supported.length)throw new Error("No publish-ready Buffer channels found. Check connected channels and resume any paused queues.");
   const results=[];
   for(const ch of supported){

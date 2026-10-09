@@ -126,32 +126,49 @@ async function hydrateSettings(){
   const current=loadSettings();
   if(!supabase)return current;
   try{
-    const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
-    const saved=data?.tokens?.__acf_factory_settings;
-    if(!error&&saved&&typeof saved==="object"){
-      settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
-      settingsPersistentLoaded=true;
+    // Persist settings in the existing content_jobs table. The older
+    // youtube_connections table is absent in this Supabase project.
+    const {data,error}=await supabase.from("content_jobs").select("notes").eq("id","__factory_settings__").maybeSingle();
+    if(!error&&typeof data?.notes==="string"&&data.notes.startsWith("__ACF_SETTINGS__")){
+      const saved=JSON.parse(data.notes.slice("__ACF_SETTINGS__".length));
+      if(saved&&typeof saved==="object"){
+        settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
+        settingsPersistentLoaded=true;
+      }
     }
-  }catch{}
+  }catch(error){console.error("Settings hydration warning:",safeErrorMessage(error));}
   return settingsCache||current;
 }
 async function persistSettings(settings){
   settingsCache={...DEFAULT_FACTORY_SETTINGS,...settings};
   if(!supabase)return {ok:false,error:"Supabase is not configured"};
   try{
-    const {data}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
-    const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
-    const tokens={...existing,__acf_factory_settings:settingsCache};
-    const {error}=await supabase.from("youtube_connections").upsert({
-      id:"default",
-      tokens,
-      updated_at:new Date().toISOString()
-    },{onConflict:"id"});
+    const now=new Date().toISOString();
+    const row={
+      id:"__factory_settings__",
+      status:"settings",
+      topic:"__factory_settings__",
+      category:"__settings__",
+      language:"Hindi",
+      format:"settings",
+      notes:"__ACF_SETTINGS__"+JSON.stringify(settingsCache),
+      source_text:"",
+      sources:[],
+      research:null,
+      script:null,
+      voice:null,
+      rendered_video_url:null,
+      approved:true,
+      youtube:null,
+      created_at:now,
+      updated_at:now
+    };
+    const {error}=await supabase.from("content_jobs").upsert(row,{onConflict:"id"});
     if(error)throw new Error(error.message);
     settingsPersistentLoaded=true;
     return {ok:true};
   }catch(error){
-    throw new Error("Could not persist settings to Supabase: "+error.message);
+    throw new Error("Could not persist settings to Supabase content_jobs: "+error.message);
   }
 }
 const AGENT_IDS=["manager","research","script","voice","visual","editor","thumb","qa","publisher","analytics"];

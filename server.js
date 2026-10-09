@@ -376,7 +376,11 @@ async function youtube(req){
   return /news|sports|current|today|latest|breaking|live update|verified source/.test(s);
 }
 async function generateWithChatGPT(task,fields){
-  if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT API is not configured. Add OPENAI_API_KEY on the server.");
+  // Free-provider-first fallback: if OpenAI is unconfigured or out of credits,
+  // use the already configured Gemini API instead of failing the Boss Room job.
+  if(!process.env.OPENAI_API_KEY){
+    return await fallbackTextGeneration(task,fields);
+  }
   const model=process.env.OPENAI_MODEL||"gpt-6-luna";
   const live=needsLiveResearch(task,fields);
   const instructions=live
@@ -415,11 +419,14 @@ async function generateWithChatGPT(task,fields){
   const body=await response.json();
   if(!response.ok){
     const err=new Error(body?.error?.message||"ChatGPT API request failed");
-    if(SELF_HEAL_ENABLED&&process.env.GEMINI_API_KEY&&(response.status===429||response.status>=500)){
+    // Fall back to Gemini for quota/credit errors as well as transient failures.
+    // This prevents exhausted OpenAI credits from stopping Boss Room text generation.
+    if(process.env.GEMINI_API_KEY){
       try{return await fallbackTextGeneration(task,fields);}
       catch(fallbackError){
         const incident=rememberIncident(fallbackError,{operation:"gemini_fallback_generation",route:"/api/ai/generate",status:response.status});
         diagnoseIncident(incident).catch(()=>{});
+        throw new Error("OpenAI failed and Gemini fallback failed: "+safeErrorMessage(fallbackError));
       }
     }
     throw err;

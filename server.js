@@ -108,7 +108,7 @@ async function saveTokens(tokens){
     fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
   }catch{}
 }
-const DEFAULT_FACTORY_SETTINGS={autoGenerate:true,approval:true,autoPublish:true,liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true}};
+const DEFAULT_FACTORY_SETTINGS={autoGenerate:true,approval:false,autoPublish:true,publishingRoute:"buffer",language:"Hindi",bufferChannels:["youtube","instagram","facebook"],liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true}};
 const MUSIC_SOURCE_CHANNEL_IDS=["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"];
 const MUSIC_ARTIST_NAMES=["Swrang Swargiary","Santiram Swargiary"];
 let settingsCache=null;
@@ -648,12 +648,12 @@ async function renderFactoryVideo(job,req){
 }
 
 const AUTO_SCHEDULES=[
-  {id:"editing_morning",category:"Editing Knowledge",icon:"🎬",time:"09:00",format:"Short Video",language:"English",prompt:"Trending video editing tutorial, creator editing tip, CapCut/VN/Alight Motion/Premiere Pro workflow. Make it practical and original."},
-  {id:"music_promo",category:"Music Promotion",icon:"🎵",time:"12:00",format:"Promo",language:"Hindi + Bodo",prompt:"Promote an original romantic/sad music release or artist story. Do not reproduce copyrighted lyrics. Focus on original promotional storytelling."},
+  {id:"editing_morning",category:"Editing Knowledge",icon:"🎬",time:"09:00",format:"Short Video",language:"Hindi",prompt:"Trending video editing tutorial, creator editing tip, CapCut/VN/Alight Motion/Premiere Pro workflow. Make it practical and original."},
+  {id:"music_promo",category:"Music Promotion",icon:"🎵",time:"12:00",format:"Promo",language:"Hindi",prompt:"Promote an original romantic/sad music release or artist story. Do not reproduce copyrighted lyrics. Focus on original promotional storytelling."},
   {id:"product_promo",category:"Product Promotion",icon:"🛍️",time:"15:00",format:"Promo",language:"Hindi",prompt:"Useful product information or promotion. Clearly distinguish facts from opinions and do not invent specifications, prices or claims."},
-  {id:"news_evening",category:"News & Updates",icon:"📰",time:"17:00",format:"Short Video",language:"English",prompt:"Current news explainer. ONLY use verified source material supplied to the job; never invent current events or statistics."},
-  {id:"sports_evening",category:"Sports Information",icon:"⚽",time:"19:00",format:"Short Video",language:"English",prompt:"Current sports information/explainer. ONLY use verified source material supplied to the job; never invent scores, schedules or player facts."},
-  {id:"ai_tech_night",category:"AI & Technology",icon:"🤖",time:"21:00",format:"Short Video",language:"English",prompt:"Practical AI and technology explainer, creator workflow, useful tool or automation idea. Use current verified facts when needed; never invent product capabilities."}
+  {id:"news_evening",category:"News & Updates",icon:"📰",time:"17:00",format:"Short Video",language:"Hindi",prompt:"Current news explainer. ONLY use verified source material supplied to the job; never invent current events or statistics."},
+  {id:"sports_evening",category:"Sports Information",icon:"⚽",time:"19:00",format:"Short Video",language:"Hindi",prompt:"Current sports information/explainer. ONLY use verified source material supplied to the job; never invent scores, schedules or player facts."},
+  {id:"ai_tech_night",category:"AI & Technology",icon:"🤖",time:"21:00",format:"Short Video",language:"Hindi",prompt:"Practical AI and technology explainer, creator workflow, useful tool or automation idea. Use current verified facts when needed; never invent product capabilities."}
 ];
 function categoryKeyFromName(name){const n=String(name||"").toLowerCase();if(n==="music promotion")return "music";if(n==="news & updates"||n==="news")return "news";if(n==="product promotion"||n==="product")return "product";if(n==="sports information"||n==="sports")return "sports";if(n==="editing knowledge"||n==="editing")return "editing";if(n==="ai & technology"||n==="ai technology"||n==="technology")return "tech";return null;}
 function enabledCategory(settings,name){const key=categoryKeyFromName(name);return key?settings?.enabledCategories?.[key]!==false:true;}
@@ -742,9 +742,9 @@ async function generateAutomaticJob(item,req){
     const scheduledAt=new Date(item.slot);
     job.buffer=await publishVideoToBuffer({
       videoUrl:job.renderedVideoUrl,title:job.topic,
-      description:"Created automatically by AI Content Factory. Category: "+item.category+"\n"+String(job.script||"").slice(0,1500)
+      description:"AI Content Factory — Hindi video. Category: "+item.category+"\n"+String(job.script||"").slice(0,1500)
     });
-    job.status="published"; job.updatedAt=new Date().toISOString();
+    job.status=job.buffer?.successfulChannels===3?"published":"sent_to_buffer"; job.updatedAt=new Date().toISOString();
     saveJobs(jobs); await persistJob(job);
   }
   await setAgentState("qa","SLEEPING",100,"Quality and rights checks complete",id);
@@ -779,9 +779,9 @@ async function processQueuedContentJob(job,req){
     await setAgentState("publisher","WORKING",45,"Uploading queued video to connected platforms",id);
     job.buffer=await publishVideoToBuffer({
       videoUrl:job.renderedVideoUrl,title:job.topic,
-      description:"Created from your AI Content Factory queue. Category: "+String(job.category||"AI Content Factory")+"\n"+String(job.script||"").slice(0,1500)
+      description:"AI Content Factory — Hindi video. Category: "+String(job.category||"AI Content Factory")+"\n"+String(job.script||"").slice(0,1500)
     });
-    job.status="published";
+    job.status=job.buffer?.successfulChannels===3?"published":"sent_to_buffer";
   }
   job.updatedAt=new Date().toISOString();
   await persistJob(job);
@@ -864,7 +864,7 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
 
     const id=jobId();
     const jobs=loadJobs();
-    const job={id,status:"researching",topic:command.slice(0,180),category,language:"Hindi + English",format:"Short Video",notes:"Boss command: "+command,sourceText:"",sources:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),manualUpload:true,auto:true,autoPublish:true,approved:true};
+    const job={id,status:"researching",topic:command.slice(0,180),category,language:"Hindi",format:"Short Video",notes:"Boss command: "+command,sourceText:"",sources:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),manualUpload:true,auto:true,autoPublish:true,approved:true};
     jobs[id]=job; saveJobs(jobs); await persistJob(job);
     await setAgentState("manager","WORKING",10,"Boss order received: "+command.slice(0,180),id);
 
@@ -898,7 +898,7 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
     const buffer=await publishVideoToBuffer({
       videoUrl:job.renderedVideoUrl,
       title:job.topic,
-      description:"Created by AI Content Factory from your Boss command. Category: "+category
+      description:"AI Content Factory — Hindi video. Category: "+category+"\n"+String(job.script||"").slice(0,1500)
     });
     job.buffer=buffer; job.status="published"; job.updatedAt=new Date().toISOString();
     jobs[id]=job; saveJobs(jobs); await persistJob(job);
@@ -917,35 +917,15 @@ app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
     const settings=await hydrateSettings();
     if(!settings.autoPublish)return res.status(409).json({ok:false,error:"Auto Publish is OFF."});
     const jobs=await loadPersistentJobs();
-    const candidates=Object.values(jobs)
-      .filter(j=>j.renderedVideoUrl&&!["published"].includes(j.status))
-      .sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0));
+    const candidates=Object.values(jobs).filter(j=>j.renderedVideoUrl&&!["published","sent_to_buffer"].includes(j.status)).sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0));
     const job=candidates[0];
-    if(!job)return res.status(404).json({ok:false,error:"No rendered video is waiting to be published."});
-    await setAgentState("publisher","WORKING",60,"Boss voice command: publishing "+(job.topic||job.title||"latest video"),job.id);
-    const result=await publishRenderedYouTubeVideo({
-      videoUrl:job.renderedVideoUrl,
-      title:job.topic||job.title||"AI Content Factory",
-      description:job.description||"Published by AI Content Factory Boss command.",
-      tags:Array.isArray(job.tags)&&job.tags.length?job.tags:["AI Content Factory"],
-      categoryId:job.categoryId||"22",
-      privacyStatus:"public",
-      approved:true,
-      automated:true,
-      req
-    });
-    job.youtube=result;
-    job.status="published";
-    job.updatedAt=new Date().toISOString();
-    jobs[job.id]=job;
-    saveJobs(jobs);
-    await persistJob(job);
-    await setAgentState("publisher","SLEEPING",100,"Latest video published",job.id);
-    return res.json({ok:true,jobId:job.id,title:job.topic||job.title,video:result});
-  }catch(e){
-    await setAgentState("publisher","ERROR",0,"Publish failed: "+safeErrorMessage(e),null).catch(()=>{});
-    return res.status(500).json({ok:false,error:safeErrorMessage(e)});
-  }
+    if(!job)return res.status(404).json({ok:false,error:"No rendered video is waiting to be sent to Buffer."});
+    await setAgentState("publisher","WORKING",60,"Boss command: sending "+(job.topic||job.title||"latest video")+" to Buffer",job.id);
+    const result=await publishVideoToBuffer({videoUrl:job.renderedVideoUrl,title:job.topic||job.title||"AI Content Factory",description:job.description||"Published by AI Content Factory Boss command."});
+    job.buffer=result;job.status=result.successfulChannels===3?"published":"sent_to_buffer";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);
+    await setAgentState("publisher","SLEEPING",100,"Video accepted by Buffer on "+result.successfulChannels+" of "+result.totalChannels+" target channel(s)",job.id);
+    return res.json({ok:true,jobId:job.id,title:job.topic||job.title,status:job.status,platform:"buffer",buffer:result});
+  }catch(e){await setAgentState("publisher","ERROR",0,"Buffer queue failed: "+safeErrorMessage(e),null).catch(()=>{});return res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 
 async function publishVideoToBuffer(p){
@@ -965,7 +945,10 @@ async function publishVideoToBuffer(p){
     const d=await gql("query ACFChannels($input: ChannelsInput!) { channels(input:$input) { id name displayName service isDisconnected isLocked isQueuePaused } }",{input:{organizationId:org.id}});
     for(const ch of d.channels||[])channels.push({...ch,organizationId:org.id});
   }
-  const supported=channels.filter(ch=>["youtube","instagram","facebook","linkedin"].includes(String(ch.service||"").toLowerCase())&&!ch.isDisconnected&&!ch.isLocked&&!ch.isQueuePaused);
+  const supported=channels.filter(ch=>["youtube","instagram","facebook"].includes(String(ch.service||"").toLowerCase())&&!ch.isDisconnected&&!ch.isLocked&&!ch.isQueuePaused);
+  const readyServices=new Set(supported.map(ch=>String(ch.service||"").toLowerCase()));
+  const missing=["youtube","instagram","facebook"].filter(service=>!readyServices.has(service));
+  if(missing.length)throw new Error("Buffer target channel(s) not ready: "+missing.join(", ")+". Connect/unpause all three target channels before queueing; no posts were created.");
   if(!supported.length)throw new Error("No publish-ready Buffer channels found. Check connected channels and resume any paused queues.");
   const results=[];
   for(const ch of supported){
@@ -989,7 +972,7 @@ async function publishVideoToBuffer(p){
   }
   const published=results.filter(x=>x.ok);
   if(!published.length)throw new Error("Buffer could not accept the video on any channel: "+results.map(x=>x.channelName+": "+x.error).join(" | "));
-  return {platform:"buffer",published:true,results,successfulChannels:published.length,totalChannels:results.length};
+  return {platform:"buffer",queued:published.length===3,partial:published.length>0&&published.length<3,results,successfulChannels:published.length,totalChannels:results.length,requiredServices:["youtube","instagram","facebook"]};
 }
 
 async function publishRenderedYouTubeVideo(p){
@@ -2360,7 +2343,7 @@ app.post("/api/youtube/upload-file",requireAppKey,express.raw({type:["video/mp4"
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
 app.post("/api/youtube/upload",requireAppKey,async(req,res)=>{try{const {videoUrl,title,description="",tags=[],privacyStatus,categoryId="22",publishAt}=req.body||{};if(!videoUrl||!title)return res.status(400).json({ok:false,error:"videoUrl and title are required"});if((privacyStatus||"private")==="public"&&loadSettings().approval)throw new Error("Approval is required before public publishing.");const asset=await fetch(videoUrl);if(!asset.ok||!asset.body)throw new Error("Could not fetch video asset");const yt=await youtube(req);const status={privacyStatus:privacyStatus||process.env.YOUTUBE_DEFAULT_PRIVACY||"private"};if(publishAt)status.publishAt=publishAt;const response=await yt.videos.insert({part:"snippet,status",requestBody:{snippet:{title,description,tags,categoryId},status},media:{body:Readable.fromWeb(asset.body)}});res.json({ok:true,videoId:response.data.id,url:"https://www.youtube.com/watch?v="+response.data.id,privacyStatus:response.data.status?.privacyStatus||status.privacyStatus});}catch(e){res.status(500).json({ok:false,error:e.message});}});
-app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishRenderedYouTubeVideo(p);res.json({ok:true,published:true,...result});}catch(e){const code=e.message==="Auto Publish is OFF."||e.message==="Human approval is required before publishing."?409:500;res.status(code).json({ok:false,published:false,error:e.message});}});
+app.post("/api/publisher/youtube",requireAppKey,async(req,res)=>{try{const p=req.body||{};const result=await publishVideoToBuffer(p);res.json({ok:true,published:false,status:"sent_to_buffer",platform:"buffer",...result});}catch(e){res.status(500).json({ok:false,published:false,platform:"buffer",error:safeErrorMessage(e)});}});
 
 /* =========================
    YOUTUBE LIVE AUTOMATION

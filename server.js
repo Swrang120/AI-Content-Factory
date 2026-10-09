@@ -740,15 +740,11 @@ async function generateAutomaticJob(item,req){
   if(job.renderedVideoUrl && loadSettings().autoPublish){
     await setAgentState("publisher","WORKING",45,"Uploading and scheduling on YouTube",id);
     const scheduledAt=new Date(item.slot);
-    const now=new Date();
-    const publishAt=scheduledAt>now?item.slot:null;
-    const youtubeResult=await publishRenderedYouTubeVideo({
+    job.buffer=await publishVideoToBuffer({
       videoUrl:job.renderedVideoUrl,title:job.topic,
-      description:"Created automatically by AI Content Factory. Category: "+item.category,
-      tags:[item.category,"AI Content Factory"],categoryId:"22",
-      privacyStatus:publishAt?"private":"public",publishAt,approved:true,automated:true,req
+      description:"Created automatically by AI Content Factory. Category: "+item.category+"\n"+String(job.script||"").slice(0,1500)
     });
-    job.youtube=youtubeResult; job.status="published"; job.updatedAt=new Date().toISOString();
+    job.status="published"; job.updatedAt=new Date().toISOString();
     saveJobs(jobs); await persistJob(job);
   }
   await setAgentState("qa","SLEEPING",100,"Quality and rights checks complete",id);
@@ -781,13 +777,11 @@ async function processQueuedContentJob(job,req){
   await setAgentState("qa","WORKING",80,"Checking quality, sources and rights",id);
   if(job.renderedVideoUrl){
     await setAgentState("publisher","WORKING",45,"Uploading queued video to connected platforms",id);
-    const youtubeResult=await publishRenderedYouTubeVideo({
+    job.buffer=await publishVideoToBuffer({
       videoUrl:job.renderedVideoUrl,title:job.topic,
-      description:"Created from your AI Content Factory queue.",
-      tags:[job.category||"AI Content Factory","AI Content Factory"],
-      categoryId:"22",privacyStatus:"public",approved:true,automated:true,req
+      description:"Created from your AI Content Factory queue. Category: "+String(job.category||"AI Content Factory")+"\n"+String(job.script||"").slice(0,1500)
     });
-    job.youtube=youtubeResult;job.status="published";
+    job.status="published";
   }
   job.updatedAt=new Date().toISOString();
   await persistJob(job);
@@ -803,7 +797,7 @@ async function runAutomaticFactory(req){
   const now=new Date();
   const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
   const bossResults=[];
-  for(const job of bossDue){try{const youtubeResult=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:job.topic,description:"Uploaded by Boss in AI Content Factory.",tags:["Boss Upload","AI Content Factory"],categoryId:"22",privacyStatus:"public",approved:true,req});job.youtube=youtubeResult;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,videoId:youtubeResult.videoId});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
+  for(const job of bossDue){try{const result=await publishVideoToBuffer({videoUrl:job.renderedVideoUrl,title:job.topic||"AI Content Factory",description:"Uploaded by Boss in AI Content Factory."});job.buffer=result;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,channels:result.successfulChannels});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
   const queued=Object.values(jobs).filter(j=>j.queueItem&&j.status==="queued"&&enabledCategory(settings,j.category)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
   for(const job of queued){
     try{

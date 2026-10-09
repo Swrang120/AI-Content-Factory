@@ -199,7 +199,7 @@ async function bossCommandRun(){
      const pr=await fetch(apiUrl("/api/boss/command"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({command})});
      const pb=await pr.json().catch(()=>({}));
      if(!pr.ok||!pb.ok)throw new Error(pb.error||"Boss video command failed");
-     if(result)result.innerHTML+="<br><span class='boss-output'>✓ Video created and published to YouTube: "+esc(pb.title||"Boss video")+"<br><a href='"+esc(pb.video?.url||"")+"' target='_blank' rel='noopener'>Open YouTube video</a></span>";
+     if(result)result.innerHTML+="<br><span class='boss-output'>✓ Video created and sent to Buffer. Buffer accepted it for "+esc(pb.buffer?.successfulChannels||0)+" channel(s). Check Buffer to confirm publishing status.</span>";
    }catch(e){if(result)result.innerHTML+="<br><span class='boss-output'>Boss video failed: "+esc(e.message)+"</span>";}
  }
  try{await fetch(apiUrl("/api/agents/state"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({agents:changes})});}catch(_){}

@@ -576,14 +576,14 @@ async function transcribeMusicAudio(audioUrl){
   if(!r.ok)throw new Error(body?.error?.message||"Music transcription failed");
   return {text:String(body?.text||""),segments:Array.isArray(body?.segments)?body.segments:[]};
 }
-async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req}){
+async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req,id:requestedJobId}){
   let meta;
   if(spotifyUrl){ meta=await fetchSpotifyTrackMetadata(spotifyUrl); }
   else { meta={spotifyUrl:null,title:String(title||"Original Song"),artist:String(artist||"Swrang Swargiary"),thumbnailUrl:thumbnailUrl||null,provider:"Supabase Storage"}; }
   if(!audioUrl)throw new Error("Original song audio is missing.");
   const transcript=await transcribeMusicAudio(audioUrl);
   const hook=await chooseMusicHook(transcript.segments,meta.title,meta.artist);
-  const id=jobId();
+  const id=requestedJobId||jobId();
   const jobs=loadJobs();
   const topic=(meta.title||"Original Song")+" — Music Promotion";
   const job={id,status:"music_hook_selected",topic,category:"Music Promotion",language,format:"Short Video",notes:(meta.spotifyUrl?"Spotify: "+meta.spotifyUrl+"\n":"")+"Artist: "+meta.artist+"\nHook: "+hook.hookText+"\n"+String(notes||""),sourceText:transcript.text,sources:meta.spotifyUrl?[meta.spotifyUrl]:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,manualUpload:true,approved:true,music:{spotifyUrl:meta.spotifyUrl,title:meta.title,artist:meta.artist,thumbnailUrl:meta.thumbnailUrl,audioUrl,hookStartSeconds:hook.startSeconds,hookDurationSeconds:hook.durationSeconds,hookText:hook.hookText}};
@@ -698,8 +698,8 @@ async function generateAutomaticJob(item,req){
     try{
       const track=await selectDailyMusicTrack(req);
       const manager=await runMusicManagerAnalysis(track);
-      const result=await createMusicPromotionJob({spotifyUrl:track.spotify_url,audioUrl:track.audio_url,title:track.title,artist:track.artist,thumbnailUrl:track.artwork_url,language:item.language,notes:"Daily Music Manager selection. Trend score "+track.trend_score+". AI analysis: "+manager.chatgpt,req});
-      if(supabase){
+      const result=await createMusicPromotionJob({id,spotifyUrl:track.spotify_url,audioUrl:track.audio_url,title:track.title,artist:track.artist,thumbnailUrl:track.artwork_url,language:item.language,notes:"Daily Music Manager selection. Trend score "+track.trend_score+". AI analysis: "+manager.chatgpt,req});
+      if(supabase && result.status==="published"){
         await supabase.from("music_library").update({promotion_count:Number(track.promotion_count||0)+1,last_promoted_at:new Date().toISOString(),last_used_at:new Date().toISOString(),ai_analysis:manager,updated_at:new Date().toISOString()}).eq("id",track.id);
       }
       return {...result,automaticMusic:true,selectedTrack:publicMusicTrack(track),manager};
@@ -830,7 +830,7 @@ async function runAutomaticFactory(req){
   const due=items.filter(x=>{
     const [h,m]=x.time.split(":").map(Number);
     const diff=(nowH*60+nowM)-(h*60+m);
-    return diff>=-15 && diff<=5;
+    return diff>=0 && diff<=60;
   }).sort((a,b)=>a.time.localeCompare(b.time)).slice(0,1);
   if(!due.length)return {ok:true,enabled:true,due:[],message:"No category is scheduled for this minute."};
   const results=[];

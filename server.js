@@ -968,6 +968,46 @@ app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
   }
 });
 
+async function publishVideoToBuffer(p){
+  if(!process.env.BUFFER_API_KEY) throw new Error("Buffer is not configured: add BUFFER_API_KEY to Vercel.");
+  if(!p?.videoUrl||!p?.title) throw new Error("Buffer publishing requires videoUrl and title.");
+  const endpoint="https://api.buffer.com";
+  async function gql(query,variables={}){
+    const response=await fetch(endpoint,{method:"POST",headers:{Authorization:"Bearer "+process.env.BUFFER_API_KEY,"Content-Type":"application/json"},body:JSON.stringify({query,variables})});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok||body.errors?.length)throw new Error(body.errors?.map(x=>x.message).join("; ")||"Buffer API HTTP "+response.status);
+    return body.data||{};
+  }
+  const orgData=await gql("query ACFOrgs { account { organizations { id name } } }");
+  const orgs=orgData.account?.organizations||[];
+  const channels=[];
+  for(const org of orgs){
+    const d=await gql("query ACFChannels($input: ChannelsInput!) { channels(input:$input) { id name displayName service isDisconnected isLocked isQueuePaused } }",{input:{organizationId:org.id}});
+    for(const ch of d.channels||[])channels.push({...ch,organizationId:org.id});
+  }
+  const supported=channels.filter(ch=>["youtube","instagram","facebook"].includes(String(ch.service||"").toLowerCase())&&!ch.isDisconnected&&!ch.isLocked&&!ch.isQueuePaused);
+  if(!supported.length)throw new Error("No publish-ready Buffer channels found. Check connected channels and resume any paused queues.");
+  const results=[];
+  for(const ch of supported){
+    const service=String(ch.service||"").toLowerCase();
+    const metadata={};
+    if(service==="youtube")metadata.youtube={title:String(p.title).slice(0,100),category:"Entertainment",privacy:"public"};
+    if(service==="instagram")metadata.instagram={postType:"reel"};
+    if(service==="facebook")metadata.facebook={postType:"reel"};
+    const variables={input:{channelId:ch.id,text:String(p.description||p.title||"").slice(0,2200),assets:[{url:p.videoUrl,type:"video"}],schedulingType:"automatic",mode:"shareNow",metadata,aiAssisted:true,saveToDraft:false}};
+    try{
+      const d=await gql("mutation ACFCreatePost($input: CreatePostInput!) { createPost(input:$input) { ... on PostActionSuccess { post { id status dueAt text channelId } } ... on MutationError { message } } }",variables);
+      const post=d.createPost;
+      if(post?.message)throw new Error(post.message);
+      if(!post?.post?.id)throw new Error("Buffer did not confirm post creation.");
+      results.push({channelId:ch.id,channelName:ch.displayName||ch.name,service,ok:true,post:post.post});
+    }catch(e){results.push({channelId:ch.id,channelName:ch.displayName||ch.name,service,ok:false,error:safeErrorMessage(e)});}
+  }
+  const published=results.filter(x=>x.ok);
+  if(!published.length)throw new Error("Buffer could not accept the video on any channel: "+results.map(x=>x.channelName+": "+x.error).join(" | "));
+  return {platform:"buffer",published:true,results,successfulChannels:published.length,totalChannels:results.length};
+}
+
 async function publishRenderedYouTubeVideo(p){
   if(!p?.videoUrl||!p?.title)throw new Error("videoUrl and title are required");
   const settings=await hydrateSettings();

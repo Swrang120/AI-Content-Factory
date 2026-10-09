@@ -435,6 +435,48 @@ function renderAccounts(){
     </div>
   </div>`;
   loadBufferStatus();
+  metaStatus().then(s=>{
+    const fb=document.getElementById("fbBadge"),ig=document.getElementById("igBadge");
+    const ft=document.getElementById("fbStatusText"),it=document.getElementById("igStatusText");
+    if(!fb||!ig)return;
+    if(!s||!s.ok){
+      fb.textContent="Status unavailable";fb.className="badge";
+      ig.textContent="Status unavailable";ig.className="badge";
+      if(ft)ft.textContent=s?.error||"Could not check Meta connection.";
+      if(it)it.textContent="Could not check Instagram connection. See Facebook/Meta status.";
+      return;
+    }
+    if(!s.configured){
+      fb.textContent="Setup needed";fb.className="badge";
+      ig.textContent="Setup needed";ig.className="badge";
+      if(ft)ft.textContent="Add META_APP_ID, META_APP_SECRET and META_REDIRECT_URI to Vercel, then redeploy.";
+      if(it)it.textContent="Instagram uses the Meta connection. Configure Meta OAuth first.";
+      return;
+    }
+    if(!s.connected){
+      fb.textContent="Not connected";fb.className="badge";
+      ig.textContent="Not connected";ig.className="badge";
+      if(ft)ft.textContent="Tap Connect Meta to authorize a Facebook Page.";
+      if(it)it.textContent="Connect Meta, then choose a Page linked to an Instagram Professional account.";
+      return;
+    }
+    fb.textContent="Connected";fb.className="badge ready";
+    if(ft)ft.textContent="Page: "+(s.page?.name||"Connected");
+    if(s.instagram){
+      ig.textContent="Connected";ig.className="badge ready";
+      if(it)it.textContent="Instagram Professional account connected and ready for publishing.";
+    }else{
+      ig.textContent="Needs IG";ig.className="badge";
+      if(it)it.textContent="Meta connected, but no Instagram Professional account is linked to the selected Facebook Page.";
+    }
+  }).catch(e=>{
+    const fb=document.getElementById("fbBadge"),ig=document.getElementById("igBadge");
+    if(fb){fb.textContent="Status unavailable";fb.className="badge";}
+    if(ig){ig.textContent="Status unavailable";ig.className="badge";}
+    const ft=document.getElementById("fbStatusText"),it=document.getElementById("igStatusText");
+    if(ft)ft.textContent=e?.message||"Could not check Meta status.";
+    if(it)it.textContent="Could not check Instagram status.";
+  });
   youtubeStatus().then(s=>{
     const badge=document.getElementById("ytBadge"), textEl=document.getElementById("ytStatusText");
     if(!badge||!textEl)return;

@@ -978,7 +978,7 @@ async function publishVideoToBuffer(p){
     let parsedVideoUrl;
     try{parsedVideoUrl=new URL(videoUrl);}catch{throw new Error("Buffer video URL must be a valid public HTTPS URL.");}
     if(parsedVideoUrl.protocol!=="https:")throw new Error("Buffer video URL must use HTTPS.");
-    const variables={input:{channelId:ch.id,text:String(p.description||p.title||"").slice(0,2200),assets:[{video:{url:videoUrl,metadata:{title:String(p.title).slice(0,100)}}}],schedulingType:"automatic",mode:"shareNow",needsApproval:false,metadata,aiAssisted:true,saveToDraft:false}};
+    const variables={input:{channelId:ch.id,text:String(p.description||p.title||"").slice(0,2200),assets:[{video:{url:videoUrl}}],schedulingType:"automatic",mode:"addToQueue",needsApproval:false,metadata,aiAssisted:true,saveToDraft:false}};
     try{
       const d=await gql("mutation ACFCreatePost($input: CreatePostInput!) { createPost(input:$input) { ... on PostActionSuccess { post { id status dueAt text channelId } } ... on MutationError { message } } }",variables);
       const post=d.createPost;

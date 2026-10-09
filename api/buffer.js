@@ -1,5 +1,22 @@
 const BUFFER_ENDPOINT = "https://api.buffer.com";
 
+function applyCors(req, res) {
+  const origin = String(req.headers?.origin || "");
+  const allowed = new Set([
+    "https://swrang120.github.io",
+    "http://localhost:3000",
+    "http://127.0.0.1:5500",
+    "http://localhost:5500"
+  ]);
+  if (allowed.has(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
+  res.setHeader("Access-Control-Max-Age", "86400");
+}
+
 function send(res, status, body) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -157,6 +174,7 @@ async function createPost(input) {
 }
 
 module.exports.handler = async (req, res) => {
+  applyCors(req, res);
   const url = new URL(req.url || "/", "https://acf.local");
   const route = url.pathname.replace(/^\/api\/buffer\/?/, "").replace(/\/$/, "");
   if (req.method === "OPTIONS") return send(res, 204, {});

@@ -46,32 +46,33 @@ async function bufferGraphQL(query, variables = {}) {
 }
 
 async function getChannels() {
-  const data = await bufferGraphQL(`query ACFBufferChannels {
+  const accountData = await bufferGraphQL(`query ACFBufferOrganizations {
     account {
-      organizations {
-        id
-        name
-        channels {
-          id
-          name
-          displayName
-          descriptor
-          service
-          type
-          externalLink
-          isDisconnected
-          isLocked
-          isQueuePaused
-        }
-      }
+      organizations { id name }
     }
   }`);
-  const organizations = data.account?.organizations || [];
-  return organizations.flatMap(org => (org.channels || []).map(channel => ({
-    ...channel,
-    organizationName: org.name,
-    organizationId: org.id
-  })));
+  const organizations = accountData.account?.organizations || [];
+  const all = [];
+  for (const org of organizations) {
+    const data = await bufferGraphQL(`query ACFBufferChannels($input: ChannelsInput!) {
+      channels(input: $input) {
+        id
+        name
+        displayName
+        descriptor
+        service
+        type
+        externalLink
+        isDisconnected
+        isLocked
+        isQueuePaused
+      }
+    }`, { input: { organizationId: org.id } });
+    for (const channel of (data.channels || [])) {
+      all.push({ ...channel, organizationName: org.name, organizationId: org.id });
+    }
+  }
+  return all;
 }
 
 function safeChannel(channel) {

@@ -601,26 +601,18 @@ async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbna
   const settings=await hydrateSettings();
   const promoDescription="Original music promotion. "+(meta.spotifyUrl?"Listen on Spotify: "+meta.spotifyUrl+"\n":"")+"Artist: "+meta.artist;
   if(settings.autoPublish){
-    await setAgentState("publisher","WORKING",92,"Publishing music promotion to connected platforms",id);
-    // Publish directly through each platform integration; Buffer is not used here.
+    await setAgentState("publisher","WORKING",92,"Sending music promotion to Buffer channels",id);
     try{
-      const youtube=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,title:(meta.title||"Original Song")+" | Official Music Promo",description:promoDescription,tags:["Music Promotion","Original Music",meta.artist].filter(Boolean),categoryId:"10",privacyStatus:"public",approved:true,automated:true,req});
-      job.youtube=youtube;
-    }catch(e){job.publishErrors={...(job.publishErrors||{}),youtube:safeErrorMessage(e)};}
-    try{
-      job.meta=await publishMetaVideo({videoUrl:job.renderedVideoUrl,title:(meta.title||"Original Song")+" | Official Music Promo",description:promoDescription});
-    }catch(e){job.publishErrors={...(job.publishErrors||{}),meta:safeErrorMessage(e)};}
-    const ytOk=!!job.youtube;
-    const fbOk=!!job.meta?.facebook?.published;
-    const igOk=!!job.meta?.instagram?.published;
-    job.status=(ytOk||fbOk||igOk)?"published":"rendered";
+      job.buffer=await publishVideoToBuffer({videoUrl:job.renderedVideoUrl,title:(meta.title||"Original Song")+" | Official Music Promo",description:promoDescription});
+      job.status="published";
+    }catch(e){job.publishErrors={...(job.publishErrors||{}),buffer:safeErrorMessage(e)};job.status="rendered";}
   }
   job.updatedAt=new Date().toISOString();saveJobs(jobs);await persistJob(job);
   await setAgentState("qa","SLEEPING",100,"Music promo QA complete",id);
-  const destinations=[job.youtube?"YouTube":null,job.meta?.facebook?.published?"Facebook":null,job.meta?.instagram?.published?"Instagram":null].filter(Boolean);
-  await setAgentState("publisher","SLEEPING",100,destinations.length?"Music promo published to: "+destinations.join(", "):"Promo rendered; no platform confirmed publication",id);
+  const bufferCount=Number(job.buffer?.successfulChannels||0);
+  await setAgentState("publisher","SLEEPING",100,bufferCount?"Music promo sent to Buffer on "+bufferCount+" channel(s)":"Promo rendered; Buffer has not confirmed publication",id);
   await setAgentState("manager","SLEEPING",100,"Music promotion order complete",id);
-  return {ok:true,jobId:id,status:job.status,track:meta,hook,music:job.music,video:job.youtube||null,meta:job.meta||null,publishErrors:job.publishErrors||null,renderedVideoUrl:job.renderedVideoUrl};
+  return {ok:true,jobId:id,status:job.status,track:meta,hook,music:job.music,buffer:job.buffer||null,publishErrors:job.publishErrors||null,renderedVideoUrl:job.renderedVideoUrl};
 }
 
 async function renderFactoryVideo(job,req){

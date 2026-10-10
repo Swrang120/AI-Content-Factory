@@ -339,7 +339,7 @@ async function youtube(req){
  async function askGeminiToDiagnose(incident){
    if(!process.env.GEMINI_API_KEY)return "Gemini not configured.";
    const prompt=["You are the reliability engineer for a private AI Content Factory.","Diagnose this runtime incident and suggest only safe runtime remediation: retry, fallback provider, queue/skip the failed job, reconnect a dependency, or configuration check.","Never expose secrets, disable security, bypass authentication, or blindly rewrite source code.","Incident:",JSON.stringify(incident)].join("\\n");
-   const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
+   const model=process.env.GEMINI_MODEL||"gemini-2.5-flash";
    const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.1,maxOutputTokens:500}})});
    const body=await response.json();
    if(!response.ok)throw new Error(body?.error?.message||"Gemini diagnosis failed");
@@ -348,7 +348,7 @@ async function youtube(req){
  async function askChatGPTToDiagnose(incident){
    if(!process.env.OPENAI_API_KEY)return "ChatGPT not configured.";
    const prompt=["You are the reliability engineer for a private AI Content Factory.","Diagnose this runtime incident and suggest only safe runtime remediation: retry, fallback provider, queue/skip the failed job, reconnect a dependency, or configuration check.","Never expose secrets, disable security, bypass authentication, or blindly rewrite source code.","Incident:",JSON.stringify(incident)].join("\\n");
-   const model=process.env.OPENAI_MODEL||"gpt-6-luna";
+   const model=process.env.OPENAI_MODEL||"gpt-4o";
    const response=await retryTransient(()=>fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model,input:prompt,store:false})}));
    const body=await response.json();
    if(!response.ok)throw new Error(body?.error?.message||"ChatGPT diagnosis failed");
@@ -363,13 +363,44 @@ async function youtube(req){
    return incident.diagnosis;
  }
  async function fallbackTextGeneration(task,fields){
-   if(!process.env.GEMINI_API_KEY)throw new Error("No AI fallback is configured.");
-   const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
+   // Try all server-side Gemini key slots, without exposing key values. A single
+   // stale key should not prevent a configured backup key from being used.
+   const keys=[process.env.GEMINI_API_KEY,process.env.GEMINI_API_KEY_2,process.env.GEMINI_API_KEY_3,process.env.GOOGLE_API_KEY]
+     .map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
+   if(!keys.length)throw new Error("Gemini fallback is not configured. Add a valid GEMINI_API_KEY in Vercel.");
+   const models=[process.env.GEMINI_MODEL,"gemini-2.5-flash","gemini-2.0-flash"]
+     .map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
    const prompt=["You are the fallback Content Brain for a private AI Content Factory.","Return original, useful content. Never invent facts. For current news/sports, do not generate if verified source material is missing.","TASK: "+task,"INPUT:",JSON.stringify(fields||{},null,2)].join("\\n");
-   const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:2500}})});
-   const body=await r.json();
-   if(!r.ok)throw new Error(body?.error?.message||"Gemini fallback generation failed");
-   return body?.candidates?.[0]?.content?.parts?.map(x=>x.text||"").join(" ").trim()||"";
+   let lastError=null;
+   for(const key of keys){
+     for(const model of models){
+       const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
+         method:"POST",
+         headers:{"Content-Type":"application/json","x-goog-api-key":key},
+         body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:2500}})
+       });
+       const body=await response.json().catch(()=>({}));
+       if(response.ok){
+         const text=body?.candidates?.[0]?.content?.parts?.map(x=>x.text||"").join(" ").trim()||"";
+         if(text)return text;
+         lastError=new Error("Gemini returned an empty response.");
+         continue;
+       }
+       const message=String(body?.error?.message||"Gemini fallback generation failed");
+       lastError=new Error(message);
+       // Invalid-key / permission errors won't be fixed by changing models.
+       if(response.status===400||response.status===401||response.status===403){
+         if(/api key|permission|unauthorized|credential|not valid|invalid/i.test(message))break;
+       }
+       if(response.status!==404&&response.status!==400)break;
+     }
+     if(lastError&&/api key|permission|unauthorized|credential|not valid|invalid/i.test(lastError.message))continue;
+   }
+   const message=String(lastError?.message||"Gemini fallback generation failed");
+   if(/api key|permission|unauthorized|credential|not valid|invalid/i.test(message)){
+     throw new Error("Gemini API key rejected. In Vercel Production Environment Variables, replace GEMINI_API_KEY with a valid key from Google AI Studio; optional backup names are GEMINI_API_KEY_2 and GEMINI_API_KEY_3. Redeploy after saving.");
+   }
+   throw lastError||new Error("Gemini fallback generation failed");
  }
  function needsLiveResearch(task,fields){
   const s=(String(task||"")+" "+JSON.stringify(fields||{})).toLowerCase();

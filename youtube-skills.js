@@ -33,7 +33,7 @@
         @media(max-width:700px){.yt-head{display:block}.yt-form{grid-template-columns:1fr}.yt-wide{grid-column:auto}}
       </style>
       <div class="ytlab">
-        <div class="yt-head"><div><p class="eyebrow">YOUTUBE AGENT SKILLS</p><h2>🎬 YouTube Content Lab</h2><p class="muted">11 reusable skills added without replacing the existing production pipeline.</p></div><span class="badge ready">AI READY</span></div>
+        <div class="yt-head"><div><p class="eyebrow">YOUTUBE AGENT SKILLS</p><h2>🎬 YouTube Content Lab</h2><p class="muted">11 skills. Run a task to check the live AI connection; outputs can be reused in your content workflow.</p></div><span class="badge">AI STATUS CHECKED ON RUN</span></div>
         <div class="yt-grid">${skills.map(s=>`<button type="button" class="yt-skill ${s[0]===selected?"selected":""}" data-skill="${s[0]}"><b>${s[1]}</b><small>${s[3]}</small></button>`).join("")}</div>
         <div class="yt-work">
           <h3 id="ytSkillTitle">${skillById(selected)[1]}</h3>
@@ -44,13 +44,33 @@
             <label>Target audience<input id="ytAudience" placeholder="e.g. Indian music listeners"></label>
             <label class="yt-wide">Transcript / Data / Notes<textarea id="ytNotes" placeholder="Paste transcript, comments, retention data, channel stats, or extra instructions depending on the selected skill."></textarea></label>
           </div>
-          <div class="yt-actions"><button type="button" class="primary" id="ytRun">✨ Run YouTube Skill</button><button type="button" class="small-btn" id="ytThumb">🖼️ Generate Thumbnail</button></div>
+          <div class="yt-actions"><button type="button" class="primary" id="ytRun">✨ Run YouTube Skill</button><button type="button" class="small-btn" id="ytThumb">🖼️ Generate Thumbnail</button><button type="button" class="small-btn" id="ytCopy">📋 Copy Result</button></div>
           <pre id="ytResult" class="yt-result">Select a skill and run it. Your existing content pipeline is not modified by this tool.</pre>
         </div>
       </div>`;
-    view.querySelectorAll("[data-skill]").forEach(b=>b.onclick=()=>{selected=b.dataset.skill;render();});
+    view.querySelectorAll("[data-skill]").forEach(b=>b.onclick=()=>{
+      const topic=document.getElementById("ytTopic")?.value||"";
+      const language=document.getElementById("ytLanguage")?.value||"English";
+      const format=document.getElementById("ytFormat")?.value||"Long Video";
+      const audience=document.getElementById("ytAudience")?.value||"";
+      const notes=document.getElementById("ytNotes")?.value||"";
+      const previousResult=document.getElementById("ytResult")?.textContent||"Select a skill and run it.";
+      selected=b.dataset.skill;render();
+      document.getElementById("ytTopic").value=topic;
+      document.getElementById("ytLanguage").value=language;
+      document.getElementById("ytFormat").value=format;
+      document.getElementById("ytAudience").value=audience;
+      document.getElementById("ytNotes").value=notes;
+      document.getElementById("ytResult").textContent=previousResult;
+    });
     document.getElementById("ytRun").onclick=runSkill;
     document.getElementById("ytThumb").onclick=runThumbnail;
+    document.getElementById("ytCopy").onclick=async()=>{
+      const value=document.getElementById("ytResult")?.innerText||"";
+      if(!value.trim()){return;}
+      try{await navigator.clipboard.writeText(value);document.getElementById("ytCopy").textContent="✅ Copied";}
+      catch(e){document.getElementById("ytResult").textContent="Copy failed in this browser. Select the result text and copy it manually.";}
+    };
   }
   async function runSkill(){
     const s=skillById(selected),out=document.getElementById("ytResult");

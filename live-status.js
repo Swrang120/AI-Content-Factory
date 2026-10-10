@@ -1,12 +1,17 @@
 (function(){
   "use strict";
   function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
+  const API_BASE=(window.ACF_BACKEND_URL||"https://ai-content-factory-zeta-ruby.vercel.app").replace(/\\/+$/,"");
+  async function readJson(response){
+    const raw=await response.text();
+    try{return raw?JSON.parse(raw):{};}catch(_){throw new Error("Backend returned a non-JSON response (HTTP "+response.status+"). Check the Vercel API deployment.");}
+  }
   async function loadLiveStatus(){
     const box=document.getElementById("acfLiveStatusBox");
     if(!box)return;
     try{
-      const r=await fetch("/api/live/status",{credentials:"include",cache:"no-store"});
-      const s=await r.json();
+      const r=await fetch(API_BASE+"/api/live/status",{credentials:"include",cache:"no-store"});
+      const s=await readJson(r);
       if(!r.ok||!s.ok)throw new Error(s.error||"Live status unavailable");
       const latest=s.jobs?.[0];
       const state=latest?.status||"no scheduled event";
@@ -25,8 +30,8 @@
         const out=document.getElementById("acfLiveResult");
         out.textContent="Creating scheduled YouTube Live event…";
         try{
-          const r=await fetch("/api/live/create",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({})});
-          const x=await r.json();
+          const r=await fetch(API_BASE+"/api/live/create",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({})});
+          const x=await readJson(r);
           if(!r.ok||!x.ok)throw new Error(x.error||"Could not create live event");
           out.textContent="✅ Scheduled: "+(x.job?.title||"YouTube Live")+" · "+(x.job?.scheduledStartTime||"");
           loadLiveStatus();

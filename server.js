@@ -750,9 +750,23 @@ async function generateAutomaticJob(item,req){
   const jobs=loadJobs();
   await setAgentState("manager","WORKING",8,"Starting scheduled production",id);
   await setAgentState("research","WORKING",15,"Finding a verified topic and research direction",id);
+  // Best-effort creator learning: use real YouTube analytics when OAuth is connected.
+  // If analytics or the AI learning provider is unavailable, continue safely without it.
+  let creatorLearning=null;
+  try{
+    const analytics=await getYouTubeAnalytics(req);
+    const learningPrompt="Use only the attached real channel metrics to return concise JSON with winners, patterns, experiments, avoid, and nextIdeas. Do not infer causation.";
+    creatorLearning=await generateWithChatGPT("youtube_learning_engine",{analytics,prompt:learningPrompt});
+  }catch(error){
+    console.warn("Creator learning unavailable for this job:",safeErrorMessage(error));
+  }
+  const learningContext=creatorLearning
+    ? "CREATOR PERFORMANCE LEARNINGS (use as evidence-informed guidance; do not invent stats):\n"+String(typeof creatorLearning==="string"?creatorLearning:JSON.stringify(creatorLearning)).slice(0,5000)
+    : "CREATOR PERFORMANCE LEARNINGS unavailable; do not claim analytics-based personalization.";
   const topicRaw=await generateWithChatGPT("automatic_topic",{
     category:item.category,language:item.language,format:item.format,scheduleTime:item.time,direction:item.prompt,
-    requirement:"Return one original YouTube video topic/title only. For News/Sports, do not invent a current fact; return a research-needed topic if no verified source is provided."
+    creatorLearning:learningContext,
+    requirement:"Return one original YouTube video topic/title only. Use creator performance learnings when available. For News/Sports, do not invent a current fact; return a research-needed topic if no verified source is provided."
   });
   const topic=String(topicRaw||"AI Content Factory").replace(/^["']|["']$/g,"").trim().split("\n")[0].slice(0,180);
   await setAgentState("research","WORKING",45,"Researching: "+topic,id);
@@ -761,7 +775,7 @@ async function generateAutomaticJob(item,req){
   job.research=await generateWithChatGPT("research_plan",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[]});
   await setAgentState("research","SLEEPING",100,"Research complete",id);
   await setAgentState("script","WORKING",25,"Writing the production script",id);
-  job.script=await generateWithChatGPT("script",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,research:job.research,sources:[]});
+  job.script=await generateWithChatGPT("script",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,research:job.research,sources:[],creatorLearning:learningContext,requirement:"Apply evidence-informed creator learning to the hook, pacing, structure, title promise and retention plan when metrics are available. Do not claim guaranteed performance."});
   job.status="script_ready";
   await setAgentState("script","SLEEPING",100,"Script complete",id);
   await setAgentState("voice","WORKING",20,"Generating narration audio",id);

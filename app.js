@@ -396,20 +396,47 @@ async function renderSchedule(){
 async function loadCreatorLearning(){
   const box=document.getElementById("creatorAnalytics");
   if(!box)return;
+  box.innerHTML='<div class="empty">Reading your YouTube performance and preparing learning recommendations…</div>';
   try{
-    const r=await fetch(apiUrl("/api/youtube/analytics"),{credentials:"include"});
+    const r=await fetch(apiUrl("/api/youtube/learning"),{credentials:"include"});
     const s=await r.json();
-    if(!r.ok||!s.ok)throw new Error(s.error||"Analytics unavailable");
-    const t=s.analytics?.total||{};
+    if(!r.ok||!s.ok)throw new Error(s.error||"YouTube learning unavailable");
+    const t=s.total||s.analyticsSummary?.total||{};
+    const strategy=s.strategy||{};
+    const winners=Array.isArray(strategy.winners)?strategy.winners:[];
+    const patterns=Array.isArray(strategy.patterns)?strategy.patterns:[];
+    const experiments=Array.isArray(strategy.experiments)?strategy.experiments:[];
+    const avoid=Array.isArray(strategy.avoid)?strategy.avoid:[];
+    const ideas=Array.isArray(strategy.nextIdeas)?strategy.nextIdeas:[];
+    const list=(items,empty)=>items.length?'<ul style="margin:8px 0 0;padding-left:20px">'+items.map(x=>'<li style="margin:5px 0">'+esc(typeof x==="string"?x:JSON.stringify(x))+'</li>').join("")+'</ul>':'<div class="muted" style="margin-top:6px">'+empty+'</div>';
     box.innerHTML=`<div class="cards" style="margin:0 0 12px">
-      <div class="card"><div class="metric-label">Views</div><div class="metric">${Number(t.views||0).toLocaleString()}</div><div class="metric-note">Processed period</div></div>
-      <div class="card"><div class="metric-label">Watch Minutes</div><div class="metric">${Number(t.estimatedMinutesWatched||0).toLocaleString()}</div><div class="metric-note">Processed period</div></div>
+      <div class="card"><div class="metric-label">Views</div><div class="metric">${Number(t.views||0).toLocaleString()}</div><div class="metric-note">Last 28 days · processed</div></div>
+      <div class="card"><div class="metric-label">Watch Minutes</div><div class="metric">${Number(t.estimatedMinutesWatched||0).toLocaleString()}</div><div class="metric-note">Watch time</div></div>
       <div class="card"><div class="metric-label">Likes</div><div class="metric">${Number(t.likes||0).toLocaleString()}</div><div class="metric-note">Engagement</div></div>
-      <div class="card"><div class="metric-label">Subscribers</div><div class="metric">+${Number(t.subscribersGained||0).toLocaleString()}</div><div class="metric-note">Gained</div></div>
+      <div class="card"><div class="metric-label">Subscribers</div><div class="metric">+${Number(t.subscribersGained||0).toLocaleString()}</div><div class="metric-note">Gained in period</div></div>
     </div>
-    <div class="queue-row"><div><div class="queue-title">Top videos</div><div class="queue-meta">${(s.analytics.topVideos||[]).slice(0,5).map(v=>esc(v.video)+": "+Number(v.views||0).toLocaleString()+" views").join(" · ")||"No processed video data yet."}</div></div><span class="badge ready">Learning ON</span></div>
-    <div class="muted" style="margin-top:8px">${esc(s.analytics.latencyNote||"")}</div>`;
-  }catch(e){box.innerHTML='<div class="empty">Analytics not ready: '+esc(e.message)+'</div>';}
+    <div class="table-card"><div class="section-head"><h3>🏆 Best-performing videos</h3><span class="badge ready">Analytics</span></div>
+      ${list((s.analyticsSummary?.topVideos||[]).slice(0,5).map(v=>(v.video||"Video")+": "+Number(v.views||0).toLocaleString()+" views"),"No video-level results were returned for this period.")}
+    </div>
+    <div class="table-card" style="margin-top:12px"><div class="section-head"><h3>🧠 What the AI learned</h3><span class="badge ready">Learning report</span></div>
+      <h4>Winning patterns</h4>${list(winners,"Not enough evidence yet; connect YouTube Analytics and try again.")}
+      <h4>Patterns to test</h4>${list(patterns,"No clear pattern returned yet.")}
+      <h4>Next experiments</h4>${list(experiments,"No experiments returned yet.")}
+      <h4>What to avoid</h4>${list(avoid,"No avoid-list returned yet.")}
+      <h4>Next video ideas</h4>${list(ideas,"No new ideas returned yet.")}
+    </div>
+    <div class="muted" style="margin-top:8px">${esc(s.analyticsSummary?.latencyNote||"Analytics may be delayed by YouTube.")}</div>`;
+  }catch(e){
+    try{
+      const r=await fetch(apiUrl("/api/youtube/analytics"),{credentials:"include"});
+      const s=await r.json();
+      if(!r.ok||!s.ok)throw new Error(s.error||e.message);
+      const t=s.analytics?.total||{};
+      box.innerHTML='<div class="empty">AI learning could not finish: '+esc(e.message)+'. Basic analytics are available: '+Number(t.views||0).toLocaleString()+' views, '+Number(t.likes||0).toLocaleString()+' likes. Try Refresh again later.</div>';
+    }catch(fallbackError){
+      box.innerHTML='<div class="empty">YouTube learning is not ready: '+esc(fallbackError.message||e.message)+'. Check YouTube connection and Analytics permissions.</div>';
+    }
+  }
 }
 async function youtubeStatus(){
   try{

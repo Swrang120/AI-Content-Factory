@@ -1,0 +1,160 @@
+name: AI Content Factory - FFmpeg Render Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: "Existing AI Content Factory job ID (required for callback)"
+        required: true
+        type: string
+      title:
+        description: "Video title"
+        required: true
+        type: string
+      script:
+        description: "Narration script to caption"
+        required: true
+        type: string
+      audio_url:
+        description: "HTTPS URL for the generated MP3/WAV narration"
+        required: true
+        type: string
+      image_urls:
+        description: "JSON array with 2-12 HTTPS image URLs"
+        required: true
+        type: string
+      format:
+        description: "Video aspect ratio"
+        required: true
+        type: choice
+        options:
+          - shorts
+          - landscape
+        default: shorts
+  repository_dispatch:
+    types: [acf-render-video]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acf-ffmpeg-render-${{ github.event.client_payload.jobId || inputs.job_id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python and FFmpeg
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-render.txt
+
+      - name: Install renderer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-render.txt
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+
+      - name: Validate render payload
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_JOB_ID: ${{ inputs.job_id }}
+          INPUT_TITLE: ${{ inputs.title }}
+          INPUT_SCRIPT: ${{ inputs.script }}
+          INPUT_AUDIO_URL: ${{ inputs.audio_url }}
+          INPUT_IMAGE_URLS: ${{ inputs.image_urls }}
+          INPUT_FORMAT: ${{ inputs.format }}
+          CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          if os.environ["EVENT_NAME"] == "repository_dispatch":
+              payload = json.loads(os.environ.get("CLIENT_PAYLOAD") or "{}")
+          else:
+              try:
+                  images = json.loads(os.environ.get("INPUT_IMAGE_URLS", ""))
+              except Exception as exc:
+                  raise SystemExit("image_urls must be a valid JSON array") from exc
+              payload = {"jobId": os.environ.get("INPUT_JOB_ID", "").strip(),
+                         "title": os.environ.get("INPUT_TITLE", "").strip(),
+                         "script": os.environ.get("INPUT_SCRIPT", "").strip(),
+                         "audioUrl": os.environ.get("INPUT_AUDIO_URL", "").strip(),
+                         "imageUrls": images, "format": os.environ.get("INPUT_FORMAT", "shorts")}
+          if not payload.get("jobId") or not payload.get("script") or not payload.get("audioUrl"):
+              raise SystemExit("jobId, script and audioUrl are required")
+          if not isinstance(payload.get("imageUrls"), list) or not 2 <= len(payload["imageUrls"]) <= 12:
+              raise SystemExit("imageUrls must be a JSON array containing 2-12 URLs")
+          Path("render-payload.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+          PY
+
+      - name: Render MP4 with FFmpeg
+        run: python services/video_generator.py --input render-payload.json --output output/final-video.mp4
+
+      - name: Upload MP4 to Vercel Blob and notify existing Factory job
+        if: success()
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          ACF_FACTORY_URL: ${{ secrets.ACF_FACTORY_URL }}
+          APP_API_KEY: ${{ secrets.APP_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+          CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          test -n "${BLOB_READ_WRITE_TOKEN:-}" || { echo "::error::Add BLOB_READ_WRITE_TOKEN in GitHub Actions secrets."; exit 1; }
+          test -n "${ACF_FACTORY_URL:-}" || { echo "::error::Add ACF_FACTORY_URL with the active Vercel base URL in GitHub Actions secrets."; exit 1; }
+          npm install --no-save @vercel/blob
+          node --input-type=module <<'JS' > uploaded-asset.json
+          import { put } from "@vercel/blob";
+          import { readFile } from "node:fs/promises";
+          const blob = await put(`acf-renders/${process.env.GITHUB_RUN_ID}/final-video.mp4`,
+            await readFile("output/final-video.mp4"), {
+              access: "public", contentType: "video/mp4", addRandomSuffix: true,
+              token: process.env.BLOB_READ_WRITE_TOKEN
+            });
+          console.log(JSON.stringify({url: blob.url, pathname: blob.pathname}));
+          JS
+          python - <<'PY'
+          import json, os, urllib.request
+          from pathlib import Path
+          event = os.environ["EVENT_NAME"]
+          payload = json.loads(os.environ.get("CLIENT_PAYLOAD") or "{}") if event == "repository_dispatch" else json.loads(Path("render-payload.json").read_text(encoding="utf-8"))
+          asset = json.loads(Path("uploaded-asset.json").read_text(encoding="utf-8"))
+          job_id = str(payload.get("jobId") or "").strip()
+          if not job_id:
+              raise SystemExit("Payload jobId missing; the MP4 has been uploaded but callback cannot run")
+          body = {"videoUrl": asset["url"], "title": payload.get("title") or payload.get("topic") or "AI Content Factory Video",
+                  "description": payload.get("description") or "", "tags": payload.get("tags") or [],
+                  "categoryId": str(payload.get("categoryId") or "22"),
+                  "privacyStatus": str(payload.get("privacyStatus") or "private"),
+                  "publishAt": payload.get("publishAt"), "approved": bool(payload.get("approved", False))}
+          headers = {"Content-Type": "application/json", "Accept": "application/json"}
+          if os.environ.get("APP_API_KEY"): headers["X-API-Key"] = os.environ["APP_API_KEY"]
+          req = urllib.request.Request(os.environ["ACF_FACTORY_URL"].rstrip("/") + f"/api/pipeline/jobs/{job_id}/rendered",
+              data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+          try:
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  print(response.read().decode("utf-8"))
+          except Exception as exc:
+              if hasattr(exc, "read"): print(exc.read().decode("utf-8", "replace"))
+              raise
+          PY
+
+      - name: Save rendered MP4 as workflow artifact
+        if: always() && hashFiles('output/final-video.mp4') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: acf-render-${{ github.run_id }}
+          path: output/final-video.mp4
+          if-no-files-found: warn
+          retention-days: 7

@@ -1205,9 +1205,25 @@ app.post("/api/pipeline/jobs/:id/rendered",requireAppKey,async(req,res)=>{
     saveJobs(jobs);
     await persistJob(job);
 
-    if(loadSettings().autoPublish && (!loadSettings().approval || job.approved)){
+    const settings=loadSettings();
+    if(settings.autoPublish && (!settings.approval || job.approved)){
       try{
-        const youtubeResult=await publishRenderedYouTubeVideo({videoUrl,title:job.title,description,tags:job.tags,categoryId,privacyStatus,publishAt,approved:job.approved,req});
+        if((settings.publishingRoute||"buffer").toLowerCase()==="buffer"){
+          const bufferResult=await publishVideoToBuffer({
+            videoUrl:job.renderedVideoUrl,
+            title:job.title,
+            description:job.description||"",
+            tags:job.tags||[]
+          });
+          job.buffer=bufferResult;
+          job.status=bufferResult.successfulChannels===bufferResult.totalChannels?"sent_to_buffer":"sent_to_buffer_partial";
+          job.updatedAt=new Date().toISOString();
+          saveJobs(jobs);
+          await persistJob(job);
+          return res.json({ok:true,jobId:job.id,status:job.status,published:false,platform:"buffer",buffer:bufferResult,
+            message:"Video accepted by Buffer. Buffer controls the actual scheduled/public publishing time."});
+        }
+        const youtubeResult=await publishRenderedYouTubeVideo({videoUrl,title:job.title,description,tags,categoryId,privacyStatus,publishAt,approved:job.approved,req});
         job.youtube=youtubeResult;
         job.status="published";
         job.updatedAt=new Date().toISOString();

@@ -1,0 +1,1 @@
+# FFmpeg is installed by the GitHub Actions workflow; Python renderer uses the standard library.

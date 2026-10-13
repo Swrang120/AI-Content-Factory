@@ -1969,11 +1969,25 @@ async function refreshMusicTrack(id,req){
 }
 async function selectDailyMusicTrack(req){
   if(!supabase)throw new Error("Supabase is not configured.");
-  const {data,error}=await supabase.from("music_library").select("*").eq("status","active").in("rights_status",["owned","authorized"]).not("audio_url","is",null).order("trend_score",{ascending:false}).order("last_used_at",{ascending:true,nullsFirst:true}).limit(100);
+  // Fetch active rows first, then validate normalized rights and non-empty playable audio URLs.
+  // PostgREST .not(is null) also admits empty strings, which are not usable audio.
+  const {data,error}=await supabase.from("music_library").select("*").eq("status","active").order("trend_score",{ascending:false}).order("last_used_at",{ascending:true,nullsFirst:true}).limit(200);
   if(error)throw new Error("Music Library selection failed: "+error.message);
-  if(!data?.length)throw new Error("No eligible original/authorized track with audio is available for today's Music Promotion.");
+  const rows=Array.isArray(data)?data:[];
+  const eligible=rows.filter(t=>{
+    const rights=String(t.rights_status||"").trim().toLowerCase();
+    const audio=String(t.audio_url||"").trim();
+    if(!["owned","authorized"].includes(rights)||!audio)return false;
+    try{const u=new URL(audio);return u.protocol==="https:"||u.protocol==="http:";}catch(_){return false;}
+  });
+  if(!eligible.length){
+    const active=rows.length;
+    const authorized=rows.filter(t=>["owned","authorized"].includes(String(t.rights_status||"").trim().toLowerCase())).length;
+    const withAudio=rows.filter(t=>String(t.audio_url||"").trim()).length;
+    throw new Error("Music Library has no playable active track. Found "+active+" active row(s), "+authorized+" owned/authorized row(s), and "+withAudio+" row(s) with an audio URL. Open Music Library, upload/select the original master audio, confirm rights status is Owned or Authorized and status is Active, then retry. YouTube/Spotify links alone are not playable master audio.");
+  }
   const now=Date.now();
-  const scored=data.map((t,i)=>{
+  const scored=eligible.map((t,i)=>{
     const daysSince=t.last_used_at?Math.max(0,(now-new Date(t.last_used_at).getTime())/86400000):999;
     const cooldown=Math.min(30,daysSince)*1.4;
     const freshness=i<10?10:0;

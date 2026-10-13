@@ -973,12 +973,18 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
     const settings=await hydrateSettings();
     if(settings.autoGenerate===false)return res.status(409).json({ok:false,error:"Auto Generate is OFF. Turn Automation/Auto Generate ON first."});
 
+    const allowedCategories=["Music Promotion","News & Updates","Product Promotion","Sports Information","Editing Knowledge","AI & Technology"];
+    const requestedCategory=String(req.body?.category||"").trim();
     const lower=command.toLowerCase();
-    const category=lower.includes("music")||lower.includes("song")||lower.includes("artist")?"Music Promotion":
+    const category=allowedCategories.includes(requestedCategory)?requestedCategory:
+      lower.includes("music")||lower.includes("song")||lower.includes("artist")?"Music Promotion":
       lower.includes("news")||lower.includes("update")?"News & Updates":
       lower.includes("product")||lower.includes("shop")||lower.includes("promo")?"Product Promotion":
       lower.includes("sport")||lower.includes("match")||lower.includes("player")?"Sports Information":
       lower.includes("edit")||lower.includes("capcut")||lower.includes("premiere")?"Editing Knowledge":"AI & Technology";
+    const language=String(req.body?.language||"Hindi").trim().slice(0,40);
+    const format=String(req.body?.format||"Short Reel").trim().slice(0,40);
+    const idea=String(req.body?.idea||command).trim().slice(0,2000);
     if(!enabledCategory(settings,category))return res.status(409).json({ok:false,error:category+" is disabled. Enable this category first."});
 
     if(category==="Music Promotion"){
@@ -987,20 +993,20 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
       const trendFields={track:{title:track.title,artist:track.artist,views:track.views,likes:track.likes,comments:track.comments,viewVelocity:track.view_velocity,engagementRate:track.engagement_rate,trendScore:track.trend_score},analysis:manager.chatgpt,goal:"Write ONE original Hindi/Hinglish short-video hook line (max 12 words) to promote this supplied original song. Use a relatable current short-form style, but do not claim a real-time trend unless the supplied metrics prove it. Do not quote copyrighted lyrics."};
       let promotionLine="";
       try{promotionLine=String(await generateWithChatGPT("music_promo_hook_line",trendFields)||"").trim().replace(/^["'“”]+|["'“”]+$/g,"").slice(0,180);}catch(e){console.warn("Music promo hook line unavailable:",safeErrorMessage(e));}
-      const result=await createMusicPromotionJob({id:jobId(),spotifyUrl:track.spotify_url,audioUrl:track.audio_url,storagePath:String(track.source_metrics?.storage_path||track.storage_path||track.file_path||track.path||""),title:track.title,artist:track.artist,thumbnailUrl:track.artwork_url,language:"Hindi",notes:"Boss Room Music Library selection. Trend score: "+Number(track.trend_score||0)+". Trend analysis: "+String(manager.chatgpt||"").slice(0,1000),promotionLine,req,publishAfterRender:false});
+      const result=await createMusicPromotionJob({id:jobId(),spotifyUrl:track.spotify_url,audioUrl:track.audio_url,storagePath:String(track.source_metrics?.storage_path||track.storage_path||track.file_path||track.path||""),title:track.title,artist:track.artist,thumbnailUrl:track.artwork_url,language,format,notes:"Boss Room Music Library selection. Requested format: "+format+". Requested language: "+language+". Script idea: "+idea+". Trend score: "+Number(track.trend_score||0)+". Trend analysis: "+String(manager.chatgpt||"").slice(0,1000),promotionLine,req,publishAfterRender:false});
       return res.json({ok:true,jobId:result.jobId,status:"generated_ready",category, title:result.track?.title||track.title,artist:result.track?.artist||track.artist,trendScore:Number(track.trend_score||0),promotionLine:promotionLine||null,hook:result.hook,track:publicMusicTrack(track),renderedVideoUrl:result.renderedVideoUrl,message:"Music promo video rendered from the selected Music Library track. Preview it before a separate publish request."});
     }
 
     const id=jobId();
     const jobs=loadJobs();
-    const job={id,status:"researching",topic:command.slice(0,180),category,language:"Hindi",format:"Short Video",notes:"Boss command: "+command,sourceText:"",sources:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),manualUpload:true,auto:true,autoPublish:true,approved:true};
+    const job={id,status:"researching",topic:idea.slice(0,180),category,language,format,notes:"Boss command: "+command+" | Script idea: "+idea,sourceText:"",sources:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),manualUpload:true,auto:true,autoPublish:true,approved:true};
     jobs[id]=job; saveJobs(jobs); await persistJob(job);
     await setAgentState("manager","WORKING",10,"Boss order received: "+command.slice(0,180),id);
 
     let research="";
     if(category==="News & Updates"||category==="Sports Information"){
       await setAgentState("research","WORKING",25,"Researching verified information",id);
-      research=await generateWithChatGPT("research_plan",{topic:command,category,language:job.language,format:job.format,notes:job.notes,sourceText:"",sources:[]});
+      research=await generateWithChatGPT("research_plan",{topic:idea,category,language:job.language,format:job.format,notes:job.notes,sourceText:"",sources:[]});
       job.research=research;
       await setAgentState("research","SLEEPING",100,"Research complete",id);
     }

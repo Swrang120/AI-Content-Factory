@@ -1,5 +1,7 @@
 const API_BASE=(window.ACF_BACKEND_URL||"https://ai-content-factory-zeta-ruby.vercel.app").replace(/\/+$/,"");
 const apiUrl=p=>API_BASE+p;
+// Expose the same backend URL to lazy-loaded feature modules.
+window.apiUrl=apiUrl;
 const KEY="acf_v2";
 const defaultData={
   categories:[

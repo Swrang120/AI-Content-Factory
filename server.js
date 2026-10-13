@@ -661,7 +661,7 @@ async function transcribeMusicAudio(audioUrl){
   if(!r.ok)throw new Error(body?.error?.message||"Music transcription failed");
   return {text:String(body?.text||""),segments:Array.isArray(body?.segments)?body.segments:[]};
 }
-async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req,id:requestedJobId}){
+async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req,id:requestedJobId,promotionLine="",publishAfterRender=true}){
   let meta;
   if(spotifyUrl){ meta=await fetchSpotifyTrackMetadata(spotifyUrl); }
   else { meta={spotifyUrl:null,title:String(title||"Original Song"),artist:String(artist||"Swrang Swargiary"),thumbnailUrl:thumbnailUrl||null,provider:"Supabase Storage"}; }
@@ -675,7 +675,8 @@ async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbna
   jobs[id]=job;saveJobs(jobs);await persistJob(job);
   await setAgentState("manager","WORKING",10,"Music promotion order received",id);
   await setAgentState("research","WORKING",35,"Analyzing the original song and selecting the strongest hook",id);
-  job.script=hook.hookText||("Listen to "+(meta.title||"this original song")+" by "+(meta.artist||"the artist")+" — original music.");
+  job.promotionLine=String(promotionLine||"").trim();
+  job.script=[job.promotionLine,hook.hookText||("Listen to "+(meta.title||"this original song")+" by "+(meta.artist||"the artist")+" — original music.")].filter(Boolean).join("\n");
   job.status="rendering";job.updatedAt=new Date().toISOString();saveJobs(jobs);await persistJob(job);
   await setAgentState("research","SLEEPING",100,"Best promotion hook selected",id);
   await setAgentState("editor","WORKING",65,"Cutting the original song hook into a promo video",id);
@@ -959,6 +960,16 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
       lower.includes("sport")||lower.includes("match")||lower.includes("player")?"Sports Information":
       lower.includes("edit")||lower.includes("capcut")||lower.includes("premiere")?"Editing Knowledge":"AI & Technology";
     if(!enabledCategory(settings,category))return res.status(409).json({ok:false,error:category+" is disabled. Enable this category first."});
+
+    if(category==="Music Promotion"){
+      const track=await selectDailyMusicTrack(req);
+      const manager=await runMusicManagerAnalysis(track);
+      const trendFields={track:{title:track.title,artist:track.artist,views:track.views,likes:track.likes,comments:track.comments,viewVelocity:track.view_velocity,engagementRate:track.engagement_rate,trendScore:track.trend_score},analysis:manager.chatgpt,goal:"Write ONE original Hindi/Hinglish short-video hook line (max 12 words) to promote this supplied original song. Use a relatable current short-form style, but do not claim a real-time trend unless the supplied metrics prove it. Do not quote copyrighted lyrics."};
+      let promotionLine="";
+      try{promotionLine=String(await generateWithChatGPT("music_promo_hook_line",trendFields)||"").trim().replace(/^["'“”]+|["'“”]+$/g,"").slice(0,180);}catch(e){console.warn("Music promo hook line unavailable:",safeErrorMessage(e));}
+      const result=await createMusicPromotionJob({id:jobId(),spotifyUrl:track.spotify_url,audioUrl:track.audio_url,title:track.title,artist:track.artist,thumbnailUrl:track.artwork_url,language:"Hindi",notes:"Boss Room Music Library selection. Trend score: "+Number(track.trend_score||0)+". Trend analysis: "+String(manager.chatgpt||"").slice(0,1000),promotionLine,req,publishAfterRender:false});
+      return res.json({ok:true,jobId:result.jobId,status:"generated_ready",category, title:result.track?.title||track.title,artist:result.track?.artist||track.artist,trendScore:Number(track.trend_score||0),promotionLine:promotionLine||null,hook:result.hook,track:publicMusicTrack(track),renderedVideoUrl:result.renderedVideoUrl,message:"Music promo video rendered from the selected Music Library track. Preview it before a separate publish request."});
+    }
 
     const id=jobId();
     const jobs=loadJobs();

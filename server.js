@@ -1980,6 +1980,12 @@ async function refreshMusicTrack(id,req){
 }
 async function selectDailyMusicTrack(req){
   if(!supabase)throw new Error("Supabase is not configured.");
+  // Run the same storage-to-library reconciliation used by the Music Library screen
+  // before querying the promotion pool, so uploaded original masters are not invisible to Boss Room.
+  if(typeof syncMusicStorageToLibrary==="function"){
+    try{await syncMusicStorageToLibrary();}
+    catch(syncError){console.warn("Music promotion storage sync failed:",safeErrorMessage(syncError));}
+  }
   // Fetch active rows first, then validate normalized rights and non-empty playable audio URLs.
   // PostgREST .not(is null) also admits empty strings, which are not usable audio.
   const {data,error}=await supabase.from("music_library").select("*").eq("status","active").order("trend_score",{ascending:false}).order("last_used_at",{ascending:true,nullsFirst:true}).limit(200);

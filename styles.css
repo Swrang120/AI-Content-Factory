@@ -206,3 +206,13 @@ linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
   .music-library-page .section-head>div:last-child{width:100%}
   .music-library-page .section-head input{width:100%}
 }
+
+/* Boss Room structured video brief controls */
+.boss-config-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}
+.boss-config-grid label,.boss-idea-label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#8fd5c5;font-weight:700;letter-spacing:.04em}
+.boss-config-grid select,.command-row textarea{box-sizing:border-box;width:100%;min-width:0;border:1px solid #2b4054;border-radius:10px;background:#07111f;color:#edf5ff;padding:11px;font:inherit}
+.boss-config-grid select{min-height:42px}
+.boss-idea-label{margin:8px 0}
+.command-row textarea{resize:vertical;min-height:54px;flex:1}
+.command-row{align-items:stretch}
+@media(max-width:700px){.boss-config-grid{grid-template-columns:1fr}.command-row{flex-wrap:wrap}.command-row textarea{flex-basis:100%}}

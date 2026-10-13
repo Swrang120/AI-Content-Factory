@@ -1979,16 +1979,16 @@ async function refreshMusicTrack(id,req){
   return data;
 }
 async function selectDailyMusicTrack(req){
-  if(!supabase)throw new Error("Supabase is not configured.");
-  // Run the same storage-to-library reconciliation used by the Music Library screen
-  // before querying the promotion pool, so uploaded original masters are not invisible to Boss Room.
+  // Use the same privileged database client as the Music Library screen. The public
+  // publishable client can return zero rows under RLS even while the library UI lists tracks.
+  const db=supabaseAdmin||supabase;
+  if(!db)throw new Error("Supabase is not configured for Music Library reads.");
+  // Reconcile uploaded files first; then query the same music_library table the UI reads.
   if(typeof syncMusicStorageToLibrary==="function"){
     try{await syncMusicStorageToLibrary();}
     catch(syncError){console.warn("Music promotion storage sync failed:",safeErrorMessage(syncError));}
   }
-  // Fetch active rows first, then validate normalized rights and non-empty playable audio URLs.
-  // PostgREST .not(is null) also admits empty strings, which are not usable audio.
-  const {data,error}=await supabase.from("music_library").select("*").eq("status","active").order("trend_score",{ascending:false}).order("last_used_at",{ascending:true,nullsFirst:true}).limit(200);
+  const {data,error}=await db.from("music_library").select("*").eq("status","active").order("trend_score",{ascending:false}).order("last_used_at",{ascending:true,nullsFirst:true}).limit(200);
   if(error)throw new Error("Music Library selection failed: "+error.message);
   const rows=Array.isArray(data)?data:[];
   const eligible=rows.filter(t=>{

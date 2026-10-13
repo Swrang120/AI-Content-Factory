@@ -114,24 +114,24 @@ function robotCard(r){
 function renderBossRoom(){
  title.textContent="AI Office";
  const rooms={
-  manager:["Manager","6%","5%","25%","27%"],meeting:["Meeting Room","33%","5%","31%","27%"],strategy:["Strategy Room","66%","5%","28%","27%"],
-  research:["Research","6%","35%","30%","30%"],operations:["Operations","39%","35%","55%","30%"],
-  lounge:["Break Room","6%","68%","30%","27%"],kitchen:["Kitchen","39%","68%","26%","27%"],server:["AI Command Center","67%","68%","27%","27%"]
+  manager:["BOSS ROOM","6%","5%","25%","27%"],meeting:["AI & TECHNOLOGY","33%","5%","31%","27%"],strategy:["NEWS & UPDATES","66%","5%","28%","27%"],
+  research:["SPORTS INFORMATION","6%","35%","30%","30%"],operations:["EDITING KNOWLEDGE","39%","35%","55%","30%"],
+  lounge:["PRODUCT PROMOTION","6%","68%","30%","27%"],kitchen:["MUSIC PROMOTION","39%","68%","26%","27%"],server:["BOSS CONTROL CENTER","67%","68%","27%","27%"]
  };
  const roomFor={manager:"manager",research:"research",script:"operations",voice:"operations",visual:"operations",editor:"operations",thumb:"operations",qa:"operations",publisher:"server",analytics:"server"};
  view.innerHTML=`<div class="pixel-office-page screenshot-office">
    <div class="pixel-office-head"><div><p class="eyebrow">AI CONTENT FACTORY · VIRTUAL HQ</p><h2>🏢 AI Employee Office</h2><p>Exactly this style: a top-down dark pixel-art office where every AI employee physically moves between rooms, works at a desk, joins meetings, or rests when idle.</p></div><div class="office-live"><span></span><b id="officeLiveText">SYNCING</b></div></div>
    <div class="pixel-office-shell">
-    <div class="office-toolbar"><div><b>FACTORY FLOOR</b><small>Live employee simulation · click an employee for details</small></div><div class="office-legend"><span><i class="legend-dot work"></i>Working</span><span><i class="legend-dot sleep"></i>Resting</span><span>🟣 Meeting</span></div></div>
+    <div class="office-toolbar"><div><b>FACTORY FLOOR</b><small>6 content rooms + separate Boss Room · click an AI worker to see its live task</small></div><div class="office-legend"><span><i class="legend-dot work"></i>Working</span><span><i class="legend-dot sleep"></i>Resting</span><span>🟣 Meeting</span></div></div>
     <div class="office-map">
-      <div class="map-room manager-room"><b>MANAGER OFFICE</b><div class="map-desk big"></div><div class="map-monitor"></div><div class="map-plant p1">🌿</div><div class="map-plant p2">🌿</div></div>
-      <div class="map-room meeting-room"><b>MEETING ROOM</b><div class="conference-table"></div><div class="meeting-chair c1"></div><div class="meeting-chair c2"></div><div class="meeting-chair c3"></div><div class="meeting-chair c4"></div><div class="meeting-chair c5"></div><div class="meeting-chair c6"></div><div class="whiteboard">PIPELINE<br><small>IDEA → PUBLISH</small></div></div>
-      <div class="map-room strategy-room"><b>STRATEGY / PLANNING</b><div class="map-desk"></div><div class="map-monitor"></div><div class="map-cabinet"></div><div class="map-plant p2">🌿</div></div>
-      <div class="map-room research-room"><b>RESEARCH LAB</b><div class="work-desk d1"></div><div class="work-desk d2"></div><div class="map-monitor m1">⌕</div><div class="map-monitor m2">⌕</div><div class="shelf"></div></div>
-      <div class="map-room operations-room"><b>PRODUCTION FLOOR</b><div class="work-desk od1"></div><div class="work-desk od2"></div><div class="work-desk od3"></div><div class="work-desk od4"></div><div class="work-desk od5"></div><div class="work-desk od6"></div><div class="map-monitor om1">✎</div><div class="map-monitor om2">♫</div><div class="map-monitor om3">▶</div><div class="map-monitor om4">✦</div><div class="map-monitor om5">✓</div><div class="map-monitor om6">↑</div></div>
-      <div class="map-room lounge-room"><b>BREAK ROOM</b><div class="sofa"></div><div class="coffee-table"></div><div class="pool-table"></div><span class="coffee">☕</span><span class="plant-large">🌿</span></div>
-      <div class="map-room kitchen-room"><b>KITCHEN / CAFÉ</b><div class="counter"></div><div class="fridge"></div><div class="cafe-table"></div><div class="cafe-chair a"></div><div class="cafe-chair b"></div><span class="coffee">☕</span></div>
-      <div class="map-room server-room"><b>AI COMMAND CENTER</b><div class="server-wall"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="data-screen">AI FACTORY<br><small>LIVE DATA</small></div><div class="map-monitor sm">◈</div></div>
+      <div class="map-room manager-room boss-room"><b>BOSS ROOM · COMMAND</b><div class="map-desk big"></div><div class="map-monitor"></div><div class="map-plant p1">🌿</div><div class="map-plant p2">🌿</div></div>
+      <div class="map-room meeting-room content-room ai-tech-room"><b>AI & TECHNOLOGY</b><div class="conference-table"></div><div class="meeting-chair c1"></div><div class="meeting-chair c2"></div><div class="meeting-chair c3"></div><div class="meeting-chair c4"></div><div class="meeting-chair c5"></div><div class="meeting-chair c6"></div><div class="whiteboard">PIPELINE<br><small>IDEA → PUBLISH</small></div></div>
+      <div class="map-room strategy-room content-room news-room"><b>NEWS & UPDATES</b><div class="map-desk"></div><div class="map-monitor"></div><div class="map-cabinet"></div><div class="map-plant p2">🌿</div></div>
+      <div class="map-room research-room content-room sports-room"><b>SPORTS INFORMATION</b><div class="work-desk d1"></div><div class="work-desk d2"></div><div class="map-monitor m1">⌕</div><div class="map-monitor m2">⌕</div><div class="shelf"></div></div>
+      <div class="map-room operations-room content-room editing-room"><b>EDITING KNOWLEDGE</b><div class="work-desk od1"></div><div class="work-desk od2"></div><div class="work-desk od3"></div><div class="work-desk od4"></div><div class="work-desk od5"></div><div class="work-desk od6"></div><div class="map-monitor om1">✎</div><div class="map-monitor om2">♫</div><div class="map-monitor om3">▶</div><div class="map-monitor om4">✦</div><div class="map-monitor om5">✓</div><div class="map-monitor om6">↑</div></div>
+      <div class="map-room lounge-room content-room product-room"><b>PRODUCT PROMOTION</b><div class="sofa"></div><div class="coffee-table"></div><div class="pool-table"></div><span class="coffee">☕</span><span class="plant-large">🌿</span></div>
+      <div class="map-room kitchen-room content-room music-room"><b>MUSIC PROMOTION</b><div class="counter"></div><div class="fridge"></div><div class="cafe-table"></div><div class="cafe-chair a"></div><div class="cafe-chair b"></div><span class="coffee">☕</span></div>
+      <div class="map-room server-room boss-control-room"><b>BOSS CONTROL CENTER</b><div class="server-wall"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="data-screen">AI FACTORY<br><small>LIVE DATA</small></div><div class="map-monitor sm">◈</div></div>
       <div class="map-corridor vertical"></div><div class="map-corridor horizontal"></div><div class="map-door dtop"></div><div class="map-door dleft"></div><div class="map-door dright"></div>
       <div class="office-worker-layer">${AI_ROBOTS.map((r,i)=>{
         const p=rooms[roomFor[r.id]||"operations"];

@@ -913,6 +913,13 @@ async function generateAutomaticJob(item,req){
   return {ok:true,skipped:false,jobId:id,status:job.status,topic:job.topic,videoUrl:job.renderedVideoUrl||null};
 }
 async function processQueuedContentJob(job,req){
+  const currentSettings=await hydrateSettings();
+  if(!enabledCategory(currentSettings,job.category)){
+    job.status="disabled";
+    job.renderError="Category is disabled. Generation and publishing were blocked.";
+    job.updatedAt=new Date().toISOString();
+    return job;
+  }
   const id=job.id;
   await setAgentState("manager","WORKING",8,"Starting queued content production",id);
   await setAgentState("research","WORKING",15,"Researching queued content",id);
@@ -955,7 +962,7 @@ async function runAutomaticFactory(req){
   const settings=await hydrateSettings();
   const jobs=await loadPersistentJobs();
   const now=new Date();
-  const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
+  const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&enabledCategory(settings,j.category)&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
   const bossResults=[];
   for(const job of bossDue){try{const result=await publishVideoToBuffer({videoUrl:job.renderedVideoUrl,title:job.topic||"AI Content Factory",description:"Uploaded by Boss in AI Content Factory."});job.buffer=result;job.status="published";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);bossResults.push({ok:true,jobId:job.id,channels:result.successfulChannels});}catch(e){bossResults.push({ok:false,jobId:job.id,error:e.message});}}
   const queued=Object.values(jobs).filter(j=>j.queueItem&&j.status==="queued"&&enabledCategory(settings,j.category)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);
@@ -1086,7 +1093,7 @@ app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
     const settings=await hydrateSettings();
     if(!settings.autoPublish)return res.status(409).json({ok:false,error:"Auto Publish is OFF."});
     const jobs=await loadPersistentJobs();
-    const candidates=Object.values(jobs).filter(j=>j.renderedVideoUrl&&!["published","sent_to_buffer"].includes(j.status)).sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0));
+    const candidates=Object.values(jobs).filter(j=>j.renderedVideoUrl&&enabledCategory(settings,j.category)&&!["published","sent_to_buffer"].includes(j.status)).sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0));
     const job=candidates[0];
     if(!job)return res.status(404).json({ok:false,error:"No rendered video is waiting to be sent to Buffer."});
     await setAgentState("publisher","WORKING",60,"Boss command: sending "+(job.topic||job.title||"latest video")+" to Buffer",job.id);
@@ -1899,10 +1906,15 @@ app.post("/api/factory/settings",requireAppKey,async(req,res)=>{
     let source="memory-only";
     try{
       const persisted=await persistSettings(next);
-      if(persisted&&persisted.ok)source="persistent-supabase";
+      if(!persisted?.ok){
+        settingsCache={...DEFAULT_FACTORY_SETTINGS,...current};
+        return res.status(503).json({ok:false,error:"Settings were not saved persistently: "+String(persisted?.error||"Supabase persistence unavailable")+". Category toggles cannot be safely applied until persistent storage is working."});
+      }
+      source="persistent-supabase";
     }catch(persistError){
       console.error("Settings persistence warning:",safeErrorMessage(persistError));
-      settingsCache={...DEFAULT_FACTORY_SETTINGS,...next};
+      settingsCache={...DEFAULT_FACTORY_SETTINGS,...current};
+      return res.status(503).json({ok:false,error:"Settings were not saved persistently: "+safeErrorMessage(persistError)+". Please fix Supabase settings storage before relying on category disable switches."});
     }
 
     const cookieValue=encodeURIComponent(JSON.stringify(next));
@@ -2020,10 +2032,12 @@ async function musicTrackWithPlayableAudio(row){
   if(!row)return row;
   const source=row.source_metrics&&typeof row.source_metrics==="object"?row.source_metrics:{};
   const path=String(source.storage_path||row.storage_path||row.file_path||row.path||"").trim();
-  if(path&&supabaseAdmin){
+  if(path){
+    if(!supabaseAdmin)throw new Error("Music Library audio is stored in private Supabase Storage, but SUPABASE_SERVICE_ROLE_KEY is missing. Cannot create a fresh playable audio URL.");
     const {data,error}=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).createSignedUrl(path,3600);
     if(!error&&data?.signedUrl)return {...row,audio_url:data.signedUrl};
     console.warn("Could not create signed audio URL:",safeErrorMessage(error||"signed URL unavailable"));
+    throw new Error("Could not create a playable signed audio URL for the active Music Library track: "+safeErrorMessage(error||"signed URL unavailable"));
   }
   return row;
 }
@@ -2087,16 +2101,15 @@ async function selectDailyMusicTrack(req){
     const withAudio=rows.filter(t=>String(t.audio_url||"").trim()).length;
     throw new Error("Music Library has no playable active track. Found "+active+" active row(s), "+authorized+" owned/authorized row(s), and "+withAudio+" row(s) with an audio URL. Open Music Library, upload/select the original master audio, confirm rights status is Owned or Authorized and status is Active, then retry. YouTube/Spotify links alone are not playable master audio.");
   }
-  const now=Date.now();
-  const scored=eligible.map((t,i)=>{
-    const daysSince=t.last_used_at?Math.max(0,(now-new Date(t.last_used_at).getTime())/86400000):999;
-    const cooldown=Math.min(30,daysSince)*1.4;
-    const freshness=i<10?10:0;
-    return {...t,_managerScore:Number(t.trend_score||0)+cooldown+freshness};
-  }).sort((a,b)=>b._managerScore-a._managerScore);
-  // Return a fresh signed URL for private Supabase Storage objects. A row can be ACTIVE
-  // yet its saved audio_url may be stale/expired; the renderer needs a currently playable URL.
-  return await musicTrackWithPlayableAudio(scored[0]);
+  // Stable track policy: keep promoting the newest active, owned/authorized library item.
+  // It remains selected until a newer active track is added; trend-score changes do not
+  // silently switch the song being promoted.
+  const stable=eligible.slice().sort((a,b)=>{
+    const at=new Date(a.created_at||a.updated_at||0).getTime()||0;
+    const bt=new Date(b.created_at||b.updated_at||0).getTime()||0;
+    return bt-at;
+  });
+  return await musicTrackWithPlayableAudio(stable[0]);
 }
 async function runMusicManagerAnalysis(track){
   const fields={track:{title:track.title,artist:track.artist,views:track.views,likes:track.likes,comments:track.comments,viewVelocity:track.view_velocity,engagementRate:track.engagement_rate,trendScore:track.trend_score,promotionCount:track.promotion_count,promoViews:track.promo_views},goal:"Choose a promotion angle for this original/authorized track. Explain why it is promising using only supplied metrics. Do not claim guaranteed virality."};

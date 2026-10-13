@@ -26,7 +26,8 @@
   ],
   "functions": {
     "api/index.js": {
-      "includeFiles": "node_modules/{remotion,@remotion}/**"
+      "includeFiles": "remotion-bundle/**"
     }
-  }
+  },
+  "buildCommand": "npm run build"
 }

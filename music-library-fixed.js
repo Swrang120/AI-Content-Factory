@@ -8,7 +8,7 @@
   }
 
   function api(path){
-    var base=(window.ACF_BACKEND_URL||(location.hostname.endsWith(".vercel.app")?location.origin:"https://ai-content-factory-a8q4v0xo7-swrang120.vercel.app"));
+    var base=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||(location.hostname.endsWith(".vercel.app")?location.origin:"https://ai-content-factory-zeta-ruby.vercel.app"));
     if(typeof window.apiUrl==="function") return window.apiUrl(path);
     return base.replace(/\/+$/,"")+path;
   }

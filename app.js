@@ -1,4 +1,4 @@
-const API_BASE=(window.ACF_BACKEND_URL||"https://ai-content-factory-zeta-ruby.vercel.app").replace(/\/+$/,"");
+const API_BASE=(window.ACF_BACKEND_URL||(location.hostname.endsWith(".vercel.app")?location.origin:"https://ai-content-factory-a8q4v0xo7-swrang120.vercel.app")).replace(/\/+$/,"");
 // Production backend: keep the frontend aligned with the GitHub/Vercel production project.
 const apiUrl=p=>API_BASE+p;
 const KEY="acf_v2";

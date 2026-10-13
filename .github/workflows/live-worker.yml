@@ -23,13 +23,13 @@ jobs:
 
       - name: Claim live job and stream for two hours
         env:
-          ACF_FACTORY_URL: ${{ secrets.ACF_FACTORY_URL }}
-          LIVE_WORKER_TOKEN: ${{ secrets.LIVE_WORKER_TOKEN }}
+          ACF_FACTORY_URL: "https://ai-content-factory-swrang120.vercel.app"
+          LIVE_WORKER_TOKEN: ${{ secrets.ACF_CRON_SECRET }}
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${ACF_FACTORY_URL:-}" || { echo "::error::Add ACF_FACTORY_URL in GitHub Actions secrets (the production Vercel base URL)."; exit 1; }
-          test -n "${LIVE_WORKER_TOKEN:-}" || { echo "::error::Add LIVE_WORKER_TOKEN in GitHub Actions secrets. It must match the Vercel LIVE_WORKER_TOKEN."; exit 1; }
+          test -n "${ACF_FACTORY_URL:-}" || { echo "::error::Production Vercel URL is set in this workflow."; exit 1; }
+          test -n "${LIVE_WORKER_TOKEN:-}" || { echo "::error::Add repository secret ACF_CRON_SECRET in GitHub Actions and Vercel."; exit 1; }
           BASE="${ACF_FACTORY_URL%/}"
           CLAIM=""
           # The Vercel live cron creates the broadcast at 13:55 IST. Wait for it.

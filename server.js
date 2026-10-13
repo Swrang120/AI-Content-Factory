@@ -1932,6 +1932,17 @@ async function upsertMusicTrack(input){
   if(error)throw new Error("Music Library save failed: "+error.message);
   return data;
 }
+async function musicTrackWithPlayableAudio(row){
+  if(!row)return row;
+  const source=row.source_metrics&&typeof row.source_metrics==="object"?row.source_metrics:{};
+  const path=String(source.storage_path||"").trim();
+  if(path&&supabaseAdmin){
+    const {data,error}=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).createSignedUrl(path,3600);
+    if(!error&&data?.signedUrl)return {...row,audio_url:data.signedUrl};
+    console.warn("Could not create signed audio URL:",safeErrorMessage(error||"signed URL unavailable"));
+  }
+  return row;
+}
 function publicMusicTrack(row){
   return {
     id:row.id,spotifyUrl:row.spotify_url,youtubeUrl:row.youtube_url,
@@ -2251,7 +2262,8 @@ app.get("/api/music/library",requireAppKey,async(req,res)=>{
     const from=page*limit; const to=from+limit-1;
     const {data,error,count}=await query.range(from,to);
     if(error)throw new Error(error.message);
-    res.json({ok:true,tracks:(data||[]).map(publicMusicTrack),count:count||0,page,limit,hasMore:(count||0)>to+1});
+    const playable=await Promise.all((data||[]).map(musicTrackWithPlayableAudio));
+    res.json({ok:true,tracks:playable.map(publicMusicTrack),count:count||0,page,limit,hasMore:(count||0)>to+1});
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 app.get("/api/music/library/:id",requireAppKey,async(req,res)=>{

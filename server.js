@@ -1936,7 +1936,7 @@ async function upsertMusicTrack(input){
 async function musicTrackWithPlayableAudio(row){
   if(!row)return row;
   const source=row.source_metrics&&typeof row.source_metrics==="object"?row.source_metrics:{};
-  const path=String(source.storage_path||"").trim();
+  const path=String(source.storage_path||row.storage_path||row.file_path||row.path||"").trim();
   if(path&&supabaseAdmin){
     const {data,error}=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).createSignedUrl(path,3600);
     if(!error&&data?.signedUrl)return {...row,audio_url:data.signedUrl};

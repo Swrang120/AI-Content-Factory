@@ -1011,7 +1011,7 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
       await setAgentState("research","SLEEPING",100,"Research complete",id);
     }
     await setAgentState("script","WORKING",35,"Writing the Boss-requested script",id);
-    job.script=await generateWithChatGPT("script",{topic:command,category,language:job.language,format:job.format,notes:job.notes,sourceText:"",research,sources:job.sources});
+    job.script=await generateWithChatGPT("script",{topic:idea,category,language:job.language,format:job.format,notes:job.notes,sourceText:"",research,sources:job.sources});
     await setAgentState("script","SLEEPING",100,"Script complete",id);
 
     await setAgentState("voice","WORKING",55,"Generating narration",id);

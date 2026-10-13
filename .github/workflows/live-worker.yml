@@ -65,10 +65,10 @@ jobs:
           if [ "$MEDIA_TYPE" = "audio" ]; then
             ffmpeg -hide_banner -loglevel warning \
               -re -f lavfi -i "color=c=0x101827:s=1920x1080:r=30" \
-              -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -i "$MEDIA_URL" \
+              -stream_loop -1 -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -i "$MEDIA_URL" \
               -t 7200 -vf "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='AI CONTENT FACTORY LIVE':fontcolor=white:fontsize=54:x=(w-text_w)/2:y=h*0.40,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='Original / authorized music':fontcolor=0xD8B45A:fontsize=34:x=(w-text_w)/2:y=h*0.50" \
               -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \
-              -c:a aac -b:a 128k -ar 44100 -shortest -f flv "$RTMP_URL" &
+              -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
           else
             ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -i "$MEDIA_URL" \
               -t 7200 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \

@@ -26,9 +26,7 @@
   ],
   "functions": {
     "api/index.js": {
-      "includeFiles": [
-        "node_modules/@remotion/studio/**"
-      ]
+      "includeFiles": "node_modules/@remotion/studio/**"
     }
   }
 }

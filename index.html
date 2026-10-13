@@ -71,7 +71,7 @@
 
   <script src="app-fixed.js?v=20261013-buffer-api-fix3"></script>
   <script src="youtube-skills.js?v=20261009b"></script>
-  <script src="music-library-fixed.js?v=20261009a"></script>
+  <script src="music-library-fixed.js?v=20261013-backend-fix1"></script>
   <script src="live-status.js?v=20261008a"></script>
   <script src="notifications.js?v=20261013a"></script>
   <script>
@@ -81,7 +81,7 @@
       if(typeof window.renderMusicLibrary === "function") return;
       function esc(v){return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
       function api(path){
-        var base=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://ai-content-factory-gussvkdme-swrang120.vercel.app");
+        var base=(window.ACF_BACKEND_URL||localStorage.getItem("acf_backend_url")||"https://ai-content-factory-zeta-ruby.vercel.app");
         return (typeof window.apiUrl==="function"?window.apiUrl(path):base.replace(/\/+$/,"")+path);
       }
       async function load(){
@@ -153,7 +153,7 @@
     window.addEventListener("load",function(){
       if(typeof window.renderMusicLibrary!=="function"){
         var s=document.createElement("script");
-        s.src="music-library-fixed.js?v=20261009a-retry";
+        s.src="music-library-fixed.js?v=20261013-backend-fix1-retry";
         s.onerror=function(){console.error("Music Library module could not be loaded.");};
         document.body.appendChild(s);
       }

@@ -1090,6 +1090,24 @@ app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
   }catch(e){await setAgentState("publisher","ERROR",0,"Buffer queue failed: "+safeErrorMessage(e),null).catch(()=>{});return res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 
+app.get("/api/buffer/status",async(req,res)=>{
+  try{
+    if(!process.env.BUFFER_API_KEY)return res.json({ok:true,configured:false,channels:[]});
+    const response=await fetch("https://api.buffer.com",{method:"POST",headers:{Authorization:"Bearer "+process.env.BUFFER_API_KEY,"Content-Type":"application/json"},body:JSON.stringify({query:"query ACFBufferStatus { account { organizations { id name } } }"})});
+    const body=await response.json().catch(()=>({}));
+    if(!response.ok||body.errors?.length)throw new Error(body.errors?.map(x=>x.message).join("; ")||"Buffer API HTTP "+response.status);
+    const orgs=body.data?.account?.organizations||[];
+    const channels=[];
+    for(const org of orgs){
+      const cr=await fetch("https://api.buffer.com",{method:"POST",headers:{Authorization:"Bearer "+process.env.BUFFER_API_KEY,"Content-Type":"application/json"},body:JSON.stringify({query:"query ACFBufferChannels($input: ChannelsInput!) { channels(input:$input) { id name displayName service isDisconnected isLocked isQueuePaused } }",variables:{input:{organizationId:org.id}}})});
+      const cb=await cr.json().catch(()=>({}));
+      if(!cr.ok||cb.errors?.length)throw new Error(cb.errors?.map(x=>x.message).join("; ")||"Buffer channels HTTP "+cr.status);
+      for(const ch of cb.data?.channels||[])channels.push({...ch,organizationName:org.name||"Buffer organization"});
+    }
+    res.json({ok:true,configured:true,channels});
+  }catch(e){res.status(502).json({ok:false,error:safeErrorMessage(e)});}
+});
+
 async function publishVideoToBuffer(p){
   if(!process.env.BUFFER_API_KEY) throw new Error("Buffer is not configured: add BUFFER_API_KEY to Vercel.");
   if(!p?.videoUrl||!p?.title) throw new Error("Buffer publishing requires videoUrl and title.");

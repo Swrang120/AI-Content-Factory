@@ -662,17 +662,36 @@ async function transcribeMusicAudio(audioUrl){
   if(!r.ok)throw new Error(body?.error?.message||"Music transcription failed");
   return {text:String(body?.text||""),segments:Array.isArray(body?.segments)?body.segments:[]};
 }
-async function createMusicPromotionJob({spotifyUrl,audioUrl,title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req,id:requestedJobId,promotionLine="",publishAfterRender=true}){
+async function createMusicPromotionJob({spotifyUrl,audioUrl,storagePath="",title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req,id:requestedJobId,promotionLine="",publishAfterRender=true}){
   let meta;
   if(spotifyUrl){ meta=await fetchSpotifyTrackMetadata(spotifyUrl); }
   else { meta={spotifyUrl:null,title:String(title||"Original Song"),artist:String(artist||"Swrang Swargiary"),thumbnailUrl:thumbnailUrl||null,provider:"Supabase Storage"}; }
-  if(!audioUrl)throw new Error("Original song audio is missing.");
-  const transcript=await transcribeMusicAudio(audioUrl);
+  if(!audioUrl&&!storagePath)throw new Error("Original song audio is missing.");
+  // Refresh a private Supabase Storage URL immediately before use. Signed URLs from the UI can expire.
+  if(storagePath&&supabaseAdmin){const signed=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).createSignedUrl(storagePath,3600);if(!signed.error&&signed.data?.signedUrl)audioUrl=signed.data.signedUrl;}
+  let transcript={text:"",segments:[]};
+  try{transcript=await transcribeMusicAudio(audioUrl);}catch(transcriptionError){
+    // Music promotion does not require speech transcription to render the original song.
+    // If the URL failed, fetch the stored object with the Supabase service client and expose a temporary playable copy for the renderer.
+    if(storagePath&&supabaseAdmin){
+      const {data:audioBlob,error:downloadError}=await supabaseAdmin.storage.from(MUSIC_STORAGE_BUCKET).download(storagePath);
+      if(downloadError||!audioBlob)throw new Error("Could not fetch the uploaded original audio from Supabase Storage: "+safeErrorMessage(downloadError||transcriptionError));
+      const audioBytes=Buffer.from(await audioBlob.arrayBuffer());
+      const {put}=await import("@vercel/blob");
+      const ext=(String(storagePath).match(/\\.(mp3|wav|m4a|aac|ogg|flac)$/i)||[])[1]||"mp3";
+      const mirrored=await put("music-render-cache/"+(requestedJobId||jobId())+"."+ext,audioBytes,{access:"public",contentType:audioBlob.type||"audio/mpeg",...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
+      audioUrl=mirrored.url;
+      try{transcript=await transcribeMusicAudio(audioUrl);}catch(e){console.warn("Optional music transcription unavailable; using fallback hook:",safeErrorMessage(e));}
+    }else{
+      console.warn("Optional music transcription unavailable; using fallback hook:",safeErrorMessage(transcriptionError));
+    }
+  }
+  if(!audioUrl)throw new Error("Original song audio is missing after Storage URL refresh.");
   const hook=await chooseMusicHook(transcript.segments,meta.title,meta.artist);
   const id=requestedJobId||jobId();
   const jobs=loadJobs();
   const topic=(meta.title||"Original Song")+" — Music Promotion";
-  const job={id,status:"music_hook_selected",topic,category:"Music Promotion",language,format:"Short Video",notes:(meta.spotifyUrl?"Spotify: "+meta.spotifyUrl+"\n":"")+"Artist: "+meta.artist+"\nHook: "+hook.hookText+"\n"+String(notes||""),sourceText:transcript.text,sources:meta.spotifyUrl?[meta.spotifyUrl]:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,manualUpload:true,approved:true,music:{spotifyUrl:meta.spotifyUrl,title:meta.title,artist:meta.artist,thumbnailUrl:meta.thumbnailUrl,audioUrl,hookStartSeconds:hook.startSeconds,hookDurationSeconds:hook.durationSeconds,hookText:hook.hookText}};
+  const job={id,status:"music_hook_selected",topic,category:"Music Promotion",language,format:"Short Video",notes:(meta.spotifyUrl?"Spotify: "+meta.spotifyUrl+"\n":"")+"Artist: "+meta.artist+"\nHook: "+hook.hookText+"\n"+String(notes||""),sourceText:transcript.text,sources:meta.spotifyUrl?[meta.spotifyUrl]:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,manualUpload:true,approved:true,music:{spotifyUrl:meta.spotifyUrl,title:meta.title,artist:meta.artist,thumbnailUrl:meta.thumbnailUrl,audioUrl,storagePath:storagePath||"",hookStartSeconds:hook.startSeconds,hookDurationSeconds:hook.durationSeconds,hookText:hook.hookText}};
   jobs[id]=job;saveJobs(jobs);await persistJob(job);
   await setAgentState("manager","WORKING",10,"Music promotion order received",id);
   await setAgentState("research","WORKING",35,"Analyzing the original song and selecting the strongest hook",id);
@@ -968,7 +987,7 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
       const trendFields={track:{title:track.title,artist:track.artist,views:track.views,likes:track.likes,comments:track.comments,viewVelocity:track.view_velocity,engagementRate:track.engagement_rate,trendScore:track.trend_score},analysis:manager.chatgpt,goal:"Write ONE original Hindi/Hinglish short-video hook line (max 12 words) to promote this supplied original song. Use a relatable current short-form style, but do not claim a real-time trend unless the supplied metrics prove it. Do not quote copyrighted lyrics."};
       let promotionLine="";
       try{promotionLine=String(await generateWithChatGPT("music_promo_hook_line",trendFields)||"").trim().replace(/^["'“”]+|["'“”]+$/g,"").slice(0,180);}catch(e){console.warn("Music promo hook line unavailable:",safeErrorMessage(e));}
-      const result=await createMusicPromotionJob({id:jobId(),spotifyUrl:track.spotify_url,audioUrl:track.audio_url,title:track.title,artist:track.artist,thumbnailUrl:track.artwork_url,language:"Hindi",notes:"Boss Room Music Library selection. Trend score: "+Number(track.trend_score||0)+". Trend analysis: "+String(manager.chatgpt||"").slice(0,1000),promotionLine,req,publishAfterRender:false});
+      const result=await createMusicPromotionJob({id:jobId(),spotifyUrl:track.spotify_url,audioUrl:track.audio_url,storagePath:String(track.source_metrics?.storage_path||track.storage_path||track.file_path||track.path||""),title:track.title,artist:track.artist,thumbnailUrl:track.artwork_url,language:"Hindi",notes:"Boss Room Music Library selection. Trend score: "+Number(track.trend_score||0)+". Trend analysis: "+String(manager.chatgpt||"").slice(0,1000),promotionLine,req,publishAfterRender:false});
       return res.json({ok:true,jobId:result.jobId,status:"generated_ready",category, title:result.track?.title||track.title,artist:result.track?.artist||track.artist,trendScore:Number(track.trend_score||0),promotionLine:promotionLine||null,hook:result.hook,track:publicMusicTrack(track),renderedVideoUrl:result.renderedVideoUrl,message:"Music promo video rendered from the selected Music Library track. Preview it before a separate publish request."});
     }
 

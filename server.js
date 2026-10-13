@@ -2332,7 +2332,7 @@ app.post("/api/music/library/sync-storage",requireAppKey,async(req,res)=>{
 app.get("/api/music/library",requireAppKey,async(req,res)=>{
   try{
     if(!supabase&&!supabaseAdmin)throw new Error("Supabase is not configured for Music Library.");
-    await syncMusicStorageToLibrary();
+    // Do not block the library listing on storage reconciliation. The sync remains available separately.
     const limit=Math.max(1,Math.min(100,Number(req.query.limit)||25));
     const page=Math.max(0,Number(req.query.page)||0);
     const sort=["trend","views","recent","used"].includes(String(req.query.sort||"trend"))?String(req.query.sort||"trend"):"trend";

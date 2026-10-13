@@ -598,30 +598,45 @@ function requireElevenLabs(){if(!process.env.ELEVENLABS_API_KEY)throw new Error(
 async function generateElevenLabsAudio(text,voiceId,modelId,languageCode){
   requireElevenLabs();
   const voice=voiceId||process.env.ELEVENLABS_VOICE_ID;
-  if(!voice)throw new Error("ELEVENLABS_VOICE_ID is not configured.");
+  if(!voice)throw new Error("No ElevenLabs voice ID is configured for this language.");
   const model=modelId||process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2";
-  const payload={text:String(text||"").trim(),model_id:model};
+  const cleanText=String(text||"").trim();
+  if(!cleanText)throw new Error("Voice script is empty.");
+  const payload={text:cleanText,model_id:model};
   if(languageCode)payload.language_code=languageCode;
   const url="https://api.elevenlabs.io/v1/text-to-speech/"+encodeURIComponent(voice)+"?output_format=mp3_44100_128";
   const r=await fetch(url,{method:"POST",headers:{"xi-api-key":process.env.ELEVENLABS_API_KEY,"Content-Type":"application/json","Accept":"audio/mpeg"},body:JSON.stringify(payload)});
-  if(!r.ok){let body={};try{body=await r.json();}catch{}throw new Error(body?.detail?.message||body?.detail||"ElevenLabs voice generation failed");}
-  return Buffer.from(await r.arrayBuffer());
+  if(!r.ok){
+    let body={};try{body=await r.json();}catch{}
+    const detail=body?.detail;
+    const message=typeof detail==="string"?detail:(detail?.message||detail?.status||body?.message||"");
+    throw new Error("ElevenLabs HTTP "+r.status+(message?": "+String(message):" — check API key, voice ID, model access and quota."));
+  }
+  const audio=Buffer.from(await r.arrayBuffer());
+  const contentType=String(r.headers.get("content-type")||"").toLowerCase();
+  if(!audio.length||contentType.includes("application/json")||contentType.includes("text/html")){
+    throw new Error("ElevenLabs returned an empty or non-audio response (content-type: "+(contentType||"unknown")+", bytes: "+audio.length+").");
+  }
+  return audio;
 }
 function voiceForLanguage(language){
   const value=String(language||"").toLowerCase();
-  if(value.includes("hindi"))return process.env.ELEVENLABS_HINDI_VOICE_ID||process.env.ELEVENLABS_VOICE_ID||"";
-  if(value.includes("english"))return process.env.ELEVENLABS_ENGLISH_VOICE_ID||process.env.ELEVENLABS_VOICE_ID||"";
-  return process.env.ELEVENLABS_VOICE_ID||process.env.ELEVENLABS_ENGLISH_VOICE_ID||"";
+  if(value.includes("hindi"))return process.env.ELEVENLABS_HINDI_VOICE_ID||process.env.ELEVENLABS_HINDI_BOY_VOICE_ID_2||process.env.ELEVENLABS_HINDI_BOY_VOICE_ID_1||process.env.ELEVENLABS_VOICE_ID||"7b9mYhmnp0y2qSH1FnBL";
+  if(value.includes("english"))return process.env.ELEVENLABS_ENGLISH_VOICE_ID||process.env.ELEVENLABS_ENGLISH_BOY_VOICE_ID||process.env.ELEVENLABS_VOICE_ID||"2zRM7PkgwBPiau2jvVXc";
+  return process.env.ELEVENLABS_VOICE_ID||process.env.ELEVENLABS_ENGLISH_VOICE_ID||process.env.ELEVENLABS_ENGLISH_BOY_VOICE_ID||"2zRM7PkgwBPiau2jvVXc";
 }
 async function runVoiceForJob(job){
   if(!process.env.ELEVENLABS_API_KEY)return {status:"voice_waiting_api",error:"ElevenLabs API key is not configured."};
   if(!job.script)return {status:"voice_waiting_script",error:"Script is not ready."};
   const selectedVoice=voiceForLanguage(job.language);
-  if(!selectedVoice)return {status:"voice_waiting_voice",error:"No ElevenLabs voice ID is configured."};
-  const audio=await generateElevenLabsAudio(job.script,selectedVoice,process.env.ELEVENLABS_MODEL_ID,job.language==="Assamese"?"as":job.language==="Hindi"?"hi":undefined);
+  if(!selectedVoice)return {status:"voice_waiting_voice",error:"No ElevenLabs voice ID is configured for "+String(job.language||"the selected language")+"."};
+  const language=String(job.language||"").toLowerCase();
+  const languageCode=language.includes("assamese")?"as":language.includes("hindi")?"hi":undefined;
+  const audio=await generateElevenLabsAudio(job.script,selectedVoice,process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",languageCode);
   const {put}=await import("@vercel/blob");
   const blob=await put("voices/"+job.id+".mp3",audio,{access:"public",contentType:"audio/mpeg",...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
-  job.voice={status:"ready",file:blob.url,model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voiceId:selectedVoice,generatedAt:new Date().toISOString()};
+  if(!blob?.url)throw new Error("Voice audio was generated but Vercel Blob did not return a playable URL.");
+  job.voice={status:"ready",file:blob.url,model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voiceId:selectedVoice,bytes:audio.length,generatedAt:new Date().toISOString()};
   job.status="voice_ready";
   job.updatedAt=new Date().toISOString();
   return job.voice;

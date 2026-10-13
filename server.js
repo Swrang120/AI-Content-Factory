@@ -2616,7 +2616,7 @@ const LIVE_PREP_MINUTES=5;
 const LIVE_STATE_KEY="__acf_live_jobs";
 
 function liveWorkerAuthorized(req){
-  const expected=String(process.env.LIVE_WORKER_TOKEN||"").trim();
+  const expected=String(process.env.LIVE_WORKER_TOKEN||process.env.ACF_CRON_SECRET||process.env.CRON_SECRET||"").trim();
   if(!expected)return {ok:false,status:503,error:"LIVE_WORKER_TOKEN is not configured on the server."};
   const supplied=String(req.headers["x-live-worker-token"]||"").trim();
   if(!supplied||supplied!==expected)return {ok:false,status:401,error:"Unauthorized live worker."};

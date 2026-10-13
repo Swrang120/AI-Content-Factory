@@ -2176,9 +2176,18 @@ async function syncMusicStorageToLibrary(){
     }
     await walk();
     const {data:existing,error:existingError}=await supabaseAdmin
-      .from("music_library").select("id,audio_url");
+      .from("music_library").select("id,audio_url,status,rights_status,source_metrics");
     if(existingError)throw existingError;
     const known=new Set((existing||[]).map(x=>String(x.audio_url||"")));
+    // Uploaded original masters are intended for the user's own promotion workflow.
+    // Activate matching storage-imported rows so they are selectable without a separate link.
+    for(const row of (existing||[])){
+      const source=row.source_metrics&&typeof row.source_metrics==="object"?row.source_metrics:{};
+      if(source.upload==="supabase_storage_existing"&&String(row.audio_url||"").trim()&&String(row.rights_status||"").toLowerCase()==="owned"&&String(row.status||"").toLowerCase()!=="active"){
+        const {error:activateError}=await supabaseAdmin.from("music_library").update({status:"active",updated_at:new Date().toISOString()}).eq("id",row.id);
+        if(activateError)console.warn("Music Storage activation skipped:",row.id,activateError.message);
+      }
+    }
     const base=SUPABASE_URL.replace(/\/$/,"");
     let imported=0;
     for(const entry of files){
@@ -2192,7 +2201,7 @@ async function syncMusicStorageToLibrary(){
         id:crypto.randomUUID(),
         spotify_url:null,youtube_url:null,spotify_track_id:null,youtube_video_id:null,
         title,artist:"Swrang Swargiary",artwork_url:null,audio_url:audioUrl,
-        rights_status:"owned",status:"paused",
+        rights_status:"owned",status:"active",
         views:0,likes:0,comments:0,view_velocity:0,engagement_rate:0,trend_score:0,
         promotion_count:0,promo_views:0,last_promoted_at:null,last_used_at:null,last_metrics_at:null,
         tags:["Original Master","Storage Import"],ai_analysis:null,

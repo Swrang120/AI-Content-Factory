@@ -648,8 +648,9 @@ async function chooseMusicHook(transcriptSegments,title,artist){
 }
 async function transcribeMusicAudio(audioUrl){
   if(!process.env.OPENAI_API_KEY)throw new Error("OPENAI_API_KEY is required to analyze the music hook.");
-  const asset=await fetch(audioUrl);
-  if(!asset.ok)throw new Error("Could not fetch the uploaded original audio.");
+  let asset;
+  try{asset=await fetch(audioUrl);}catch(e){throw new Error("Could not reach the uploaded original audio URL: "+safeErrorMessage(e));}
+  if(!asset.ok)throw new Error("Could not fetch the uploaded original audio (HTTP "+asset.status+"). The saved audio URL may be expired or point to the wrong Storage bucket.");
   const buffer=Buffer.from(await asset.arrayBuffer());
   const blob=new Blob([buffer],{type:asset.headers.get("content-type")||"audio/mpeg"});
   const form=new FormData();
@@ -2010,7 +2011,9 @@ async function selectDailyMusicTrack(req){
     const freshness=i<10?10:0;
     return {...t,_managerScore:Number(t.trend_score||0)+cooldown+freshness};
   }).sort((a,b)=>b._managerScore-a._managerScore);
-  return scored[0];
+  // Return a fresh signed URL for private Supabase Storage objects. A row can be ACTIVE
+  // yet its saved audio_url may be stale/expired; the renderer needs a currently playable URL.
+  return await musicTrackWithPlayableAudio(scored[0]);
 }
 async function runMusicManagerAnalysis(track){
   const fields={track:{title:track.title,artist:track.artist,views:track.views,likes:track.likes,comments:track.comments,viewVelocity:track.view_velocity,engagementRate:track.engagement_rate,trendScore:track.trend_score,promotionCount:track.promotion_count,promoViews:track.promo_views},goal:"Choose a promotion angle for this original/authorized track. Explain why it is promising using only supplied metrics. Do not claim guaranteed virality."};

@@ -23,5 +23,12 @@
       "path": "/api/cron/live",
       "schedule": "25 8 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": [
+        "node_modules/@remotion/studio/**"
+      ]
+    }
+  }
 }

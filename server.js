@@ -375,7 +375,7 @@ async function youtube(req){
      process.env.GOOGLE_API_KEY
    ].map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
    if(!keys.length)throw new Error("Gemini fallback is not configured. Add GEMINI_API_KEY_1 through GEMINI_API_KEY_8 in Vercel (or the legacy GEMINI_API_KEY).");
-   const models=[process.env.GEMINI_MODEL,"gemini-2.5-flash","gemini-2.5-flash-lite"]
+   const models=[process.env.GEMINI_MODEL,"gemini-3.5-flash-lite","gemini-3.8-flash","gemini-3.6-flash"]
      .map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
    const prompt=["You are the fallback Content Brain for a private AI Content Factory.","Return original, useful content. Never invent facts. For current news/sports, do not generate if verified source material is missing.","TASK: "+task,"INPUT:",JSON.stringify(fields||{},null,2)].join("\\n");
    let lastError=null;

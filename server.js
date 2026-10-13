@@ -648,11 +648,14 @@ async function getRemotionBundle(){
     REMOTION_BUNDLE_PROMISE=(async()=>{
       // Vercel build stage precompiles this bundle. Avoid invoking Webpack/@remotion/studio
       // inside a serverless request, where output-file tracing can omit Studio runtime files.
-      const prebuilt=path.join(ROOT,"remotion-bundle");
-      if(fs.existsSync(path.join(prebuilt,"index.html")))return prebuilt;
-      if(process.env.VERCEL){
-        throw new Error("Prebuilt Remotion bundle is missing. Check the Vercel build command and remotion-bundle includeFiles setting.");
+      const candidates=[path.join(ROOT,"remotion-bundle"),path.join(ROOT,"build"),path.join(ROOT,"dist","remotion-bundle")];
+      for(const candidate of candidates){
+        if(fs.existsSync(path.join(candidate,"index.html")))return candidate;
       }
+      if(process.env.VERCEL){
+        throw new Error("Prebuilt Remotion bundle is missing. Expected index.html in remotion-bundle/ or build/. Check Vercel build output and function includeFiles.");
+      }
+      const prebuilt=path.join(ROOT,"remotion-bundle");
       const {bundle}=await import("@remotion/bundler");
       return bundle({entryPoint:path.join(ROOT,"remotion","index.jsx"),outDir:prebuilt,webpackOverride:(config)=>config});
     })();

@@ -365,9 +365,16 @@ async function youtube(req){
  async function fallbackTextGeneration(task,fields){
    // Try all server-side Gemini key slots, without exposing key values. A single
    // stale key should not prevent a configured backup key from being used.
-   const keys=[process.env.GEMINI_API_KEY,process.env.GEMINI_API_KEY_2,process.env.GEMINI_API_KEY_3,process.env.GOOGLE_API_KEY]
-     .map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
-   if(!keys.length)throw new Error("Gemini fallback is not configured. Add a valid GEMINI_API_KEY in Vercel.");
+   // Support the legacy key plus eight explicitly numbered Vercel slots.
+   // Duplicate values are removed; keys are never returned to clients or logs.
+   const keys=[
+     process.env.GEMINI_API_KEY,
+     ...Array.from({length:8},(_,i)=>process.env["GEMINI_API_KEY_"+(i+1)]),
+     process.env.GEMINI_API_KEY_2,
+     process.env.GEMINI_API_KEY_3,
+     process.env.GOOGLE_API_KEY
+   ].map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
+   if(!keys.length)throw new Error("Gemini fallback is not configured. Add GEMINI_API_KEY_1 through GEMINI_API_KEY_8 in Vercel (or the legacy GEMINI_API_KEY).");
    const models=[process.env.GEMINI_MODEL,"gemini-2.5-flash","gemini-2.0-flash"]
      .map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
    const prompt=["You are the fallback Content Brain for a private AI Content Factory.","Return original, useful content. Never invent facts. For current news/sports, do not generate if verified source material is missing.","TASK: "+task,"INPUT:",JSON.stringify(fields||{},null,2)].join("\\n");
@@ -398,7 +405,7 @@ async function youtube(req){
    }
    const message=String(lastError?.message||"Gemini fallback generation failed");
    if(/api key|permission|unauthorized|credential|not valid|invalid/i.test(message)){
-     throw new Error("Gemini API key rejected. In Vercel Production Environment Variables, replace GEMINI_API_KEY with a valid key from Google AI Studio; optional backup names are GEMINI_API_KEY_2 and GEMINI_API_KEY_3. Redeploy after saving.");
+     throw new Error("Gemini API keys were rejected. Check that at least one of GEMINI_API_KEY_1 through GEMINI_API_KEY_8 is valid for the configured Gemini model and API. Redeploy after correcting the variables.");
    }
    throw lastError||new Error("Gemini fallback generation failed");
  }

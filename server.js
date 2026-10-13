@@ -951,7 +951,6 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
     if(!command)return res.status(400).json({ok:false,error:"command is required"});
     const settings=await hydrateSettings();
     if(settings.autoGenerate===false)return res.status(409).json({ok:false,error:"Auto Generate is OFF. Turn Automation/Auto Generate ON first."});
-    if(settings.autoPublish===false)return res.status(409).json({ok:false,error:"Auto Publish is OFF. Turn Auto Publish ON first."});
 
     const lower=command.toLowerCase();
     const category=lower.includes("music")||lower.includes("song")||lower.includes("artist")?"Music Promotion":
@@ -993,17 +992,11 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
     await setAgentState("qa","WORKING",85,"Checking Boss video before upload",id);
     await setAgentState("qa","SLEEPING",100,"QA complete",id);
 
-    await setAgentState("publisher","WORKING",95,"Sending finished video to Buffer connected channels",id);
-    const buffer=await publishVideoToBuffer({
-      videoUrl:job.renderedVideoUrl,
-      title:job.topic,
-      description:"AI Content Factory — Hindi video. Category: "+category+"\n"+String(job.script||"").slice(0,1500)
-    });
-    job.buffer=buffer; job.status="published"; job.updatedAt=new Date().toISOString();
+    job.status="rendered"; job.updatedAt=new Date().toISOString();
     jobs[id]=job; saveJobs(jobs); await persistJob(job);
-    await setAgentState("publisher","SLEEPING",100,"Video accepted by Buffer on "+buffer.successfulChannels+" channel(s)",id);
-    await setAgentState("manager","SLEEPING",100,"Boss order completed",id);
-    return res.json({ok:true,jobId:id,status:"sent_to_buffer",category,title:job.topic,buffer});
+    await setAgentState("publisher","SLEEPING",0,"Waiting for your explicit publish request",id);
+    await setAgentState("manager","SLEEPING",100,"Video generated and ready for publish request",id);
+    return res.json({ok:true,jobId:id,status:"generated_ready",category,title:job.topic,renderedVideoUrl:job.renderedVideoUrl,message:"Video generated. Send a separate publish request to send it to Buffer."});
   }catch(e){
     const msg=safeErrorMessage(e);
     try{await setAgentState("manager","ERROR",0,"Boss command failed: "+msg,null);}catch(_){}

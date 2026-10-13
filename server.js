@@ -979,7 +979,7 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
 
     await setAgentState("voice","WORKING",55,"Generating narration",id);
     await runVoiceForJob(job);
-    if(!job.voice?.file)throw new Error("Voice generation did not produce an audio file.");
+    if(!job.voice?.file)throw new Error(job.voice?.error||"Voice generation did not produce an audio file. Check the Hindi voice ID and ElevenLabs API response.");
     await setAgentState("voice","SLEEPING",100,"Voice ready",id);
 
     await setAgentState("editor","WORKING",70,"Rendering the video",id);

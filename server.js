@@ -375,31 +375,49 @@ async function youtube(req){
      process.env.GOOGLE_API_KEY
    ].map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
    if(!keys.length)throw new Error("Gemini fallback is not configured. Add GEMINI_API_KEY_1 through GEMINI_API_KEY_8 in Vercel (or the legacy GEMINI_API_KEY).");
-   const models=["gemini-3.8-flash",process.env.GEMINI_MODEL,"gemini-2.5-flash"]
+   const models=[process.env.GEMINI_MODEL,"gemini-2.5-flash","gemini-2.5-flash-lite"]
      .map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
    const prompt=["You are the fallback Content Brain for a private AI Content Factory.","Return original, useful content. Never invent facts. For current news/sports, do not generate if verified source material is missing.","TASK: "+task,"INPUT:",JSON.stringify(fields||{},null,2)].join("\\n");
    let lastError=null;
    for(const key of keys){
      for(const model of models){
-       const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
-         method:"POST",
-         headers:{"Content-Type":"application/json","x-goog-api-key":key},
-         body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:2500}})
-       });
-       const body=await response.json().catch(()=>({}));
-       if(response.ok){
+       let response,body={};
+       // Temporary provider overloads are common; retry briefly, then move to
+       // the next model/key rather than stopping the entire Boss Room job.
+       for(let attempt=0;attempt<2;attempt++){
+         try{
+           response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
+             method:"POST",
+             headers:{"Content-Type":"application/json","x-goog-api-key":key},
+             body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:2500}})
+           });
+           body=await response.json().catch(()=>({}));
+         }catch(error){
+           lastError=error;
+           if(attempt===0){await sleep(700);continue;}
+           break;
+         }
+         if(response.ok)break;
+         const status=Number(response.status);
+         const message=String(body?.error?.message||"Gemini fallback generation failed");
+         lastError=new Error(message);
+         if((status===429||status===500||status===502||status===503||status===504)&&attempt===0){
+           await sleep(900);
+           continue;
+         }
+         break;
+       }
+       if(response?.ok){
          const text=body?.candidates?.[0]?.content?.parts?.map(x=>x.text||"").join(" ").trim()||"";
          if(text)return text;
          lastError=new Error("Gemini returned an empty response.");
          continue;
        }
-       const message=String(body?.error?.message||"Gemini fallback generation failed");
-       lastError=new Error(message);
-       // Invalid-key / permission errors won't be fixed by changing models.
-       if(response.status===400||response.status===401||response.status===403){
-         if(/api key|permission|unauthorized|credential|not valid|invalid/i.test(message))break;
-       }
-       if(response.status!==404&&response.status!==400)break;
+       const message=String(lastError?.message||body?.error?.message||"Gemini fallback generation failed");
+       // Bad keys should move to the next key. Model availability/overload
+       // should move to the next model instead of ending the fallback early.
+       if(/api key|permission|unauthorized|credential|not valid|invalid/i.test(message))break;
+       if(response && ![400,404,429,500,502,503,504].includes(Number(response.status)))break;
      }
      if(lastError&&/api key|permission|unauthorized|credential|not valid|invalid/i.test(lastError.message))continue;
    }
@@ -459,7 +477,7 @@ async function generateWithChatGPT(task,fields){
     const err=new Error(body?.error?.message||"ChatGPT API request failed");
     // Fall back to Gemini for quota/credit errors as well as transient failures.
     // This prevents exhausted OpenAI credits from stopping Boss Room text generation.
-    if(process.env.GEMINI_API_KEY){
+    if([process.env.GEMINI_API_KEY,...Array.from({length:8},(_,i)=>process.env["GEMINI_API_KEY_"+(i+1)]),process.env.GOOGLE_API_KEY].some(x=>String(x||"").trim())){
       try{return await fallbackTextGeneration(task,fields);}
       catch(fallbackError){
         const incident=rememberIncident(fallbackError,{operation:"gemini_fallback_generation",route:"/api/ai/generate",status:response.status});

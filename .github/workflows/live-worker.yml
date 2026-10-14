@@ -23,7 +23,7 @@ jobs:
 
       - name: Claim live job and stream for two hours
         env:
-          ACF_FACTORY_URL: "https://ai-content-factory-swrang120.vercel.app"
+          ACF_FACTORY_URL: "https://ai-content-factory-zeta-ruby.vercel.app"
           LIVE_WORKER_TOKEN: ${{ secrets.ACF_CRON_SECRET }}
         shell: bash
         run: |

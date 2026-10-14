@@ -182,8 +182,7 @@ async function persistSettings(settings){
       created_at:now,
       updated_at:now
     };
-    const {error}=await supabaseAdmin.from("content_jobs").upsert(row,{onConflict:"id"});
-    if(error)throw error;
+    await upsertContentJobSchemaSafe(row);
     settingsPersistentLoaded=true;
     return {ok:true};
   }catch(error){

@@ -55,9 +55,18 @@ jobs:
           MEDIA_URL="$(python3 -c 'import json; print(json.load(open("live-job.json"))["mediaUrl"])')"
           MEDIA_TYPE="$(python3 -c 'import json; print(json.load(open("live-job.json")).get("mediaType","video"))')"
           RTMP_URL="$(python3 -c 'import json; j=json.load(open("live-job.json")); print(j["rtmpUrl"])')"
-          test -n "$MEDIA_URL" || { echo "::error::Live job has no media URL."; exit 1; }
+          if [ "$MEDIA_TYPE" != "car_animation" ]; then
+            test -n "$MEDIA_URL" || { echo "::error::Live job has no media URL."; exit 1; }
+          fi
           test -n "$RTMP_URL" || { echo "::error::YouTube RTMP URL is missing."; exit 1; }
-          if [ "$MEDIA_TYPE" = "audio" ]; then
+          if [ "$MEDIA_TYPE" = "car_animation" ]; then
+            # Built-in free cartoon-driving scene. This is an animated scene, not an interactive game capture.
+            ffmpeg -hide_banner -loglevel warning -re \
+              -f lavfi -i "color=c=0x8bd3ff:s=1280x720:r=30" \
+              -f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=44100" \
+              -filter_complex "[0:v]drawbox=x=0:y=300:w=1280:h=230:color=0x68b85b:t=fill,drawbox=x=0:y=520:w=1280:h=200:color=0x454b55:t=fill,drawbox=x=0:y=620:w=1280:h=8:color=white:t=fill,drawbox=x=mod(t*180\\,1500)-240:y=555:w=210:h=62:color=0xffc928:t=fill,drawbox=x=mod(t*180\\,1500)-190:y=520:w=120:h=42:color=0x2878d0:t=fill,drawbox=x=mod(t*180\\,1500)-205:y=610:w=42:h=42:color=0x202020:t=fill,drawbox=x=mod(t*180\\,1500)-105:y=610:w=42:h=42:color=0x202020:t=fill,drawbox=x=0:y=0:w=1280:h=105:color=0x101827@0.82:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='CARTOON CAR DRIVE LIVE':fontcolor=white:fontsize=42:x=(w-text_w)/2:y=28,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='AI Content Factory':fontcolor=0xffd76b:fontsize=24:x=(w-text_w)/2:y=76,format=yuv420p[v]" \
+              -map "[v]" -map 1:a -t 7200 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
+          elif [ "$MEDIA_TYPE" = "audio" ]; then
             ffmpeg -hide_banner -loglevel warning \
               -re -f lavfi -i "color=c=0x101827:s=1920x1080:r=30" \
               -stream_loop -1 -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -i "$MEDIA_URL" \

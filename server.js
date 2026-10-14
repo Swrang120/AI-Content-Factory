@@ -2756,7 +2756,8 @@ async function selectLiveMedia(dateKey){
       if(item)return {mediaType:"video",mediaUrl:item.rendered_video_url,mediaTitle:item.topic||"AI Content Factory Live",jobId:item.id};
     }
   }
-  return null;
+  // If no rendered media is available, use the built-in cartoon driving scene rendered by the FFmpeg worker.
+  return {mediaType:"car_animation",mediaUrl:null,mediaTitle:"Cartoon Car Driving Live"};
 }
 async function createYouTubeLiveJob({dateKey,privacyStatus}={}){
   const now=Date.now();
@@ -2765,7 +2766,7 @@ async function createYouTubeLiveJob({dateKey,privacyStatus}={}){
   const existing=existingJobs[targetDate];
   if(existing && ["scheduled","worker_claimed","starting","live","stopping"].includes(existing.status))return safeLiveJob(existing);
   const media=await selectLiveMedia(targetDate);
-  if(!media)throw new Error("No live media is ready. Add a rendered video in Video Generator first. Cartoon-car gameplay is not yet configured as a source.");
+  if(!media)throw new Error("Could not prepare a live media source.");
   const schedule=liveScheduleForDate(targetDate);
   // Manual start: schedule the broadcast a few minutes ahead so the free GitHub worker can pick it up.
   const start=new Date(now+8*60000);
@@ -2773,7 +2774,7 @@ async function createYouTubeLiveJob({dateKey,privacyStatus}={}){
   const yt=await youtube({});
   const privacy=String(privacyStatus||process.env.YOUTUBE_LIVE_PRIVACY||"public");
   if(!["private","unlisted","public"].includes(privacy))throw new Error("Invalid YOUTUBE_LIVE_PRIVACY.");
-  const title=String(schedule.title||"AI Content Factory Live").slice(0,100);
+  const title=String(media.mediaType==="car_animation"?"Cartoon Car Driving Live":(schedule.title||"AI Content Factory Live")).slice(0,100);
   const description=("AI Content Factory · Manual live stream · "+String(schedule.category||"Live")).slice(0,5000);
   const broadcast=await yt.liveBroadcasts.insert({part:"snippet,status,contentDetails",requestBody:{snippet:{title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),categoryId:"20"},status:{privacyStatus:privacy},contentDetails:{enableAutoStart:false,enableAutoStop:false,enableDvr:true,recordFromStart:true}});
   const stream=await yt.liveStreams.insert({part:"snippet,cdn,contentDetails",requestBody:{snippet:{title:title+" · Stream"},cdn:{frameRate:"30fps",ingestionType:"rtmp",resolution:"720p"},contentDetails:{isReusable:false}}});

@@ -412,15 +412,20 @@ function renderCategories(){
   view.innerHTML=`<div class="grid">${data.categories.map(c=>`<div class="category-card"><div class="category-icon">${c.icon}</div><h3>${esc(c.name)}</h3><p>${esc(c.desc)}</p><div class="category-actions"><span class="badge ${c.enabled?"ready":""}">${c.enabled?"Active":"Disabled"}</span><button class="small-btn" onclick="toggleCategory('${c.id}')">${c.enabled?"Disable":"Enable"}</button></div></div>`).join("")}</div>`;
 }
 async function renderSchedule(){
-  title.textContent="Schedule";
-  view.innerHTML=`<div class="hero"><p class="eyebrow">WEEKLY LIVE AUTOMATION</p><h2>7-day live schedule · 2:00 PM–4:00 PM IST</h2><p>Automatic weekly live plan. Monday uses only your configured original-music YouTube channels.</p></div>
-  <div class="table-card"><div class="section-head"><div><h3>Weekly Live</h3><span class="muted">Asia/Kolkata · 120 minutes daily</span></div><span id="liveBadge" class="badge">Loading…</span></div><div id="weeklyLiveSchedule"><div class="empty">Loading live schedule…</div></div></div>`;
-  fetch(apiUrl("/api/live/weekly-schedule")).then(r=>r.json()).then(s=>{
-    const box=document.getElementById("weeklyLiveSchedule"),badge=document.getElementById("liveBadge");
-    if(!s.ok)throw new Error(s.error||"Live schedule unavailable");
-    if(badge){badge.textContent=s.settings?.liveAutomation?"Live Automation ON":"Live Automation OFF";badge.className="badge "+(s.settings?.liveAutomation?"ready":"");}
-    box.innerHTML=(s.schedules||[]).map(x=>`<div class="queue-row"><div><div class="queue-title">${esc(x.icon||"")} ${esc(x.day)} — ${esc(x.title)}</div><div class="queue-meta">2:00 PM–4:00 PM IST · ${esc(x.category)}</div>${x.sourceChannels?.length?`<div class="queue-meta">Original music sources: ${x.sourceChannels.map(esc).join(" · ")}</div>`:""}</div><span class="badge ready">Weekly</span></div>`).join("");
-  }).catch(e=>{document.getElementById("weeklyLiveSchedule").innerHTML='<div class="empty">Could not load live schedule: '+esc(e.message)+'</div>';});
+  title.textContent="Live Stream";
+  view.innerHTML=`<div class="hero"><p class="eyebrow">MANUAL LIVE CONTROL</p><h2>🎮 Live Stream</h2><p>Automatic weekly live schedule is disabled. You decide when to start and stop your live stream.</p></div>
+  <div class="table-card"><div class="section-head"><div><h3>📡 Live stream status</h3><span class="muted">YouTube Live · Asia/Kolkata</span></div><button class="small-btn" id="liveRefresh">↻ Refresh status</button></div><div id="liveStatusPanel"><div class="empty">Checking live status…</div></div>
+  <div class="queue-meta" style="margin-top:12px">Important: this page checks the current live-worker status. Starting a YouTube event does not by itself create the cartoon-car gameplay source; that still needs to be configured and tested.</div></div>`;
+  async function refresh(){
+    const box=document.getElementById("liveStatusPanel"); if(!box)return;
+    try{
+      const r=await fetch(apiUrl("/api/live/status"),{cache:"no-store",credentials:"include"});
+      const s=await r.json(); if(!r.ok||!s.ok)throw new Error(s.error||"Live status unavailable");
+      const latest=s.jobs?.[0]; const state=latest?.status||"No live event";
+      box.innerHTML='<div class="queue-row"><div><div class="queue-title">Worker: '+(s.workerConfigured?'Configured':'Not configured')+'</div><div class="queue-meta">Latest event: '+esc(state)+'</div>'+(latest?.title?'<div class="queue-meta">'+esc(latest.title)+'</div>':'')+'</div><span class="badge '+(latest?.status==="live"?'ready':'')+'">'+esc(state)+'</span></div><div class="queue-meta" style="margin-top:8px">Automatic schedule: OFF</div>';
+    }catch(e){box.innerHTML='<div class="empty">Live status error: '+esc(e.message)+'</div>';}
+  }
+  document.getElementById("liveRefresh")?.addEventListener("click",refresh); await refresh();
 }
 async function loadCreatorLearning(){
   const box=document.getElementById("creatorAnalytics");

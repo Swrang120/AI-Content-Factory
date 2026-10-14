@@ -137,9 +137,11 @@ async function createPost(input) {
   const mode = dueAt ? "customScheduled" : (input.mode === "shareNow" ? "shareNow" : "addToQueue");
   const metadata = {};
   if (service === "youtube") {
+    const categoryMap = {"Film & Animation":"1","Autos & Vehicles":"2","Music":"10","Pets & Animals":"15","Sports":"17","Travel & Events":"19","Gaming":"20","People & Blogs":"22","Comedy":"23","Entertainment":"24","News & Politics":"25","Howto & Style":"26","Education":"27","Science & Technology":"28"};
+    const rawCategory = String(input.categoryId || input.youtubeCategory || "22");
     metadata.youtube = {
       title: title || text.slice(0, 100) || "AI Content Factory",
-      category: String(input.youtubeCategory || "Entertainment"),
+      categoryId: categoryMap[rawCategory] || rawCategory,
       privacy: String(input.privacyStatus || "public")
     };
   }

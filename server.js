@@ -124,15 +124,25 @@ function saveSettings(settings){
 }
 async function hydrateSettings(){
   const current=loadSettings();
-  if(!supabase)return current;
+  // Settings are security-critical: read them with the server-only service-role
+  // client so Row Level Security on the public client cannot silently hide the
+  // saved category switches and make disabled categories appear enabled again.
+  const settingsDb=supabaseAdmin||supabase;
+  if(!settingsDb)return current;
   try{
-    // Persist settings in the existing content_jobs table. The older
-    // youtube_connections table is absent in this Supabase project.
-    const {data,error}=await supabase.from("content_jobs").select("notes").eq("id","__factory_settings__").maybeSingle();
-    if(!error&&typeof data?.notes==="string"&&data.notes.startsWith("__ACF_SETTINGS__")){
+    const {data,error}=await settingsDb.from("content_jobs").select("notes").eq("id","__factory_settings__").maybeSingle();
+    if(error)throw error;
+    if(typeof data?.notes==="string"&&data.notes.startsWith("__ACF_SETTINGS__")){
       const saved=JSON.parse(data.notes.slice("__ACF_SETTINGS__".length));
       if(saved&&typeof saved==="object"){
-        settingsCache={...DEFAULT_FACTORY_SETTINGS,...saved};
+        settingsCache={
+          ...DEFAULT_FACTORY_SETTINGS,
+          ...saved,
+          enabledCategories:{
+            ...DEFAULT_FACTORY_SETTINGS.enabledCategories,
+            ...(saved.enabledCategories&&typeof saved.enabledCategories==="object"?saved.enabledCategories:{})
+          }
+        };
         settingsPersistentLoaded=true;
       }
     }

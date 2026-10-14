@@ -2759,62 +2759,29 @@ async function selectLiveMedia(dateKey){
   return null;
 }
 async function createYouTubeLiveJob({dateKey,privacyStatus}={}){
-  const targetDate=dateKey||liveDateKey(new Date(Date.now()+LIVE_PREP_MINUTES*60000));
+  const now=Date.now();
+  const targetDate=dateKey||liveDateKey(new Date(now+10*60000));
   const existingJobs=await readLiveJobs();
   const existing=existingJobs[targetDate];
-  if(existing && ["scheduled","worker_claimed","starting","live"].includes(existing.status))return safeLiveJob(existing);
-  const settings=await hydrateSettings();
-  if(!settings.liveAutomation){
-    throw new Error("Automatic live scheduling is disabled. Use the manual Live Stream controls.");
-  }
+  if(existing && ["scheduled","worker_claimed","starting","live","stopping"].includes(existing.status))return safeLiveJob(existing);
   const media=await selectLiveMedia(targetDate);
-  if(!media)throw new Error("No live media package is ready. Create a rendered video first; Monday also requires an active original/authorized music master.");
+  if(!media)throw new Error("No live media is ready. Add a rendered video in Video Generator first. Cartoon-car gameplay is not yet configured as a source.");
   const schedule=liveScheduleForDate(targetDate);
-  const start=liveDateTime(targetDate,LIVE_START_HOUR,0);
-  const end=liveDateTime(targetDate,LIVE_END_HOUR,0);
-  if(start.getTime()<=Date.now())throw new Error("The live start time for "+targetDate+" has already passed.");
+  // Manual start: schedule the broadcast a few minutes ahead so the free GitHub worker can pick it up.
+  const start=new Date(now+8*60000);
+  const end=new Date(now+150*60000);
   const yt=await youtube({});
-  const privacy=String(privacyStatus||process.env.YOUTUBE_LIVE_PRIVACY||"private");
+  const privacy=String(privacyStatus||process.env.YOUTUBE_LIVE_PRIVACY||"public");
   if(!["private","unlisted","public"].includes(privacy))throw new Error("Invalid YOUTUBE_LIVE_PRIVACY.");
   const title=String(schedule.title||"AI Content Factory Live").slice(0,100);
-  const description=("AI Content Factory · "+String(schedule.category||"Live")+" · Original/authorized programming.").slice(0,5000);
-  const broadcast=await yt.liveBroadcasts.insert({
-    part:"snippet,status,contentDetails",
-    requestBody:{
-      snippet:{title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),categoryId:"22"},
-      status:{privacyStatus:privacy},
-      contentDetails:{enableAutoStart:false,enableAutoStop:false,enableDvr:true,recordFromStart:true}
-    }
-  });
-  const stream=await yt.liveStreams.insert({
-    part:"snippet,cdn,contentDetails",
-    requestBody:{
-      snippet:{title:title+" · Stream"},
-      cdn:{frameRate:"30fps",ingestionType:"rtmp",resolution:"1080p"},
-      contentDetails:{isReusable:false}
-    }
-  });
-  await yt.liveBroadcasts.bind({
-    part:"id,contentDetails",
-    id:broadcast.data.id,
-    streamId:stream.data.id
-  });
+  const description=("AI Content Factory · Manual live stream · "+String(schedule.category||"Live")).slice(0,5000);
+  const broadcast=await yt.liveBroadcasts.insert({part:"snippet,status,contentDetails",requestBody:{snippet:{title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),categoryId:"20"},status:{privacyStatus:privacy},contentDetails:{enableAutoStart:false,enableAutoStop:false,enableDvr:true,recordFromStart:true}});
+  const stream=await yt.liveStreams.insert({part:"snippet,cdn,contentDetails",requestBody:{snippet:{title:title+" · Stream"},cdn:{frameRate:"30fps",ingestionType:"rtmp",resolution:"720p"},contentDetails:{isReusable:false}}});
+  await yt.liveBroadcasts.bind({part:"id,contentDetails",id:broadcast.data.id,streamId:stream.data.id});
   const ingestion=stream.data.cdn?.ingestionInfo||{};
   if(!ingestion.ingestionAddress||!ingestion.streamName)throw new Error("YouTube did not return RTMP ingestion information.");
-  const job={
-    id:"live_"+targetDate+"_"+Date.now().toString(36),
-    dateKey:targetDate,day:schedule.day,title,description,
-    scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),
-    status:"scheduled",workerStatus:"waiting",
-    broadcastId:broadcast.data.id,streamId:stream.data.id,
-    ingestionAddress:ingestion.ingestionAddress,streamName:ingestion.streamName,
-    mediaType:media.mediaType,mediaUrl:media.mediaUrl,mediaTitle:media.mediaTitle||title,
-    trackId:media.trackId||null,sourceJobId:media.jobId||null,
-    privacyStatus:privacy,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()
-  };
-  existingJobs[targetDate]=job;
-  await writeLiveJobs(existingJobs);
-  return safeLiveJob(job);
+  const job={id:"live_"+targetDate+"_"+Date.now().toString(36),dateKey:targetDate,day:schedule.day,title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),status:"scheduled",workerStatus:"waiting",broadcastId:broadcast.data.id,streamId:stream.data.id,ingestionAddress:ingestion.ingestionAddress,streamName:ingestion.streamName,mediaType:media.mediaType,mediaUrl:media.mediaUrl,mediaTitle:media.mediaTitle||title,trackId:media.trackId||null,sourceJobId:media.jobId||null,privacyStatus:privacy,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  existingJobs[targetDate]=job; await writeLiveJobs(existingJobs); return safeLiveJob(job);
 }
 async function transitionLiveBroadcast(job,broadcastStatus){
   const yt=await youtube({});
@@ -2849,6 +2816,18 @@ app.get("/api/live/status",async(req,res)=>{
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 
+app.post("/api/live/stop",requireAppKey,async(req,res)=>{
+  try{
+    const jobs=await readLiveJobs(); const job=Object.values(jobs).filter(x=>x&&["scheduled","worker_claimed","starting","live","stopping"].includes(x.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
+    if(!job)return res.status(404).json({ok:false,error:"No active live session to stop."});
+    job.status="stopping";job.stopRequested=true;job.updatedAt=new Date().toISOString();jobs[job.dateKey]=job;await writeLiveJobs(jobs);
+    res.json({ok:true,job:safeLiveJob(job),message:"Stop requested. The streaming worker will stop and finalize the YouTube live."});
+  }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
+app.get("/api/live/worker/status",async(req,res)=>{
+  const auth=liveWorkerAuthorized(req); if(!auth.ok)return res.status(auth.status).json({ok:false,error:auth.error});
+  try{const id=String(req.query.id||"");const jobs=await readLiveJobs();const job=Object.values(jobs).find(x=>x?.id===id);if(!job)return res.status(404).json({ok:false,error:"Live job not found."});res.json({ok:true,status:job.status,stopRequested:!!job.stopRequested,job:safeLiveJob(job)});}catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e));}
+});
 app.post("/api/live/create",requireAppKey,async(req,res)=>{
   try{
     const job=await createYouTubeLiveJob({dateKey:String(req.body?.dateKey||"").trim()||undefined,privacyStatus:req.body?.privacyStatus});

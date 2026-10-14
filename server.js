@@ -2104,15 +2104,30 @@ async function selectDailyMusicTrack(req){
     const withAudio=rows.filter(t=>String(t.audio_url||"").trim()).length;
     throw new Error("Music Library has no playable active track. Found "+active+" active row(s), "+authorized+" owned/authorized row(s), and "+withAudio+" row(s) with an audio URL. Open Music Library, upload/select the original master audio, confirm rights status is Owned or Authorized and status is Active, then retry. YouTube/Spotify links alone are not playable master audio.");
   }
-  // Stable track policy: keep promoting the newest active, owned/authorized library item.
-  // It remains selected until a newer active track is added; trend-score changes do not
-  // silently switch the song being promoted.
+  // Prefer the newest active, owned/authorized track, but never select a library
+  // row whose audio object has been deleted. A missing object must not break rendering.
+  // Keep trying other active tracks; the selected row remains stable until a newer
+  // valid active track is added.
   const stable=eligible.slice().sort((a,b)=>{
     const at=new Date(a.created_at||a.updated_at||0).getTime()||0;
     const bt=new Date(b.created_at||b.updated_at||0).getTime()||0;
     return bt-at;
   });
-  return await musicTrackWithPlayableAudio(stable[0]);
+  const failures=[];
+  for(const candidate of stable){
+    try{
+      const playable=await musicTrackWithPlayableAudio(candidate);
+      const url=String(playable?.audio_url||"").trim();
+      if(!url)throw new Error("audio URL is empty");
+      const response=await fetch(url,{method:"HEAD",redirect:"follow"});
+      if(!response.ok)throw new Error("audio URL returned HTTP "+response.status);
+      return playable;
+    }catch(error){
+      failures.push(String(candidate.title||candidate.id||"Untitled")+": "+safeErrorMessage(error));
+      console.warn("Skipping Music Library track with unavailable audio:",failures[failures.length-1]);
+    }
+  }
+  throw new Error("No active Music Library track has a working master-audio file. The saved track's Storage object may have been deleted (NoSuchKey). Re-upload the original audio in Music Library, then keep it Active with rights set to Owned/Authorized. Checked "+stable.length+" active track(s). "+failures.slice(0,3).join(" | "));
 }
 async function runMusicManagerAnalysis(track){
   const fields={track:{title:track.title,artist:track.artist,views:track.views,likes:track.likes,comments:track.comments,viewVelocity:track.view_velocity,engagementRate:track.engagement_rate,trendScore:track.trend_score,promotionCount:track.promotion_count,promoViews:track.promo_views},goal:"Choose a promotion angle for this original/authorized track. Explain why it is promising using only supplied metrics. Do not claim guaranteed virality."};

@@ -150,8 +150,17 @@ async function hydrateSettings(){
   return settingsCache||current;
 }
 async function persistSettings(settings){
-  settingsCache={...DEFAULT_FACTORY_SETTINGS,...settings};
-  if(!supabase)return {ok:false,error:"Supabase is not configured"};
+  settingsCache={
+    ...DEFAULT_FACTORY_SETTINGS,
+    ...settings,
+    enabledCategories:{
+      ...DEFAULT_FACTORY_SETTINGS.enabledCategories,
+      ...(settings?.enabledCategories&&typeof settings.enabledCategories==="object"?settings.enabledCategories:{})
+    }
+  };
+  // Category switches must survive refreshes. Use the server-only writer and
+  // fail loudly rather than silently dropping the notes column in a schema fallback.
+  if(!supabaseAdmin)throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing from the Vercel runtime. Persistent category settings cannot be saved.");
   try{
     const now=new Date().toISOString();
     const row={
@@ -173,11 +182,12 @@ async function persistSettings(settings){
       created_at:now,
       updated_at:now
     };
-    await upsertContentJobSchemaSafe(row);
+    const {error}=await supabaseAdmin.from("content_jobs").upsert(row,{onConflict:"id"});
+    if(error)throw error;
     settingsPersistentLoaded=true;
     return {ok:true};
   }catch(error){
-    throw new Error("Could not persist settings to Supabase content_jobs: "+error.message);
+    throw new Error("Could not persist settings to Supabase content_jobs: "+String(error?.message||error));
   }
 }
 const AGENT_IDS=["manager","research","script","voice","visual","editor","thumb","qa","publisher","analytics"];

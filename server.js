@@ -2826,7 +2826,7 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
 });
 app.get("/api/live/worker/status",async(req,res)=>{
   const auth=liveWorkerAuthorized(req); if(!auth.ok)return res.status(auth.status).json({ok:false,error:auth.error});
-  try{const id=String(req.query.id||"");const jobs=await readLiveJobs();const job=Object.values(jobs).find(x=>x?.id===id);if(!job)return res.status(404).json({ok:false,error:"Live job not found."});res.json({ok:true,status:job.status,stopRequested:!!job.stopRequested,job:safeLiveJob(job)});}catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e));}
+  try{const id=String(req.query.id||"");const jobs=await readLiveJobs();const job=Object.values(jobs).find(x=>x?.id===id);if(!job)return res.status(404).json({ok:false,error:"Live job not found."});res.json({ok:true,status:job.status,stopRequested:!!job.stopRequested,job:safeLiveJob(job)});}catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});
 });
 app.post("/api/live/create",requireAppKey,async(req,res)=>{
   try{

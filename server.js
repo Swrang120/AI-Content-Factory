@@ -2764,8 +2764,8 @@ async function createYouTubeLiveJob({dateKey,privacyStatus}={}){
   const existing=existingJobs[targetDate];
   if(existing && ["scheduled","worker_claimed","starting","live"].includes(existing.status))return safeLiveJob(existing);
   const settings=await hydrateSettings();
-  if(!settings.liveAutomation && process.env.LIVE_AUTOMATION_ENABLED!=="true"){
-    throw new Error("Live Automation is OFF. Enable liveAutomation in Factory Settings or set LIVE_AUTOMATION_ENABLED=true.");
+  if(!settings.liveAutomation){
+    throw new Error("Automatic live scheduling is disabled. Use the manual Live Stream controls.");
   }
   const media=await selectLiveMedia(targetDate);
   if(!media)throw new Error("No live media package is ready. Create a rendered video first; Monday also requires an active original/authorized music master.");
@@ -2824,7 +2824,7 @@ async function transitionLiveBroadcast(job,broadcastStatus){
 async function runLiveScheduler(){
   const now=new Date();
   const settings=await hydrateSettings();
-  const automation=settings.liveAutomation||process.env.LIVE_AUTOMATION_ENABLED==="true";
+  const automation=!!settings.liveAutomation;
   if(!automation)return {ok:true,skipped:true,reason:"Live Automation is OFF.",at:now.toISOString()};
   const dateKey=liveDateKey(now);
   const start=liveDateTime(dateKey,LIVE_START_HOUR,0);
@@ -2845,7 +2845,7 @@ app.get("/api/live/status",async(req,res)=>{
     const keys=Object.keys(jobs).sort().reverse();
     const recent=keys.slice(0,7).map(k=>safeLiveJob(jobs[k]));
     const settings=await hydrateSettings();
-    res.json({ok:true,timeZone:LIVE_TZ,startTime:"14:00",endTime:"16:00",workerConfigured:!!process.env.LIVE_WORKER_TOKEN,automationEnabled:!!(settings.liveAutomation||process.env.LIVE_AUTOMATION_ENABLED==="true"),jobs:recent});
+    res.json({ok:true,timeZone:LIVE_TZ,startTime:"14:00",endTime:"16:00",workerConfigured:!!process.env.LIVE_WORKER_TOKEN,automationEnabled:!!settings.liveAutomation,jobs:recent});
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 

@@ -705,7 +705,7 @@ async function transcribeMusicAudio(audioUrl){
   if(!r.ok)throw new Error(body?.error?.message||"Music transcription failed");
   return {text:String(body?.text||""),segments:Array.isArray(body?.segments)?body.segments:[]};
 }
-async function createMusicPromotionJob({spotifyUrl,audioUrl,storagePath="",title,artist,thumbnailUrl,language="Hindi + Bodo",notes="",req,id:requestedJobId,promotionLine="",publishAfterRender=true}){
+async function createMusicPromotionJob({spotifyUrl,audioUrl,storagePath="",title,artist,thumbnailUrl,language="Hindi + Bodo",format="Short Video",aspectRatio="9:16",notes="",req,id:requestedJobId,promotionLine="",publishAfterRender=true}){
   let meta;
   if(spotifyUrl){ meta=await fetchSpotifyTrackMetadata(spotifyUrl); }
   else { meta={spotifyUrl:null,title:String(title||"Original Song"),artist:String(artist||"Swrang Swargiary"),thumbnailUrl:thumbnailUrl||null,provider:"Supabase Storage"}; }
@@ -734,7 +734,7 @@ async function createMusicPromotionJob({spotifyUrl,audioUrl,storagePath="",title
   const id=requestedJobId||jobId();
   const jobs=loadJobs();
   const topic=(meta.title||"Original Song")+" — Music Promotion";
-  const job={id,status:"music_hook_selected",topic,category:"Music Promotion",language,format:"Short Video",notes:(meta.spotifyUrl?"Spotify: "+meta.spotifyUrl+"\n":"")+"Artist: "+meta.artist+"\nHook: "+hook.hookText+"\n"+String(notes||""),sourceText:transcript.text,sources:meta.spotifyUrl?[meta.spotifyUrl]:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,manualUpload:true,approved:true,music:{spotifyUrl:meta.spotifyUrl,title:meta.title,artist:meta.artist,thumbnailUrl:meta.thumbnailUrl,audioUrl,storagePath:storagePath||"",hookStartSeconds:hook.startSeconds,hookDurationSeconds:hook.durationSeconds,hookText:hook.hookText}};
+  const job={id,status:"music_hook_selected",topic,category:"Music Promotion",language,format,aspectRatio,notes:(meta.spotifyUrl?"Spotify: "+meta.spotifyUrl+"\n":"")+"Artist: "+meta.artist+"\nHook: "+hook.hookText+"\n"+String(notes||""),sourceText:transcript.text,sources:meta.spotifyUrl?[meta.spotifyUrl]:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,manualUpload:true,approved:true,music:{spotifyUrl:meta.spotifyUrl,title:meta.title,artist:meta.artist,thumbnailUrl:meta.thumbnailUrl,audioUrl,storagePath:storagePath||"",hookStartSeconds:hook.startSeconds,hookDurationSeconds:hook.durationSeconds,hookText:hook.hookText}};
   jobs[id]=job;saveJobs(jobs);await persistJob(job);
   await setAgentState("manager","WORKING",10,"Music promotion order received",id);
   await setAgentState("research","WORKING",35,"Analyzing the original song and selecting the strongest hook",id);

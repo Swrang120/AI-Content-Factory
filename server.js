@@ -1096,12 +1096,32 @@ app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
     const settings=await hydrateSettings();
     if(!settings.autoPublish)return res.status(409).json({ok:false,error:"Auto Publish is OFF."});
     const jobs=await loadPersistentJobs();
-    const candidates=Object.values(jobs).filter(j=>j.renderedVideoUrl&&enabledCategory(settings,j.category)&&!["published","sent_to_buffer"].includes(j.status)).sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0));
-    const job=candidates[0];
-    if(!job)return res.status(404).json({ok:false,error:"No rendered video is waiting to be sent to Buffer."});
+    const requestedId=String(req.body?.jobId||"").trim();
+    const requestedUrl=String(req.body?.renderedVideoUrl||"").trim();
+    const requestedCategory=String(req.body?.category||"").trim();
+    let job=requestedId?jobs[requestedId]:null;
+    // The Video Generator keeps recent render metadata in browser history. If a
+    // valid rendered URL is sent from that history, allow publishing that exact
+    // item instead of silently searching unrelated persistent jobs.
+    if(!job&&requestedUrl){
+      let parsed;
+      try{parsed=new URL(requestedUrl);}catch{}
+      if(!parsed||parsed.protocol!=="https:")return res.status(400).json({ok:false,error:"Rendered video URL must be a valid HTTPS URL."});
+      if(!requestedCategory)return res.status(400).json({ok:false,error:"Video category is required when publishing a browser-history render."});
+      if(!enabledCategory(settings,requestedCategory))return res.status(409).json({ok:false,error:requestedCategory+" is disabled. Enable this category first."});
+      job={id:"browser_"+Date.now().toString(36),topic:String(req.body?.title||"AI Content Factory").slice(0,160),title:String(req.body?.title||"AI Content Factory").slice(0,160),category:requestedCategory,renderedVideoUrl:requestedUrl,description:String(req.body?.description||"Published by AI Content Factory."),status:"rendered",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    }
+    if(!job){
+      const candidates=Object.values(jobs).filter(j=>j.renderedVideoUrl&&enabledCategory(settings,j.category)&&!["published","sent_to_buffer"].includes(j.status)).sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0));
+      job=candidates[0];
+    }
+    if(!job||!job.renderedVideoUrl)return res.status(404).json({ok:false,error:"No rendered video is waiting to be sent to Buffer. Generate a video first, then publish that render."});
+    if(!enabledCategory(settings,job.category))return res.status(409).json({ok:false,error:String(job.category||"This category")+" is disabled. Enable this category first."});
+    if(["published","sent_to_buffer"].includes(job.status))return res.status(409).json({ok:false,error:"This video has already been sent to Buffer. Generate or select another video."});
     await setAgentState("publisher","WORKING",60,"Boss command: sending "+(job.topic||job.title||"latest video")+" to Buffer",job.id);
     const result=await publishVideoToBuffer({videoUrl:job.renderedVideoUrl,title:job.topic||job.title||"AI Content Factory",description:job.description||"Published by AI Content Factory Boss command."});
-    job.buffer=result;job.status=result.successfulChannels===3?"published":"sent_to_buffer";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);await persistJob(job);
+    job.buffer=result;job.status=result.successfulChannels===3?"published":"sent_to_buffer";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);
+    if(!String(job.id).startsWith("browser_"))await persistJob(job);
     await setAgentState("publisher","SLEEPING",100,"Video accepted by Buffer on "+result.successfulChannels+" of "+result.totalChannels+" target channel(s)",job.id);
     return res.json({ok:true,jobId:job.id,title:job.topic||job.title,status:job.status,platform:"buffer",buffer:result});
   }catch(e){await setAgentState("publisher","ERROR",0,"Buffer queue failed: "+safeErrorMessage(e),null).catch(()=>{});return res.status(500).json({ok:false,error:safeErrorMessage(e)});}

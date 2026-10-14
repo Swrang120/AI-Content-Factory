@@ -1130,9 +1130,9 @@ app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
       let parsed;
       try{parsed=new URL(requestedUrl);}catch{}
       if(!parsed||parsed.protocol!=="https:")return res.status(400).json({ok:false,error:"Rendered video URL must be a valid HTTPS URL."});
-      if(!requestedCategory)return res.status(400).json({ok:false,error:"Video category is required when publishing a browser-history render."});
-      if(!enabledCategory(settings,requestedCategory))return res.status(409).json({ok:false,error:requestedCategory+" is disabled. Enable this category first."});
-      job={id:"browser_"+Date.now().toString(36),topic:String(req.body?.title||"AI Content Factory").slice(0,160),title:String(req.body?.title||"AI Content Factory").slice(0,160),category:requestedCategory,renderedVideoUrl:requestedUrl,description:String(req.body?.description||"Published by AI Content Factory."),status:"rendered",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+      const category = requestedCategory || "editing";
+      if(!enabledCategory(settings,category))return res.status(409).json({ok:false,error:category+" is disabled. Enable this category first."});
+      job={id:"browser_"+Date.now().toString(36),topic:String(req.body?.title||"AI Content Factory").slice(0,160),title:String(req.body?.title||"AI Content Factory").slice(0,160),category,categoryId:String(req.body?.categoryId||"22"),renderedVideoUrl:requestedUrl,description:String(req.body?.description||"Published by AI Content Factory."),status:"rendered",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
     }
     if(!job){
       const candidates=Object.values(jobs).filter(j=>j.renderedVideoUrl&&enabledCategory(settings,j.category)&&!["published","sent_to_buffer"].includes(j.status)).sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0));
@@ -1142,7 +1142,7 @@ app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
     if(!enabledCategory(settings,job.category))return res.status(409).json({ok:false,error:String(job.category||"This category")+" is disabled. Enable this category first."});
     if(["published","sent_to_buffer"].includes(job.status))return res.status(409).json({ok:false,error:"This video has already been sent to Buffer. Generate or select another video."});
     await setAgentState("publisher","WORKING",60,"Boss command: sending "+(job.topic||job.title||"latest video")+" to Buffer",job.id);
-    const result=await publishVideoToBuffer({videoUrl:job.renderedVideoUrl,title:job.topic||job.title||"AI Content Factory",description:job.description||"Published by AI Content Factory Boss command."});
+    const result=await publishVideoToBuffer({videoUrl:job.renderedVideoUrl,title:job.topic||job.title||"AI Content Factory",description:job.description||"Published by AI Content Factory Boss command.",categoryId:job.categoryId||req.body?.categoryId||"22"});
     job.buffer=result;job.status=result.successfulChannels===3?"published":"sent_to_buffer";job.updatedAt=new Date().toISOString();jobs[job.id]=job;saveJobs(jobs);
     if(!String(job.id).startsWith("browser_"))await persistJob(job);
     await setAgentState("publisher","SLEEPING",100,"Video accepted by Buffer on "+result.successfulChannels+" of "+result.totalChannels+" target channel(s)",job.id);
@@ -1194,7 +1194,7 @@ async function publishVideoToBuffer(p){
   for(const ch of supported){
     const service=String(ch.service||"").toLowerCase();
     const metadata={};
-    if(service==="youtube")metadata.youtube={title:String(p.title).slice(0,100),category:"Entertainment",privacy:"public"};
+    if(service==="youtube")metadata.youtube={title:String(p.title).slice(0,100),categoryId:String(p.categoryId||"22"),privacy:String(p.privacyStatus||"public")};
     if(service==="instagram")metadata.instagram={postType:"reel"};
     if(service==="facebook")metadata.facebook={postType:"reel"};
     const videoUrl=String(p.videoUrl||"").trim();

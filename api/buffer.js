@@ -146,10 +146,10 @@ async function createPost(input) {
     };
   }
   if (service === "instagram") {
-    metadata.instagram = { postType: "reel" };
+    metadata.instagram = { type: "reel", shouldShareToFeed: true };
   }
   if (service === "facebook") {
-    metadata.facebook = { postType: "reel" };
+    metadata.facebook = { type: "reel" };
   }
   const variables = {
     input: {

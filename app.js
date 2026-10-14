@@ -723,7 +723,8 @@ async function toggleCategory(id){
   const c=data.categories.find(x=>x.id===id);
   if(!c)return;
   const previous=c.enabled;
-  c.enabled=!previous;
+  const desired=!previous;
+  c.enabled=desired;
   save();
   renderCategories();
   try{
@@ -732,22 +733,24 @@ async function toggleCategory(id){
       method:"POST",
       headers:{"Content-Type":"application/json"},
       credentials:"include",
-      body:JSON.stringify({enabledCategories})
+      cache:"no-store",
+      body:JSON.stringify({enabledCategories,version:2})
     });
     const s=await r.json().catch(()=>({}));
     if(!r.ok||!s.ok)throw new Error(s.error||"Category setting save failed");
-    if(s.settings?.enabledCategories){
-      for(const item of data.categories){
-        if(Object.prototype.hasOwnProperty.call(s.settings.enabledCategories,item.id))item.enabled=s.settings.enabledCategories[item.id]!==false;
-      }
-      save();
-      renderCategories();
+    if(s.source!=="persistent-supabase")throw new Error("Server ne setting permanent storage mein save nahi ki. Vercel par SUPABASE_SERVICE_ROLE_KEY aur Supabase content_jobs table check karein.");
+    const saved=s.settings?.enabledCategories;
+    if(!saved||saved[id]!==desired)throw new Error("Server ne category ka requested status confirm nahi kiya.");
+    for(const item of data.categories){
+      if(Object.prototype.hasOwnProperty.call(saved,item.id))item.enabled=saved[item.id]!==false;
     }
+    save();
+    renderCategories();
   }catch(e){
     c.enabled=previous;
     save();
     renderCategories();
-    alert("Category setting save failed: "+e.message);
+    alert("Category setting permanent save nahi hui: "+e.message);
   }
 }
 async function toggleAutomationOnline(){

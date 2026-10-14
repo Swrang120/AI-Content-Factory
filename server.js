@@ -1194,9 +1194,12 @@ async function publishVideoToBuffer(p){
   for(const ch of supported){
     const service=String(ch.service||"").toLowerCase();
     const metadata={};
-    if(service==="youtube")metadata.youtube={title:String(p.title).slice(0,100),categoryId:String(p.categoryId||"22"),privacy:String(p.privacyStatus||"public")};
-    if(service==="instagram")metadata.instagram={type:"REEL",shouldShareToFeed:true};
-    if(service==="facebook")metadata.facebook={type:"REEL"};
+    // Buffer's GraphQL enums are lowercase (post/reel/short), and every
+    // channel-specific metadata input requires its own "type" field.
+    // Generated short-form videos are portrait and should be queued as Shorts/Reels.
+    if(service==="youtube")metadata.youtube={type:"short",title:String(p.title).slice(0,100),categoryId:String(p.categoryId||"22"),privacy:String(p.privacyStatus||"public")};
+    if(service==="instagram")metadata.instagram={type:"reel",shouldShareToFeed:true};
+    if(service==="facebook")metadata.facebook={type:"reel"};
     const videoUrl=String(p.videoUrl||"").trim();
     let parsedVideoUrl;
     try{parsedVideoUrl=new URL(videoUrl);}catch{throw new Error("Buffer video URL must be a valid public HTTPS URL.");}

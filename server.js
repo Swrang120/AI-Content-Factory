@@ -1195,8 +1195,8 @@ async function publishVideoToBuffer(p){
     const service=String(ch.service||"").toLowerCase();
     const metadata={};
     if(service==="youtube")metadata.youtube={title:String(p.title).slice(0,100),categoryId:String(p.categoryId||"22"),privacy:String(p.privacyStatus||"public")};
-    if(service==="instagram")metadata.instagram={postType:"reel"};
-    if(service==="facebook")metadata.facebook={postType:"reel"};
+    if(service==="instagram")metadata.instagram={type:"REEL",shouldShareToFeed:true};
+    if(service==="facebook")metadata.facebook={type:"REEL"};
     const videoUrl=String(p.videoUrl||"").trim();
     let parsedVideoUrl;
     try{parsedVideoUrl=new URL(videoUrl);}catch{throw new Error("Buffer video URL must be a valid public HTTPS URL.");}

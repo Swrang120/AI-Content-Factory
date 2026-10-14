@@ -404,19 +404,43 @@ function renderCategories(){
 }
 async function renderSchedule(){
   title.textContent="Live Stream";
-  view.innerHTML=`<div class="hero"><p class="eyebrow">MANUAL LIVE CONTROL</p><h2>🎮 Live Stream</h2><p>Automatic weekly live schedule is disabled. You decide when to start and stop your live stream.</p></div>
-  <div class="table-card"><div class="section-head"><div><h3>📡 Live stream status</h3><span class="muted">YouTube Live · Asia/Kolkata</span></div><button class="small-btn" id="liveRefresh">↻ Refresh status</button></div><div id="liveStatusPanel"><div class="empty">Checking live status…</div></div>
-  <div class="queue-meta" style="margin-top:12px">Important: this page checks the current live-worker status. Starting a YouTube event does not by itself create the cartoon-car gameplay source; that still needs to be configured and tested.</div></div>`;
+  view.innerHTML=`<div class="hero"><p class="eyebrow">MANUAL YOUTUBE LIVE</p><h2>🔴 Live Stream</h2><p>Live ko tum khud start aur stop karoge. Koi daily schedule nahi chalega.</p></div>
+  <div class="table-card"><div class="section-head"><div><h3>📡 Live control</h3><span class="muted">YouTube · Manual session</span></div><button class="small-btn" id="liveRefresh">↻ Refresh</button></div>
+  <div id="liveStatusPanel"><div class="empty">Live status check ho raha hai…</div></div>
+  <div class="queue-row" style="gap:10px;flex-wrap:wrap"><button class="primary-btn" id="liveStart" style="min-height:46px">▶ Start Live</button><button class="small-btn" id="liveStop" style="min-height:46px" disabled>⏹ Stop Live</button></div>
+  <p id="liveActionMessage" class="queue-meta" aria-live="polite">Start dabane par ready rendered video stream karne ke liye worker ko job milegi. Cartoon-car game source abhi configured nahi hai.</p>
+  <div class="queue-meta">Elapsed time: <strong id="liveElapsed">00:00:00</strong></div></div>`;
+  let elapsedTimer=null,refreshTimer=null,liveStartedAt=null,lastJob=null;
+  const msg=document.getElementById("liveActionMessage");
+  const elapsed=document.getElementById("liveElapsed");
+  function fmt(ms){const sec=Math.max(0,Math.floor(ms/1000));return [Math.floor(sec/3600),Math.floor(sec%3600/60),sec%60].map(n=>String(n).padStart(2,"0")).join(":");}
+  function paintElapsed(){if(elapsed&&liveStartedAt)elapsed.textContent=fmt(Date.now()-liveStartedAt);}
+  function startElapsed(iso){if(elapsedTimer)clearInterval(elapsedTimer);liveStartedAt=iso?new Date(iso).getTime():Date.now();elapsedTimer=setInterval(paintElapsed,1000);paintElapsed();}
   async function refresh(){
-    const box=document.getElementById("liveStatusPanel"); if(!box)return;
+    const box=document.getElementById("liveStatusPanel");if(!box)return;
     try{
-      const r=await fetch(apiUrl("/api/live/status"),{cache:"no-store",credentials:"include"});
-      const s=await r.json(); if(!r.ok||!s.ok)throw new Error(s.error||"Live status unavailable");
-      const latest=s.jobs?.[0]; const state=latest?.status||"No live event";
-      box.innerHTML='<div class="queue-row"><div><div class="queue-title">Worker: '+(s.workerConfigured?'Configured':'Not configured')+'</div><div class="queue-meta">Latest event: '+esc(state)+'</div>'+(latest?.title?'<div class="queue-meta">'+esc(latest.title)+'</div>':'')+'</div><span class="badge '+(latest?.status==="live"?'ready':'')+'">'+esc(state)+'</span></div><div class="queue-meta" style="margin-top:8px">Automatic schedule: OFF</div>';
+      const r=await fetch(apiUrl("/api/live/status"),{cache:"no-store",credentials:"include"});const s=await r.json();if(!r.ok||!s.ok)throw new Error(s.error||"Live status unavailable");
+      const jobs=s.jobs||[];const job=jobs.find(x=>["scheduled","worker_claimed","starting","live","stopping"].includes(x.status))||jobs[0]||null;lastJob=job;
+      const active=!!job&&["scheduled","worker_claimed","starting","live","stopping"].includes(job.status);
+      document.getElementById("liveStart").disabled=active;
+      document.getElementById("liveStop").disabled=!active||job.status==="stopping";
+      if(job?.status==="live"){if(!liveStartedAt)startElapsed(job.updatedAt||job.createdAt);}
+      if(job?.status==="stopping"){msg.textContent="Stop request bhej diya gaya hai; worker stream finalize kar raha hai.";}
+      box.innerHTML=job?'<div class="queue-row"><div><div class="queue-title">'+esc(job.title||"YouTube Live")+'</div><div class="queue-meta">Status: '+esc(job.status)+' · Worker: '+esc(job.workerStatus||"waiting")+'</div><div class="queue-meta">Start time: '+esc(job.scheduledStartTime||"—")+'</div>'+(job.error?'<div class="queue-meta">Error: '+esc(job.error)+'</div>':'')+'</div><span class="badge '+(job.status==="live"?"ready":"")+'">'+esc(job.status)+'</span></div>':'<div class="empty">Abhi koi active live session nahi hai.</div>';
     }catch(e){box.innerHTML='<div class="empty">Live status error: '+esc(e.message)+'</div>';}
   }
-  document.getElementById("liveRefresh")?.addEventListener("click",refresh); await refresh();
+  document.getElementById("liveRefresh").addEventListener("click",refresh);
+  document.getElementById("liveStart").addEventListener("click",async()=>{
+    const b=document.getElementById("liveStart");b.disabled=true;msg.textContent="YouTube live event create ho raha hai…";
+    try{const r=await fetch(apiUrl("/api/live/create"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({privacyStatus:"public"})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Could not create live event");msg.textContent="Live event ready. Worker ko stream pick karne mein kuch minute lag sakte hain. Stream status refresh hota rahega.";await refresh();}
+    catch(e){msg.textContent="Start failed: "+e.message;b.disabled=false;}
+  });
+  document.getElementById("liveStop").addEventListener("click",async()=>{
+    const b=document.getElementById("liveStop");b.disabled=true;msg.textContent="Stop request bhej rahe hain…";
+    try{const r=await fetch(apiUrl("/api/live/stop"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:"{}"});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Stop request failed");msg.textContent=d.message||"Stop request sent.";await refresh();}
+    catch(e){msg.textContent="Stop failed: "+e.message;b.disabled=false;}
+  });
+  await refresh();refreshTimer=setInterval(refresh,15000);
 }
 async function loadCreatorLearning(){
   const box=document.getElementById("creatorAnalytics");

@@ -406,7 +406,9 @@ async function renderSchedule(){
   title.textContent="Live Stream";
   view.innerHTML=`<div class="hero"><p class="eyebrow">MANUAL YOUTUBE LIVE</p><h2>🔴 Live Stream</h2><p>Live ko tum khud start aur stop karoge. Koi daily schedule nahi chalega.</p></div>
   <div class="table-card"><div class="section-head"><div><h3>📡 Live control</h3><span class="muted">YouTube · Manual session</span></div><button class="small-btn" id="liveRefresh">↻ Refresh</button></div>
+  <div class="table-card" style="margin:12px 0"><h3>📺 Target YouTube Channel</h3><div id="liveChannelPanel" class="queue-meta">Connected channel check ho raha hai…</div></div>
   <div id="liveStatusPanel"><div class="empty">Live status check ho raha hai…</div></div>
+  <div class="table-card" style="margin:12px 0"><h3>🔗 Live / Watch Link</h3><div id="liveWatchPanel" class="queue-meta">Live banne ke baad link yahan dikhega.</div></div>
   <div class="queue-row" style="gap:10px;flex-wrap:wrap"><button class="primary-btn" id="liveStart" style="min-height:46px">▶ Start Live</button><button class="small-btn" id="liveStop" style="min-height:46px" disabled>⏹ Stop Live</button></div>
   <p id="liveActionMessage" class="queue-meta" aria-live="polite">Start dabane par ready rendered video stream karne ke liye worker ko job milegi. Cartoon-car game source abhi configured nahi hai.</p>
   <div class="queue-meta">Elapsed time: <strong id="liveElapsed">00:00:00</strong></div></div>`;
@@ -421,6 +423,24 @@ async function renderSchedule(){
     try{
       const r=await fetch(apiUrl("/api/live/status"),{cache:"no-store",credentials:"include"});const s=await r.json();if(!r.ok||!s.ok)throw new Error(s.error||"Live status unavailable");
       const jobs=s.jobs||[];const job=jobs.find(x=>["scheduled","worker_claimed","starting","live","stopping"].includes(x.status))||jobs[0]||null;lastJob=job;
+      const channelBox=document.getElementById("liveChannelPanel");
+      if(channelBox&&!channelBox.dataset.loaded){
+        channelBox.dataset.loaded="1";
+        try{
+          const cr=await fetch(apiUrl("/api/youtube/status"),{cache:"no-store",credentials:"include"});const cd=await cr.json();
+          if(cd.connected&&cd.channel?.id){
+            const channelUrl="https://www.youtube.com/channel/"+encodeURIComponent(cd.channel.id);
+            channelBox.innerHTML='<strong>'+esc(cd.channel.title||"Connected YouTube channel")+'</strong><br><a href="'+channelUrl+'" target="_blank" rel="noopener">Open target channel ↗</a><br><small>Live isi connected channel par create hoga.</small>';
+          }else{channelBox.innerHTML='<span>YouTube channel connected nahi hai. Pehle Platforms / YouTube se connect karo.</span>';}
+        }catch(_){channelBox.textContent="Target channel verify nahi ho saka. YouTube connection check karo.";}
+      }
+      const watchBox=document.getElementById("liveWatchPanel");
+      if(watchBox){
+        if(job?.broadcastId){
+          const watchUrl="https://www.youtube.com/watch?v="+encodeURIComponent(job.broadcastId);
+          watchBox.innerHTML='<a href="'+watchUrl+'" target="_blank" rel="noopener">Open this Live / Watch on YouTube ↗</a><br><small>Link event create hone par milta hai. YouTube par public dikhne mein broadcast live hona zaroori hai.</small>';
+        }else{watchBox.textContent="Live event create hone ke baad yahan direct YouTube watch link aayega.";}
+      }
       const active=!!job&&["scheduled","worker_claimed","starting","live","stopping"].includes(job.status);
       document.getElementById("liveStart").disabled=active;
       document.getElementById("liveStop").disabled=!active||job.status==="stopping";

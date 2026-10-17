@@ -9,7 +9,13 @@ const Root=()=> <Composition
   height={FACTORY_HEIGHT}
   fps={FACTORY_FPS}
   durationInFrames={FACTORY_FPS*FACTORY_DURATION_SECONDS}
-  defaultProps={{title:"AI Content Factory",script:"",audioUrl:"",musicUrl:"",musicStartSeconds:0,musicDurationSeconds:25,spotifyUrl:"",artist:"",durationSeconds:FACTORY_DURATION_SECONDS}}
+  calculateMetadata={({props})=>{
+    const seconds=Math.max(1,Math.min(480,Number(props.durationSeconds)||FACTORY_DURATION_SECONDS));
+    const ratio=String(props.aspectRatio||"16:9");
+    const dimensions=ratio==="9:16"?{width:1080,height:1920}:ratio==="1:1"?{width:1080,height:1080}:{width:1920,height:1080};
+    return {durationInFrames:FACTORY_FPS*seconds,...dimensions};
+  }}
+  defaultProps={{title:"AI Content Factory",script:"",audioUrl:"",musicUrl:"",musicStartSeconds:0,musicDurationSeconds:25,spotifyUrl:"",artist:"",durationSeconds:FACTORY_DURATION_SECONDS,category:"",aspectRatio:"16:9"}}
 />;
 
 registerRoot(Root);

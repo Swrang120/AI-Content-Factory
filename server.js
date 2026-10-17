@@ -1858,7 +1858,7 @@ app.get("/api/youtube/status",async(req,res)=>{
     res.status(400).json({ok:false,connected:false,error:e.message});
   }
 });
-function settingsFromRequest(req){try{const raw=(req.headers.cookie||"").split(";").map(x=>x.trim()).find(x=>x.startsWith("acf_factory_settings="));if(!raw)return null;const parsed=JSON.parse(decodeURIComponent(raw.slice("acf_factory_settings=".length)));if(!parsed||typeof parsed!=="object"||parsed.version!==2)return null;return {...loadSettings(),...parsed};}catch{return null;}}
+function settingsFromRequest(req){try{const raw=(req?.headers?.cookie||"").split(";").map(x=>x.trim()).find(x=>x.startsWith("acf_factory_settings="));if(!raw)return null;const parsed=JSON.parse(decodeURIComponent(raw.slice("acf_factory_settings=".length)));if(!parsed||typeof parsed!=="object"||parsed.version!==2)return null;return {...loadSettings(),...parsed};}catch{return null;}}
 async function normalizeAndPersistFactorySettings(input){
   const body=input&&typeof input==="object"?input:{};
   const current=await hydrateSettings();

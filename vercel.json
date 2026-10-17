@@ -15,5 +15,5 @@
       "includeFiles": "remotion-bundle/**,remotion/**,node_modules/@remotion/studio/**,node_modules/remotion/**"
     }
   },
-  "buildCommand": "npm run build"
+  "buildCommand": "node --check server.js && node --check app.js && npm run build"
 }

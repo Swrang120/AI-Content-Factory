@@ -108,7 +108,7 @@ async function saveTokens(tokens){
     fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
   }catch{}
 }
-const DEFAULT_FACTORY_SETTINGS={autoGenerate:true,approval:false,autoPublish:true,publishingRoute:"buffer",language:"Hindi",bufferChannels:["youtube","instagram","facebook"],liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true}};
+const DEFAULT_FACTORY_SETTINGS={automationOnline:true,autoGenerate:true,approval:false,autoPublish:true,publishingRoute:"buffer",language:"Hindi",bufferChannels:["youtube","instagram","facebook"],liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true}};
 const MUSIC_SOURCE_CHANNEL_IDS=["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"];
 const MUSIC_ARTIST_NAMES=["Swrang Swargiary","Santiram Swargiary"];
 let settingsCache=null;
@@ -795,14 +795,18 @@ async function renderFactoryVideo(job,req){
   const musicStartSeconds=Math.max(0,Number(job.music?.hookStartSeconds)||0);
   const musicDurationSeconds=Math.max(1,Number(job.music?.hookDurationSeconds)||25);
   const title=job.title||job.topic||"AI Content Factory";
+  const category=String(job.category||"");
   const frame=String(job.aspectRatio||job.frame||"16:9");
   const dimensions=frame==="9:16"?{width:1080,height:1920}:frame==="1:1"?{width:1080,height:1080}:{width:1920,height:1080};
+  const requestedFormat=String(job.format||"").toLowerCase();
+  const durationSeconds=job.music?30:/long/.test(requestedFormat)?180:/youtube short/.test(requestedFormat)?55:/short reel/.test(requestedFormat)?25:/reel/.test(requestedFormat)?45:/promo/.test(requestedFormat)?30:45;
   const {sandboxFilePath}=await renderMediaOnVercel({
     sandbox,
     serveUrl,
     compositionId:"FactoryVideo",
     ...dimensions,
-    inputProps:{title,script,audioUrl,musicUrl,musicStartSeconds,musicDurationSeconds,spotifyUrl:job.music?.spotifyUrl||"",artist:job.music?.artist||"",durationSeconds:job.music?30:45},
+    durationInFrames:30*durationSeconds,
+    inputProps:{title,script,audioUrl,musicUrl,musicStartSeconds,musicDurationSeconds,spotifyUrl:job.music?.spotifyUrl||"",artist:job.music?.artist||"",durationSeconds,category,aspectRatio:frame},
     codec:"h264",
     outputFile:"/tmp/factory-video.mp4"
   });
@@ -922,7 +926,8 @@ async function generateAutomaticJob(item,req){
   job.updatedAt=new Date().toISOString(); saveJobs(jobs); await persistJob(job);
   await setAgentState("thumb","SLEEPING",100,"Publishing metadata ready",id);
   await setAgentState("qa","WORKING",80,"Final quality and rights gate",id);
-  if(job.renderedVideoUrl && loadSettings().autoPublish){
+  const publishSettings=await hydrateSettings();
+  if(job.renderedVideoUrl && publishSettings.automationOnline!==false && publishSettings.autoGenerate!==false && publishSettings.autoPublish && enabledCategory(publishSettings,job.category)){
     await setAgentState("publisher","WORKING",45,"Uploading and scheduling on YouTube",id);
     const scheduledAt=new Date(item.slot);
     job.buffer=await publishVideoToBuffer({
@@ -985,6 +990,10 @@ async function processQueuedContentJob(job,req){
 
 async function runAutomaticFactory(req){
   const settings=await hydrateSettings();
+  // Master OFF stops scheduled generation and publishing, including due queued jobs.
+  if(settings.automationOnline===false||settings.autoGenerate===false){
+    return {ok:true,enabled:false,automationOnline:settings.automationOnline!==false,message:"Automation is OFF. No scheduled generation or publishing was run."};
+  }
   const jobs=await loadPersistentJobs();
   const now=new Date();
   const bossDue=Object.values(jobs).filter(j=>j.manualUpload&&j.renderedVideoUrl&&enabledCategory(settings,j.category)&&["approved","queued"].includes(j.status)&&j.scheduledSlot&&new Date(j.scheduledSlot)<=now).sort((a,b)=>new Date(a.scheduledSlot)-new Date(b.scheduledSlot)).slice(0,1);

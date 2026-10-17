@@ -2778,7 +2778,7 @@ async function selectLiveMedia(dateKey){
   // If no rendered media is available, use the built-in cartoon driving scene rendered by the FFmpeg worker.
   return {mediaType:"car_animation",mediaUrl:null,mediaTitle:"Cartoon Car Driving Live"};
 }
-async function createYouTubeLiveJob({dateKey,privacyStatus}={}){
+async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   const now=Date.now();
   const targetDate=dateKey||liveDateKey(new Date(now+10*60000));
   const existingJobs=await readLiveJobs();

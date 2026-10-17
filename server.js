@@ -2790,7 +2790,7 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   // Manual start: schedule the broadcast a few minutes ahead so the free GitHub worker can pick it up.
   const start=new Date(now+8*60000);
   const end=new Date(now+150*60000);
-  const yt=await youtube({});
+  const yt=await youtube(req||{headers:{}});
   const privacy=String(privacyStatus||process.env.YOUTUBE_LIVE_PRIVACY||"public");
   if(!["private","unlisted","public"].includes(privacy))throw new Error("Invalid YOUTUBE_LIVE_PRIVACY.");
   const title=String(media.mediaType==="car_animation"?"Cartoon Car Driving Live":(schedule.title||"AI Content Factory Live")).slice(0,100);

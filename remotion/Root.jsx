@@ -2,7 +2,14 @@ import React from "react";
 import {AbsoluteFill, Audio, Sequence, interpolate, useCurrentFrame, useVideoConfig} from "remotion";
 
 const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
-const detectCategory=(title,script,musicUrl)=>{
+const detectCategory=(category,title,script,musicUrl)=>{
+  const explicit=String(category||"").toLowerCase();
+  if(explicit==="music promotion"||explicit==="music")return "music";
+  if(explicit==="editing knowledge"||explicit==="editing")return "editing";
+  if(explicit==="sports information"||explicit==="sports")return "sports";
+  if(explicit==="news & updates"||explicit==="news")return "news";
+  if(explicit==="product promotion"||explicit==="product")return "product";
+  if(explicit==="ai & technology"||explicit==="ai technology"||explicit==="technology"||explicit==="tech")return "tech";
   if(musicUrl)return "music";
   const s=(String(title||"")+" "+String(script||"")).toLowerCase();
   if(/capcut|alight motion|premiere pro|video edit|editing|transition|color grading|timeline|vn editor/.test(s))return "editing";
@@ -65,13 +72,13 @@ function Scene({text,index,total,kind,theme,title}){
   </AbsoluteFill>
  </Sequence>;
 }
-export const FactoryVideo=({title="AI Content Factory",script="",audioUrl="",musicUrl="",musicStartSeconds=0,musicDurationSeconds=25,spotifyUrl="",artist="",durationSeconds=45})=>{
+export const FactoryVideo=({title="AI Content Factory",script="",audioUrl="",musicUrl="",musicStartSeconds=0,musicDurationSeconds=25,spotifyUrl="",artist="",durationSeconds=45,category="",aspectRatio="16:9"})=>{
  const {fps,durationInFrames}=useVideoConfig();
  const clean=String(script||"").replace(/\s+/g," ").trim();
  const words=clean.split(" ").filter(Boolean);
  const chunks=[];const chunkSize=Math.max(8,Math.ceil(words.length/6));
  for(let i=0;i<words.length;i+=chunkSize)chunks.push(words.slice(i,i+chunkSize).join(" "));
- const kind=detectCategory(title,script,musicUrl);const theme=THEMES[kind];
+ const kind=detectCategory(category,title,script,musicUrl);const theme=THEMES[kind];
  const scenes=[title,...chunks].slice(0,7);
  return <AbsoluteFill>
   {scenes.map((s,i)=><Scene key={i} text={s} index={i} total={scenes.length} kind={kind} theme={theme} title={title}/>)}

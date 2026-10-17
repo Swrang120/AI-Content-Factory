@@ -66,10 +66,20 @@ function requireAppKey(req,res,next){
 function setCookie(res,name,value,maxAge=600){
   res.setHeader("Set-Cookie",`${name}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Lax`);
 }
-function getCookie(req,name){
-  const raw=req.headers.cookie||"";
-  const hit=raw.split(";").map(x=>x.trim()).find(x=>x.startsWith(name+"="));
-  return hit?decodeURIComponent(hit.slice(name.length+1)):"";
+function getCookie(req, name) {
+  const raw = req?.headers?.cookie || "";
+  const hit = raw
+    .split(";")
+    .map(x => x.trim())
+    .find(x => x.startsWith(name + "="));
+
+  if (!hit) return "";
+
+  try {
+    return decodeURIComponent(hit.slice(name.length + 1));
+  } catch {
+    return "";
+  }
 }
 async function loadTokens(req){
   const browserRefresh=getCookie(req||{headers:{}}, "acf_youtube_refresh");

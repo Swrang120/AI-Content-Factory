@@ -2706,9 +2706,10 @@ function liveWorkerAuthorized(req){
   return {ok:true};
 }
 async function readLiveJobs(){
-  if(!supabase)return {};
+  const liveDb=supabaseAdmin||supabase;
+  if(!liveDb)return {};
   try{
-    const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+    const {data,error}=await liveDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
     if(error)throw error;
     const value=data?.tokens?.[LIVE_STATE_KEY];
     return value&&typeof value==="object"?value:{};
@@ -2718,12 +2719,13 @@ async function readLiveJobs(){
   }
 }
 async function writeLiveJobs(jobs){
-  if(!supabase)throw new Error("Supabase is required for persistent YouTube Live state.");
-  const {data,error}=await supabase.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+  const liveDb=supabaseAdmin||supabase;
+  if(!liveDb)throw new Error("Supabase is required for persistent YouTube Live state.");
+  const {data,error}=await liveDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
   if(error)throw error;
   const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
   const tokens={...existing,[LIVE_STATE_KEY]:jobs};
-  const saved=await supabase.from("youtube_connections").upsert({id:"default",tokens,updated_at:new Date().toISOString()},{onConflict:"id"});
+  const saved=await liveDb.from("youtube_connections").upsert({id:"default",tokens,updated_at:new Date().toISOString()},{onConflict:"id"});
   if(saved.error)throw saved.error;
   return jobs;
 }

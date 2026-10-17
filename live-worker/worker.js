@@ -32,12 +32,16 @@ function runFFmpeg(job){
   const rtmp=job.rtmpUrl;
   if(!rtmp)throw new Error("Worker received no RTMP target.");
 
-  const commonVideo=[
+  const commonVideo=job.mediaType==="car_animation"?[]:[
     "-re",
     "-stream_loop","-1",
     "-i",job.mediaUrl
   ];
   let args;
+  if(job.mediaType==="car_animation"){
+    const scene="color=c=skyblue:s=1280x720:r=30,drawbox=x=0:y=0:w=1280:h=500:color=skyblue:t=fill,drawbox=x=0:y=500:w=1280:h=220:color=gray:t=fill,drawbox=x=0:y=535:w=1280:h=12:color=white:t=fill,drawbox=x='mod(t*150,1500)-220':y=410:w=190:h=65:color=red:t=fill,drawbox=x='mod(t*150,1500)-190':y=475:w=38:h=35:color=black:t=fill,drawbox=x='mod(t*150,1500)-80':y=475:w=38:h=35:color=black:t=fill";
+    args=["-re","-f","lavfi","-i",scene,"-f","lavfi","-i","anullsrc=channel_layout=stereo:sample_rate=44100","-map","0:v:0","-map","1:a:0","-c:v","libx264","-preset","veryfast","-tune","zerolatency","-pix_fmt","yuv420p","-r","30","-g","60","-b:v","1800k","-c:a","aac","-b:a","96k","-t",String(duration),"-f","flv",rtmp];
+  }
   if(job.mediaType==="audio"){
     args=[
       ...commonVideo,
@@ -129,6 +133,7 @@ async function handleJob(job){
 
   while(!finished){
     await sleep(5000);
+    try{const state=await api("/api/live/worker/status?id="+encodeURIComponent(job.id));if(state.stopRequested||state.status==="stopping"){await stop();break;}}catch(error){console.error("Worker status check:",error.message);}
     if(Date.now()>=endAt)await stop();
   }
 }

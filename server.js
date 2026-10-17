@@ -48,7 +48,7 @@ app.get("/app.js",(req,res)=>{
   res.setHeader("Cache-Control","public, max-age=3600");
   res.sendFile(file);
 });
-const CANONICAL_YOUTUBE_REDIRECT_URI="https://ai-content-factory-swrang120.vercel.app/auth/youtube/callback";
+const CANONICAL_YOUTUBE_REDIRECT_URI="https://ai-content-factory-zeta-ruby.vercel.app/auth/youtube/callback";
 function oauthClient(redirectOverride){
   if(!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET){
     throw new Error("YouTube OAuth is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET on Vercel.");
@@ -1511,7 +1511,7 @@ app.get("/api/youtube/config-status",async(req,res)=>{
     configuredRedirectUri:redirect||null,
     redirectMatchesCanonical:!redirect||redirect===CANONICAL_YOUTUBE_REDIRECT_URI,
     tokenPersistence:!!(supabaseAdmin||supabase),
-    currentBackend:"https://ai-content-factory-swrang120.vercel.app"
+    currentBackend:"https://ai-content-factory-zeta-ruby.vercel.app"
   });
 });
 function youtubeOAuthStateSecrets(){

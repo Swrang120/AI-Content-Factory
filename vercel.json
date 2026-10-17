@@ -10,20 +10,6 @@
       "destination": "/api/index"
     }
   ],
-  "crons": [
-    {
-      "path": "/api/cron/factory",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/self-heal",
-      "schedule": "35 3 * * *"
-    },
-    {
-      "path": "/api/cron/live",
-      "schedule": "25 8 * * *"
-    }
-  ],
   "functions": {
     "api/index.js": {
       "includeFiles": "remotion-bundle/**,remotion/**,node_modules/@remotion/studio/**,node_modules/remotion/**"

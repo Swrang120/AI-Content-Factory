@@ -2765,7 +2765,16 @@ function safeLiveJob(job){
     createdAt:job.createdAt,updatedAt:job.updatedAt,error:job.error||null
   };
 }
-async function selectLiveMedia(dateKey){
+async function selectLiveMedia(dateKey,mediaSource,mediaUrl){
+  if(mediaSource==="link"){
+    const raw=String(mediaUrl||"").trim();
+    let parsed;try{parsed=new URL(raw);}catch{throw new Error("Video URL invalid hai.");}
+    if(parsed.protocol!=="https:"||!parsed.hostname||parsed.username||parsed.password)throw new Error("Sirf public HTTPS direct video URL allowed hai.");
+    if(/(^|\.)localhost$|^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^169\.254\./i.test(parsed.hostname))throw new Error("Private/internal URLs allowed nahi hain.");
+    if(/youtube\.com\/watch|youtu\.be\//i.test(raw))throw new Error("YouTube watch-page URL direct stream source nahi hai. Direct authorized media URL do.");
+    return {mediaType:"video",mediaUrl:raw,mediaTitle:"User-provided authorized video"};
+  }
+  if(mediaSource==="auto")return {mediaType:"car_animation",mediaUrl:null,mediaTitle:"AI Car Driving Live"};
   // Monday is reserved for original/authorized music. The worker can turn an
   // audio master into a simple video stream without downloading third-party music.
   const schedule=liveScheduleForDate(dateKey);
@@ -2791,7 +2800,7 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   const existingJobs=await readLiveJobs();
   const existing=existingJobs[targetDate];
   if(existing && ["scheduled","worker_claimed","starting","live","stopping"].includes(existing.status))return safeLiveJob(existing);
-  const media=await selectLiveMedia(targetDate);
+  const media=await selectLiveMedia(targetDate,req?.body?.mediaSource,req?.body?.mediaUrl);
   if(!media)throw new Error("Could not prepare a live media source.");
   const schedule=liveScheduleForDate(targetDate);
   // Manual start: schedule the broadcast a few minutes ahead so the free GitHub worker can pick it up.

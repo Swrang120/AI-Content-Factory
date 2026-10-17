@@ -75,8 +75,8 @@ export const FactoryVideo=({title="AI Content Factory",script="",audioUrl="",mus
  const scenes=[title,...chunks].slice(0,7);
  return <AbsoluteFill>
   {scenes.map((s,i)=><Scene key={i} text={s} index={i} total={scenes.length} kind={kind} theme={theme} title={title}/>)}
-  {audioUrl?<Audio src={audioUrl} volume={musicUrl?.55:1}/>:null}
-  {musicUrl?<Audio src={musicUrl} volume={audioUrl?.42:1} startFrom={Math.round(Number(musicStartSeconds||0)*fps)} endAt={Math.round((Number(musicStartSeconds||0)+Number(musicDurationSeconds||25))*fps)}/>:null}
+  {audioUrl?<Audio src={audioUrl} volume={musicUrl ? 0.55 : 1}/>:null}
+  {musicUrl?<Audio src={musicUrl} volume={audioUrl ? 0.42 : 1} startFrom={Math.round(Number(musicStartSeconds||0)*fps)} endAt={Math.round((Number(musicStartSeconds||0)+Number(musicDurationSeconds||25))*fps)}/>:null}
   {musicUrl?<AbsoluteFill style={{justifyContent:"flex-end",padding:"0 7% 13%",pointerEvents:"none"}}><div style={{alignSelf:"center",textAlign:"center",background:"linear-gradient(135deg,#090b18eF,#35124deF)",border:"2px solid #ffd166aa",borderRadius:28,padding:"22px 34px",maxWidth:"86%",color:"#fff",fontFamily:"Arial,sans-serif",boxShadow:"0 0 55px #ff4f9155"}}><div style={{fontSize:34,fontWeight:900,color:"#ffd166"}}>♫ ORIGINAL RELEASE</div><div style={{fontSize:42,fontWeight:900,marginTop:8}}>{title}</div><div style={{fontSize:25,opacity:.9,marginTop:8}}>{artist}</div><div style={{fontSize:20,opacity:.8,marginTop:10}}>LISTEN • SAVE • SHARE</div></div></AbsoluteFill>:null}
  </AbsoluteFill>;
 };

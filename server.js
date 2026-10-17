@@ -85,7 +85,8 @@ async function loadTokens(req){
   const browserRefresh=getCookie(req||{headers:{}}, "acf_youtube_refresh");
   if(browserRefresh)return {refresh_token:browserRefresh};
   if(process.env.YOUTUBE_REFRESH_TOKEN)return {refresh_token:process.env.YOUTUBE_REFRESH_TOKEN};
-  const tokenDb=supabaseAdmin||supabase;
+  // OAuth tokens must only be read with the server-only service-role client.
+  const tokenDb=supabaseAdmin;
   if(tokenDb){
     try{
       const {data,error}=await tokenDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
@@ -99,7 +100,8 @@ async function loadTokens(req){
   try{return JSON.parse(fs.readFileSync(TOKEN_FILE,"utf8"));}catch{return null;}
 }
 async function saveTokens(tokens){
-  const tokenDb=supabaseAdmin||supabase;
+  // Never attempt to persist private OAuth tokens using the public publishable key.
+  const tokenDb=supabaseAdmin;
   if(tokenDb){
     try{
       const {data}=await tokenDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
@@ -2706,8 +2708,9 @@ function liveWorkerAuthorized(req){
   return {ok:true};
 }
 async function readLiveJobs(){
-  const liveDb=supabaseAdmin||supabase;
-  if(!liveDb)return {};
+  // Live jobs contain YouTube stream credentials; require the server-only client.
+  const liveDb=supabaseAdmin;
+  if(!liveDb)throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing from the Vercel runtime. Set the service-role key for project zvtlptvlfzejnmykkcjb and redeploy.");
   try{
     const {data,error}=await liveDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
     if(error)throw error;
@@ -2719,8 +2722,9 @@ async function readLiveJobs(){
   }
 }
 async function writeLiveJobs(jobs){
-  const liveDb=supabaseAdmin||supabase;
-  if(!liveDb)throw new Error("Supabase is required for persistent YouTube Live state.");
+  // Live jobs contain YouTube stream credentials; never fall back to the public key.
+  const liveDb=supabaseAdmin;
+  if(!liveDb)throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing from the Vercel runtime. Set the service-role key for project zvtlptvlfzejnmykkcjb and redeploy.");
   const {data,error}=await liveDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
   if(error)throw error;
   const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};

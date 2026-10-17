@@ -2850,7 +2850,7 @@ app.get("/api/live/worker/status",async(req,res)=>{
 });
 app.post("/api/live/create",requireAppKey,async(req,res)=>{
   try{
-    const job=await createYouTubeLiveJob({dateKey:String(req.body?.dateKey||"").trim()||undefined,privacyStatus:req.body?.privacyStatus});
+    const job=await createYouTubeLiveJob({dateKey:String(req.body?.dateKey||"").trim()||undefined,privacyStatus:req.body?.privacyStatus, ...{req}});
     res.json({ok:true,job});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });

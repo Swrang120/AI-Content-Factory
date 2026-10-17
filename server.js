@@ -18,7 +18,8 @@ const SUPABASE_URL="https://zvtlptvlfzejnmykkcjb.supabase.co";
 // Prefer the explicitly configured current publishable key and never let an old
 // service-role value override the Music Library project/key pair.
 const SUPABASE_KEY=process.env.SUPABASE_PUBLISHABLE_KEY||"";
-const SUPABASE_SERVICE_KEY=process.env.SUPABASE_SERVICE_ROLE_KEY||"";
+// Prefer the current Supabase secret key; keep legacy service-role support during migration.
+const SUPABASE_SERVICE_KEY=process.env.SUPABASE_SECRET_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY||"";
 const supabase=(SUPABASE_URL&&SUPABASE_KEY)?createClient(SUPABASE_URL,SUPABASE_KEY):null;
 const supabaseAdmin=(SUPABASE_URL&&SUPABASE_SERVICE_KEY)?createClient(SUPABASE_URL,SUPABASE_SERVICE_KEY,{auth:{autoRefreshToken:false,persistSession:false}}):null;
 const MUSIC_STORAGE_BUCKET="music-library";
@@ -2710,7 +2711,7 @@ function liveWorkerAuthorized(req){
 async function readLiveJobs(){
   // Live jobs contain YouTube stream credentials; require the server-only client.
   const liveDb=supabaseAdmin;
-  if(!liveDb)throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing from the Vercel runtime. Set the service-role key for project zvtlptvlfzejnmykkcjb and redeploy.");
+  if(!liveDb)throw new Error("SUPABASE_SECRET_KEY (recommended) or SUPABASE_SERVICE_ROLE_KEY is missing from the Vercel runtime. Set a server-only secret key for project zvtlptvlfzejnmykkcjb in Vercel and redeploy.");
   try{
     const {data,error}=await liveDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
     if(error)throw error;
@@ -2724,7 +2725,7 @@ async function readLiveJobs(){
 async function writeLiveJobs(jobs){
   // Live jobs contain YouTube stream credentials; never fall back to the public key.
   const liveDb=supabaseAdmin;
-  if(!liveDb)throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing from the Vercel runtime. Set the service-role key for project zvtlptvlfzejnmykkcjb and redeploy.");
+  if(!liveDb)throw new Error("SUPABASE_SECRET_KEY (recommended) or SUPABASE_SERVICE_ROLE_KEY is missing from the Vercel runtime. Set a server-only secret key for project zvtlptvlfzejnmykkcjb in Vercel and redeploy.");
   const {data,error}=await liveDb.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
   if(error)throw error;
   const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};

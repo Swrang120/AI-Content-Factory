@@ -1,9 +1,6 @@
-name: AI Content Factory Scheduler
+name: AI Content Factory Scheduler - Manual Fallback
 
 on:
-  schedule:
-    # Check the Asia/Kolkata schedule every 5 minutes; the server decides whether a slot is due.
-    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -14,27 +11,26 @@ jobs:
   trigger-factory:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - name: Check required secret
         env:
           ACF_CRON_SECRET: ${{ secrets.ACF_CRON_SECRET }}
         run: |
-          if [ -z "$ACF_CRON_SECRET" ]; then
-            echo "::error::Repository secret ACF_CRON_SECRET is missing. Add it in GitHub Settings > Secrets and variables > Actions."
+          set -euo pipefail
+          if [ -z "${ACF_CRON_SECRET:-}" ]; then
+            echo "::error title=Missing scheduler secret::Repository secret ACF_CRON_SECRET is missing. Add it in GitHub Settings > Secrets and variables > Actions."
             exit 1
           fi
-      - name: Trigger scheduled factory
+      - name: Trigger production factory
         env:
           ACF_CRON_SECRET: ${{ secrets.ACF_CRON_SECRET }}
+          FACTORY_URL: "https://ai-content-factory-zeta-ruby.vercel.app"
         run: |
-          set -eu
-          code=$(curl --silent --show-error --output response.json --write-out "%{http_code}" \
-            --max-time 180 \
-            --header "Authorization: Bearer $ACF_CRON_SECRET" \
-            "https://ai-content-factory-zeta-ruby.vercel.app/api/cron/factory")
-          cat response.json
-          echo
-          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
-            echo "::error::Factory endpoint returned HTTP $code"
-            exit 1
-          fi
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error --max-time 240 \
+            --header "Authorization: Bearer ${ACF_CRON_SECRET}" \
+            --header "Accept: application/json" \
+            "${FACTORY_URL}/api/cron/factory")"
+          echo "${response}"

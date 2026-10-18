@@ -394,7 +394,44 @@ async function youtube(req){
    };
    return incident.diagnosis;
  }
- async function fallbackTextGeneration(task,fields){
+ 
+function acfDailyContext(now=new Date()){
+ const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+ const vibes={Monday:"fresh-start and focused",Tuesday:"curious and experimental",Wednesday:"honest midweek progress",Thursday:"practical problem-solving",Friday:"celebratory but grounded",Saturday:"creative experiments and community",Sunday:"calm and reflective"};
+ return {date:now.toISOString().slice(0,10),day:days[now.getUTCDay()],vibe:vibes[days[now.getUTCDay()]]||"balanced",rule:"Simulated events must be clearly framed as skits/hypotheticals, never claimed as real creator experiences."};
+}
+function acfPlatformRules(platform="",format=""){
+ const p=String(platform+" "+format).toLowerCase();
+ if(/story/.test(p))return "Stories: informal, minimal text, polls/Q&A; never fabricate real personal updates.";
+ if(/instagram|reel/.test(p))return "Reels: strong first-frame visual, 1-2 second hook, purposeful quick cuts, readable subtitles, one idea and concise CTA.";
+ if(/youtube.*short|shorts/.test(p))return "Shorts: immediate problem/question, clear progression, payoff before ending, concise CTA.";
+ if(/youtube|long/.test(p))return "Long-form: promise and roadmap, story arc, concrete examples, clear sections and satisfying conclusion.";
+ if(/threads|twitter|(^| )x( |$)/.test(p))return "Text platforms: one defensible point, concise context, useful nuance, optional poll; no fabricated controversy.";
+ return "Adapt pacing, framing and CTA to specified platform; do not assume current platform trends without evidence.";
+}
+function acfNicheSlang(category="",language="Hindi",topic=""){
+ const c=String(category+" "+topic).toLowerCase();
+ const editing=["timeline clutter","keyframe smooth nahi hai","lag-free workflow","render crush ho gaya","colour science off lag rahi hai"];
+ const creator=["hook retention low hai","reach drop hui hai","algorithm ko blame karne se pehle analytics dekho"];
+ const common=["gazab scene","system hang","jugaad setup","khatarnak visual"];
+ const terms=/edit|video|creator|tech|ai/.test(c)?[...editing,...creator]:common;
+ return "Optional slang, use naturally and sparingly: "+terms.join("; ")+". Language: "+language+". Do not state shadowban or algorithm claims as fact without evidence.";
+}
+function acfCreativeContext(task,fields={}){
+ const x=fields&&typeof fields==="object"?fields:{};
+ return {
+  daily_context:acfDailyContext(),
+  platform_behavior:acfPlatformRules(x.platform||x.destination||x.targetPlatform||"",x.format||x.videoFormat||x.contentType||""),
+  niche_language:acfNicheSlang(x.category||x.contentCategory||"",x.language||"Hindi",x.topic||x.idea||""),
+  emotional_intelligence:"Acknowledge a real audience pain point, give one doable next step, then realistic encouragement. Do not shame, exploit insecurity or guarantee outcomes.",
+  authenticity:"Never invent the creator's real life, failures, emotions, audience or recurring commenters. Use personal anecdotes only when supplied; otherwise label them as fictional skits/examples.",
+  trend_jacking:"Use current-event angles only when dated, reliable source evidence is supplied or live search is actually available. Otherwise use evergreen ideas and mark trend status unverified.",
+  continuity:"Use only supplied/stored post history, inside jokes, comment history and analytics. Never claim memory or recognize a follower without evidence.",
+  brand_and_safety:"No manufactured controversy, harassment, fake claims or guaranteed earnings/results. Disclose commercial relationships when relevant.",
+  task:String(task||"")
+ };
+}
+async function fallbackTextGeneration(task,fields){
    // Try all server-side Gemini key slots, without exposing key values. A single
    // stale key should not prevent a configured backup key from being used.
    // Support the legacy key plus eight explicitly numbered Vercel slots.
@@ -409,7 +446,7 @@ async function youtube(req){
    if(!keys.length)throw new Error("Gemini fallback is not configured. Add GEMINI_API_KEY_1 through GEMINI_API_KEY_8 in Vercel (or the legacy GEMINI_API_KEY).");
    const models=[process.env.GEMINI_MODEL,"gemini-3.5-flash-lite","gemini-3.5-flash","gemini-3.6-flash","gemini-3.8-flash"]
      .map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
-   const prompt=[
+   const brainContext=acfCreativeContext(task,fields);\n   const prompt=[
    "You are the creative brain of AI Content Factory: an influencer strategist, cultural researcher, niche expert, director, community manager and ethical brand strategist. You are an AI system; never claim to be a real human or fabricate personal experiences.",
    "PERSONALITY: Write naturally in the requested language, especially casual Indian Hinglish when asked. Vary sentence rhythm, conversational pauses and emoji use contextually. Avoid forced slang, repetitive greetings, corporate tone and robotic phrasing.",
    "HUMAN BEHAVIOUR: Identify the intended audience, their knowledge, pain point, curiosity, emotional context and likely objection. Use curiosity, surprise, empathy, humor and relatable examples without exploiting fear or misleading viewers.",
@@ -472,7 +509,7 @@ app.post("/api/thumbnail/generate",requireAppKey,async(req,res)=>{
   try{
     const {topic="",title="",style="professional cinematic",language="English",extra=""}=req.body||{};
     if(!topic&&!title)return res.status(400).json({ok:false,error:"topic or title is required"});
-    const prompt=[
+    const prompt="DYNAMIC CONTEXT LAYERS:",JSON.stringify(brainContext,null,2),[
       "Create a professional YouTube thumbnail for a private AI Content Factory.",
       "Subject/topic: "+(topic||title),
       "Thumbnail title text: "+(title||topic),

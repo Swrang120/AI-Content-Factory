@@ -19,7 +19,25 @@ const defaultData={
   schedule:[],
   settings:{automationOnline:true,autoGenerate:true,approval:false,autoPublish:true}
 };
-let data=JSON.parse(localStorage.getItem(KEY)||"null")||defaultData;
+let data;
+try {
+  const stored=JSON.parse(localStorage.getItem(KEY)||"null");
+  data=stored&&typeof stored==="object"&&!Array.isArray(stored)?{
+    ...defaultData,
+    ...stored,
+    categories:Array.isArray(stored.categories)?stored.categories:defaultData.categories,
+    content:Array.isArray(stored.content)?stored.content:defaultData.content,
+    schedule:Array.isArray(stored.schedule)?stored.schedule:defaultData.schedule,
+    settings:stored.settings&&typeof stored.settings==="object"&&!Array.isArray(stored.settings)?{...defaultData.settings,...stored.settings}:defaultData.settings
+  }:structuredClone(defaultData);
+} catch (error) {
+  console.warn("ACF saved browser data was invalid; using safe defaults.",error);
+  data=structuredClone(defaultData);
+  try { localStorage.removeItem(KEY); } catch (_) {}
+}
+if(!Array.isArray(data.categories)) data.categories=structuredClone(defaultData.categories);
+if(!Array.isArray(data.content)) data.content=structuredClone(defaultData.content);
+if(!Array.isArray(data.schedule)) data.schedule=[];
 let contentSyncTimer=null;
 async function syncReadyContent(){
   try{

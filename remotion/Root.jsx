@@ -31,9 +31,27 @@ const THEMES={
 function CategoryVisual({kind,theme,index}){
  const f=useCurrentFrame();
  const pulse=1+Math.sin(f/8)*.06;
- if(kind==="music")return <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",gap:12,opacity:.88,transform:`scale(${pulse})`}}>
-  {Array.from({length:31},(_,i)=><div key={i} style={{width:8,borderRadius:12,height:34+Math.abs(Math.sin((f/5)+i*.72))*220,background:`linear-gradient(180deg,${theme.c},${theme.a})`,boxShadow:`0 0 24px ${theme.a}66`}}/>)}
- </div>;
+ if(kind==="music"){
+  if(index%3===0)return <svg viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice" style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:.9}}>
+   <defs><linearGradient id="nightSky" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#080d20"/><stop offset="55%" stopColor={theme.b}/><stop offset="100%" stopColor="#101629"/></linearGradient></defs>
+   <rect width="1000" height="1000" fill="url(#nightSky)"/>
+   {Array.from({length:28},(_,i)=><circle key={"star"+i} cx={(i*173)%1000} cy={(i*97)%700} r={1+(i%3)} fill="#fff" opacity={.35+(i%5)*.1}/>)}
+   <circle cx="760" cy="230" r="105" fill={theme.c} opacity=".86"/><circle cx="800" cy="195" r="105" fill="#11152a"/>
+   {Array.from({length:18},(_,i)=><line key={"rain"+i} x1={(i*67+f*2)%1050} y1="0" x2={(i*67+f*2)%1050-90} y2="1000" stroke="#a9d8ff" strokeWidth="3" opacity=".25"/>)}
+   <path d="M0 800 L100 690 L210 770 L330 620 L430 790 L550 670 L700 810 L820 650 L1000 790 L1000 1000 L0 1000 Z" fill="#080d18" opacity=".95"/>
+   <rect x="105" y="510" width="240" height="340" rx="8" fill="#070a13" stroke={theme.a} strokeWidth="8"/><path d="M225 510 V850 M105 680 H345" stroke="#b9dfff" strokeWidth="6" opacity=".6"/>
+   {Array.from({length:12},(_,i)=><rect key={"city"+i} x={390+i*48} y={650+(i%4)*35} width="35" height={250-(i%4)*35} fill="#080b16" stroke="#ffffff18" strokeWidth="2"/>)}
+  </svg>;
+  if(index%3===1)return <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",gap:10,opacity:.9,transform:`scale(${pulse})`}}>
+   {Array.from({length:25},(_,i)=><div key={i} style={{width:8,borderRadius:12,height:25+Math.abs(Math.sin((f/5)+i*.72))*150,background:`linear-gradient(180deg,${theme.c},${theme.a})`,boxShadow:`0 0 24px ${theme.a}66`}}/>)}
+  </div>;
+  return <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:.8}}>
+   <div style={{width:"58%",height:"58%",borderRadius:"50%",border:"2px solid #ffffff44",boxShadow:`0 0 60px ${theme.a}66,inset 0 0 70px ${theme.b}88`,transform:`scale(${pulse}) rotate(${f/8}deg)`}}>
+    <div style={{position:"absolute",left:"15%",right:"15%",top:"48%",height:3,background:theme.c,boxShadow:`0 0 35px ${theme.c}`}}/>
+    <div style={{position:"absolute",left:"30%",right:"30%",top:"25%",height:"50%",borderLeft:`3px solid ${theme.a}`,borderRight:`3px solid ${theme.a}`,opacity:.6}}/>
+   </div>
+  </div>;
+ }
  if(kind==="editing")return <div style={{position:"absolute",left:"7%",right:"7%",bottom:"17%",height:"30%",padding:18,border:"2px solid #ffffff44",borderRadius:24,background:"#06101ed9",boxShadow:"0 24px 80px #0008"}}>
   <div style={{display:"flex",gap:9,marginBottom:12}}>{["#ff6b6b",theme.c,theme.a].map((c,i)=><i key={i} style={{width:12,height:12,borderRadius:20,background:c}}/>)}<span style={{color:"#fff9",fontSize:17,marginLeft:8}}>EDIT TIMELINE · BEFORE → AFTER</span></div>
   {[0,1,2].map((row)=><div key={row} style={{height:24,margin:"7px 0",borderRadius:8,width:`${92-row*13}%`,background:`linear-gradient(90deg,${theme.a},${theme.b} 48%,${theme.c})`,transform:`translateX(${Math.sin(f/12+row)*12}px)`}}/>)}

@@ -75,7 +75,7 @@ function Scene({text,index,total,kind,theme,title}){
  const opacity=interpolate(local,[0,10,Math.max(11,per-10),per],[0,1,1,0],{extrapolateLeft:"clamp",extrapolateRight:"clamp"});
  const y=interpolate(local,[0,18],[35,0],{extrapolateRight:"clamp"});
  return <Sequence from={index*per} durationInFrames={per+2}>
-  <AbsoluteFill style={{background:`radial-gradient(ellipse at 78% 24%, ${theme.b} 0%, transparent 48%),linear-gradient(145deg,#050914,#101b2e 55%,#080d18)`,color:"#fff",fontFamily:"Arial,sans-serif",opacity,overflow:"hidden"}}>
+  <AbsoluteFill style={{background:index%2===0?`radial-gradient(ellipse at ${28+(index*19)%55}% ${18+(index*13)%42}%, ${theme.b} 0%, transparent 52%),linear-gradient(${125+(index*17)%90}deg,#050914,#101b2e 55%,#080d18)`:`radial-gradient(ellipse at ${70-(index*11)%45}% 72%, ${theme.a}33 0%, transparent 45%),linear-gradient(${145+(index*23)%70}deg,#090d1b,${theme.b}55 55%,#070a14)`,color:"#fff",fontFamily:"Arial,sans-serif",opacity,overflow:"hidden"}}>
    <div style={{position:"absolute",inset:0,opacity:.14,backgroundImage:"linear-gradient(#ffffff18 1px,transparent 1px),linear-gradient(90deg,#ffffff18 1px,transparent 1px)",backgroundSize:"54px 54px"}}/>
    <CategoryVisual kind={kind} theme={theme} index={index}/>
    <div style={{position:"absolute",left:"7%",right:"7%",top:"8%",display:"flex",justifyContent:"space-between",alignItems:"center"}}>

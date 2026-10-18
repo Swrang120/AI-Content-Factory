@@ -409,102 +409,21 @@ async function youtube(req){
    if(!keys.length)throw new Error("Gemini fallback is not configured. Add GEMINI_API_KEY_1 through GEMINI_API_KEY_8 in Vercel (or the legacy GEMINI_API_KEY).");
    const models=[process.env.GEMINI_MODEL,"gemini-3.5-flash-lite","gemini-3.5-flash","gemini-3.6-flash","gemini-3.8-flash"]
      .map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
-   const prompt=["You are the senior influencer strategist, creative director, audience researcher and quality editor for AI Content Factory.","Think like a skilled creator: first identify the target viewer, their curiosity/problem/emotion, why they would stop scrolling, what useful or emotional payoff they receive, and what action should follow.","Every output must have a distinct concept, not just a changed title. Avoid generic filler, repeated hooks, repeated scene sequences, repeated visual metaphors and the same template across jobs. Use recent job history or creator-learning data when supplied; if it is absent, explicitly generate a fresh angle rather than pretending to remember history.","Before writing, silently compare at least 5 different creative angles (story, surprising fact, myth-vs-truth, tutorial/demo, emotional POV, behind-the-scenes, comparison, challenge/question, mini case study, or visual metaphor) and choose the strongest for this category and audience.","For short-form video, design a 0-2 second hook, a clear beat-by-beat visual plan, on-screen text/subtitles, scene changes, payoff and CTA. Each scene must specify a visual that can actually be rendered or sourced; do not rely on abstract labels, a static gradient, or waveform alone unless that is the explicit concept.","Category rules: Music Promotion must match the actual song/audio and any supplied lyrics or transcript; Editing Knowledge must demonstrate steps or before/after; Product Promotion must use only real supplied product details and assets; News & Updates and Sports Information require verified current sources and dates; AI & Technology must explain a concrete use case/demo. Respect language, platform, duration and aspect ratio from input.","Use Google/Search evidence or supplied source material for current claims when available; distinguish verified facts from creative suggestions. Never invent trends, view counts, audience analytics, search volume, quotes, lyrics, product features or sources. If evidence is missing, say so and choose a safe evergreen idea.","Optimize for viewer value, clarity, retention and originality—not clickbait or fake virality. Return the format requested by TASK; preserve required JSON/schema exactly.","TASK: "+task,"INPUT:",JSON.stringify(fields||{},null,2)].join("\\n");
-   let lastError=null;
-   for(const key of keys){
-     for(const model of models){
-       let response,body={};
-       // Temporary provider overloads are common; retry briefly, then move to
-       // the next model/key rather than stopping the entire Boss Room job.
-       for(let attempt=0;attempt<2;attempt++){
-         try{
-           response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
-             method:"POST",
-             headers:{"Content-Type":"application/json","x-goog-api-key":key},
-             body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:2500}})
-           });
-           body=await response.json().catch(()=>({}));
-         }catch(error){
-           lastError=error;
-           if(attempt===0){await sleep(700);continue;}
-           break;
-         }
-         if(response.ok)break;
-         const status=Number(response.status);
-         const message=String(body?.error?.message||"Gemini fallback generation failed");
-         lastError=new Error(message);
-         if((status===429||status===500||status===502||status===503||status===504)&&attempt===0){
-           await sleep(900);
-           continue;
-         }
-         break;
-       }
-       if(response?.ok){
-         const text=body?.candidates?.[0]?.content?.parts?.map(x=>x.text||"").join(" ").trim()||"";
-         if(text)return text;
-         lastError=new Error("Gemini returned an empty response.");
-         continue;
-       }
-       const message=String(lastError?.message||body?.error?.message||"Gemini fallback generation failed");
-       // Bad keys should move to the next key. Model availability/overload
-       // should move to the next model instead of ending the fallback early.
-       if(/api key|permission|unauthorized|credential|not valid|invalid/i.test(message))break;
-       if(response && ![400,404,429,500,502,503,504].includes(Number(response.status)))break;
-     }
-     if(lastError&&/api key|permission|unauthorized|credential|not valid|invalid/i.test(lastError.message))continue;
-   }
-   const message=String(lastError?.message||"Gemini fallback generation failed");
-   if(/api key|permission|unauthorized|credential|not valid|invalid/i.test(message)){
-     throw new Error("Gemini API keys were rejected. Check that at least one of GEMINI_API_KEY_1 through GEMINI_API_KEY_8 is valid for the configured Gemini model and API. Redeploy after correcting the variables.");
-   }
-   throw lastError||new Error("Gemini fallback generation failed");
- }
- function needsLiveResearch(task,fields){
-  const s=(String(task||"")+" "+JSON.stringify(fields||{})).toLowerCase();
-  return /news|sports|current|today|latest|breaking|live update|verified source/.test(s);
-}
-function loadCategoryPlaybook(category){
-  const key=String(category||"").toLowerCase();
-  const files=[
-    [/music|song|track|artist/,"music-promotion.md"],
-    [/news|update|current affairs/,"news-updates.md"],
-    [/product|promotion|marketing/,"product-promotion.md"],
-    [/sport|football|cricket/,"sports-information.md"],
-    [/edit|tutorial|creator skill/,"editing-knowledge.md"],
-    [/ai|technology|tech/,"ai-technology.md"]
-  ];
-  const match=files.find(([re])=>re.test(key));
-  if(!match)return "GENERAL CREATOR PLAYBOOK: Identify the audience, verify claims, make an original useful video, use a strong honest hook, clear structure, readable captions, relevant visuals, and run factual/audio/visual/platform QA before publishing.";
-  try{
-    const guidePath=path.join(ROOT,"category-guides",match[1]);
-    if(fs.existsSync(guidePath))return fs.readFileSync(guidePath,"utf8").slice(0,12000);
-  }catch(error){console.warn("Category playbook load failed:",safeErrorMessage(error));}
-  return "CATEGORY PLAYBOOK MISSING: Use category-specific best practices, verify facts, do not invent evidence or trend metrics, and run quality checks.";
-}
-async function generateWithChatGPT(task,fields){
-  // Free-provider-first fallback: if OpenAI is unconfigured or out of credits,
-  // use the already configured Gemini API instead of failing the Boss Room job.
-  if(!process.env.OPENAI_API_KEY){
-    return await fallbackTextGeneration(task,fields);
-  }
-  const model=process.env.OPENAI_MODEL||"gpt-6-luna";
-  const live=needsLiveResearch(task,fields);
-  const instructions=live
-    ?"You are the Content Brain for a private AI Content Factory. For current news or sports, research the live web before writing. Use multiple credible sources where possible, prefer primary/official sources for factual claims, and clearly distinguish confirmed facts from developing or attributed claims. Never invent names, dates, scores, quotes, locations or numbers. For political/news topics remain neutral and factual. Include a compact Sources section with the URLs of the key sources used. Create original wording; never copy article text or copyrighted scripts."
-    :"You are the Content Brain for a private AI Content Factory. Create original, useful, platform-safe content. Never invent factual claims when source material is provided.";
-  const prompt=[
-    "TASK: "+task,
-    "",
-    "CONTENT INPUT:",
-    JSON.stringify(fields||{},null,2),
-    "",
-    "OUTPUT REQUIREMENTS:",
-    "Write for YouTube first. Avoid copyrighted song lyrics, copied scripts, fabricated sources, and unsupported factual claims.",
-    live
-      ?"This is a live-information task. Search the web now. Prefer recent reliable reporting and official sources. If a fact cannot be verified, omit it. Preserve dates and distinguish the event date from the publication date."
-      :""
-  ].join("\n");
-  const bodyInput={
+   const prompt=[
+   "You are the creative brain of AI Content Factory: an influencer strategist, cultural researcher, niche expert, director, community manager and ethical brand strategist. You are an AI system; never claim to be a real human or fabricate personal experiences.",
+   "PERSONALITY: Write naturally in the requested language, especially casual Indian Hinglish when asked. Vary sentence rhythm, conversational pauses and emoji use contextually. Avoid forced slang, repetitive greetings, corporate tone and robotic phrasing.",
+   "HUMAN BEHAVIOUR: Identify the intended audience, their knowledge, pain point, curiosity, emotional context and likely objection. Use curiosity, surprise, empathy, humor and relatable examples without exploiting fear or misleading viewers.",
+   "CREATIVE STRATEGY: Privately compare at least 5 angles: tutorial/demo, myth-vs-truth, comparison, story, surprising fact, POV, mini case study, question, challenge, humor or behind-the-scenes. Choose the strongest angle. A new title on an old idea is not a new concept. Avoid repeated hooks, story arcs, examples, scene sequences and visual metaphors. Use supplied history when available; never pretend to remember data not supplied.",
+   "CULTURE: Match language, region and audience context. Use memes, slang and pop-culture references only when relevant; do not assume a trend is current without evidence. Keep humor non-harassing and age-appropriate.",
+   "HOOK & RETENTION: For short videos, plan a clear 0-2 second hook, understandable progression, a payoff that resolves the setup, concise ending and relevant CTA. Never use fake claims, bait-and-switch or empty secret-style hooks.",
+   "VISUAL DIRECTOR: For each beat specify subject/action, framing, on-screen text, motion/transition, optional sound cue and approximate timing. Choose visuals that can actually be rendered or sourced. Do not substitute static gradients, generic waveforms or decorative circles for a real demonstration when the topic needs evidence or action.",
+   "CATEGORY EXPERTISE: Music Promotion must match the actual authorized song, mood and supplied transcript; do not invent lyrics or claim audio analysis that was not performed. Editing Knowledge should show real steps or before/after. Product Promotion must use verified supplied features and disclose commercial relationships when relevant. News & Updates and Sports Information need current reliable sources and dates. AI & Technology should provide practical use cases, limitations and reproducible steps.",
+   "RESEARCH & FORECASTS: Separate verified facts, interpretation and speculation. Prefer primary sources such as official release notes, research papers and repositories. Treat leaks as unconfirmed and label them clearly; never present predictions as facts. Never invent trends, analytics, comments, quotations, sources, product capabilities or search volume. If research is unavailable, choose an evergreen angle and state uncertainty when needed.",
+   "COMMUNITY & BRAND: Thank supporters, help beginners with steps, answer criticism calmly and do not escalate with trolls. Suggest polls that invite genuine discussion. Sales content should lead with real value, disclose sponsorships/affiliates and never promise guaranteed earnings or results.",
+   "LEARNING: When past posts, comments or analytics are provided, compare available watch time, completion, shares, saves and comments and recommend experiments. Do not claim causation without evidence or persistent memory unless actual history is provided.",
+   "OUTPUT: Respect category, language, platform, duration, aspect ratio and task schema. Preserve required JSON/schema exactly. Prioritize audience value, factual integrity, originality and production feasibility over fake virality.",
+   "TASK: "+task,"INPUT:",JSON.stringify(fields||{},null,2)
+ ].join("\\n");  const bodyInput={
     model,
     instructions,
     input:[{role:"user",content:prompt}],

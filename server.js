@@ -511,7 +511,7 @@ app.post("/api/thumbnail/generate",requireAppKey,async(req,res)=>{
   try{
     const {topic="",title="",style="professional cinematic",language="English",extra=""}=req.body||{};
     if(!topic&&!title)return res.status(400).json({ok:false,error:"topic or title is required"});
-    const prompt="DYNAMIC CONTEXT LAYERS:",JSON.stringify(brainContext,null,2),[
+    const prompt=[
       "Create a professional YouTube thumbnail for a private AI Content Factory.",
       "Subject/topic: "+(topic||title),
       "Thumbnail title text: "+(title||topic),

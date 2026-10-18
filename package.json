@@ -23,6 +23,7 @@
     "@remotion/vercel": "4.0.535",
     "@vercel/blob": "^2.6.1",
     "@remotion/studio": "4.0.535",
-    "@remotion/cli": "4.0.535"
+    "@remotion/cli": "4.0.535",
+    "@google-cloud/storage": "^7.16.0"
   }
 }

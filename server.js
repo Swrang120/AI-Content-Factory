@@ -1531,6 +1531,56 @@ app.get("/api/supabase/status",requireAppKey,async(req,res)=>{
   }catch(e){res.json({ok:true,configured:true,connected:false,error:e.message});}
 });
 app.get("/api/health",async(req,res)=>res.json({ok:true,service:"AI Content Factory",youtubeToken:!!(await loadTokens(req)),supabase:!!supabase,settings:await hydrateSettings()}));
+
+async function getGoogleCloudStorageClient(){
+  // Cloud Storage needs an IAM identity, not just GOOGLE_API_KEY.
+  // Accept a JSON service-account credential only from a server-side Vercel env var.
+  const raw=String(process.env.GOOGLE_SERVICE_ACCOUNT_JSON||"").trim();
+  if(!raw)return {client:null,reason:"service_account_not_configured"};
+  const {Storage}=require("@google-cloud/storage");
+  let credentials;
+  try{credentials=JSON.parse(raw);}catch(_){throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON.");}
+  if(credentials.type!=="service_account"||!credentials.client_email||!credentials.private_key){
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON must contain a valid service-account credential.");
+  }
+  return {client:new Storage({projectId:credentials.project_id,credentials}),reason:null};
+}
+app.get("/api/google/status",requireAppKey,async(req,res)=>{
+  const apiKey=String(process.env.GOOGLE_API_KEY||process.env.GEMINI_API_KEY||"").trim();
+  const bucketName=String(process.env.GCS_BUCKET_NAME||process.env.GOOGLE_CLOUD_STORAGE_BUCKET||"").trim();
+  const out={
+    ok:true,
+    gemini:{configured:!!apiKey,connected:false,model:process.env.GEMINI_MODEL||"gemini-2.5-flash"},
+    youtubeAnalytics:{configured:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET),usesExistingYouTubeOAuth:true,endpoint:"/api/youtube/analytics"},
+    cloudStorage:{configured:!!(bucketName&&process.env.GOOGLE_SERVICE_ACCOUNT_JSON),bucketConfigured:!!bucketName,credentialsConfigured:!!process.env.GOOGLE_SERVICE_ACCOUNT_JSON,connected:false},
+    note:"Secrets are never returned by this endpoint."
+  };
+  if(apiKey){
+    try{
+      const model=String(process.env.GEMINI_MODEL||"gemini-2.5-flash").trim();
+      const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
+        method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":apiKey},
+        body:JSON.stringify({contents:[{role:"user",parts:[{text:"Reply with exactly: GOOGLE_API_OK"}]}],generationConfig:{temperature:0,maxOutputTokens:12}})
+      });
+      const body=await response.json().catch(()=>({}));
+      out.gemini.connected=!!(response.ok&&body?.candidates?.[0]?.content?.parts?.length);
+      if(!response.ok)out.gemini.error=String(body?.error?.message||("HTTP "+response.status)).slice(0,300);
+      else out.gemini.reply=String(body?.candidates?.[0]?.content?.parts?.map(x=>x.text||"").join("")||"").slice(0,80);
+    }catch(e){out.gemini.error=String(e.message||e).slice(0,300);}
+  }
+  if(bucketName&&process.env.GOOGLE_SERVICE_ACCOUNT_JSON){
+    try{
+      const {client}=await getGoogleCloudStorageClient();
+      const [exists]=await client.bucket(bucketName).exists();
+      out.cloudStorage.connected=!!exists;
+      if(!exists)out.cloudStorage.error="Bucket not found or service account does not have permission to access it.";
+    }catch(e){out.cloudStorage.error=String(e.message||e).slice(0,300);}
+  }else if(bucketName){
+    out.cloudStorage.error="Set GOOGLE_SERVICE_ACCOUNT_JSON with a service-account JSON in Vercel to test private bucket access.";
+  }
+  res.json(out);
+});
+
 app.get("/api/youtube/config-status",async(req,res)=>{
   const redirect=String(process.env.YOUTUBE_REDIRECT_URI||"").trim();
   res.json({

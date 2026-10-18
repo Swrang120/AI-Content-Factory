@@ -407,10 +407,19 @@ async function renderSchedule(){
   view.innerHTML=`<div class="hero"><p class="eyebrow">MANUAL YOUTUBE LIVE</p><h2>🔴 Live Stream</h2><p>Live ko tum khud start aur stop karoge. Koi daily schedule nahi chalega.</p></div>
   <div class="table-card"><div class="section-head"><div><h3>📡 Live control</h3><span class="muted">YouTube · Manual session</span></div><button class="small-btn" id="liveRefresh">↻ Refresh</button></div>
   <div class="table-card" style="margin:12px 0"><h3>📺 Target YouTube Channel</h3><div id="liveChannelPanel" class="queue-meta">Connected channel check ho raha hai…</div></div>
+  <div class="form-grid" style="margin:14px 0">
+    <label class="field-label" for="liveSourceMode">Video source
+      <select id="liveSourceMode" class="input"><option value="auto">🚗 Automatic car animation (built-in)</option><option value="link">🔗 My direct video file link</option></select>
+    </label>
+    <label class="field-label" for="liveVideoUrl">Direct video URL (optional)
+      <input id="liveVideoUrl" class="input" type="url" placeholder="https://example.com/my-video.mp4" autocomplete="url">
+    </label>
+  </div>
+  <p class="queue-meta">Automatic mode creates a simple moving-car animation. Link mode needs a direct, publicly accessible HTTPS video file you own or have permission to stream. YouTube watch-page links are not direct video files.</p>
   <div id="liveStatusPanel"><div class="empty">Live status check ho raha hai…</div></div>
   <div class="table-card" style="margin:12px 0"><h3>🔗 Live / Watch Link</h3><div id="liveWatchPanel" class="queue-meta">Live banne ke baad link yahan dikhega.</div></div>
   <div class="queue-row" style="gap:10px;flex-wrap:wrap"><button class="primary-btn" id="liveStart" style="min-height:46px">▶ Start Live</button><button class="small-btn" id="liveStop" style="min-height:46px" disabled>⏹ Stop Live</button></div>
-  <p id="liveActionMessage" class="queue-meta" aria-live="polite">Start dabane par ready rendered video stream karne ke liye worker ko job milegi. Cartoon-car game source abhi configured nahi hai.</p>
+  <p id="liveActionMessage" class="queue-meta" aria-live="polite">Video source select karo, phir Start Live dabao. Stop request worker online hone par stream finalize karegi.</p>
   <div class="queue-meta">Elapsed time: <strong id="liveElapsed">00:00:00</strong></div></div>`;
   let elapsedTimer=null,refreshTimer=null,liveStartedAt=null,lastJob=null;
   const msg=document.getElementById("liveActionMessage");
@@ -426,41 +435,38 @@ async function renderSchedule(){
       const channelBox=document.getElementById("liveChannelPanel");
       if(channelBox&&!channelBox.dataset.loaded){
         channelBox.dataset.loaded="1";
-        try{
-          const cr=await fetch(apiUrl("/api/youtube/status"),{cache:"no-store",credentials:"include"});const cd=await cr.json();
-          if(cd.connected&&cd.channel?.id){
-            const channelUrl="https://www.youtube.com/channel/"+encodeURIComponent(cd.channel.id);
-            channelBox.innerHTML='<strong>'+esc(cd.channel.title||"Connected YouTube channel")+'</strong><br><a href="'+channelUrl+'" target="_blank" rel="noopener">Open target channel ↗</a><br><small>Live isi connected channel par create hoga.</small>';
-          }else{channelBox.innerHTML='<span>YouTube channel connected nahi hai. Pehle Platforms / YouTube se connect karo.</span>';}
+        try{const cr=await fetch(apiUrl("/api/youtube/status"),{cache:"no-store",credentials:"include"});const cd=await cr.json();
+          if(cd.connected&&cd.channel?.id){const channelUrl="https://www.youtube.com/channel/"+encodeURIComponent(cd.channel.id);channelBox.innerHTML='<strong>'+esc(cd.channel.title||"Connected YouTube channel")+'</strong><br><a href="'+channelUrl+'" target="_blank" rel="noopener">Open target channel ↗</a><br><small>Live isi connected channel par create hoga.</small>';}
+          else{channelBox.innerHTML='<span>YouTube channel connected nahi hai. Pehle Platforms / YouTube se connect karo.</span>';}
         }catch(_){channelBox.textContent="Target channel verify nahi ho saka. YouTube connection check karo.";}
       }
       const watchBox=document.getElementById("liveWatchPanel");
-      if(watchBox){
-        if(job?.broadcastId){
-          const watchUrl="https://www.youtube.com/watch?v="+encodeURIComponent(job.broadcastId);
-          watchBox.innerHTML='<a href="'+watchUrl+'" target="_blank" rel="noopener">Open this Live / Watch on YouTube ↗</a><br><small>Link event create hone par milta hai. YouTube par public dikhne mein broadcast live hona zaroori hai.</small>';
-        }else{watchBox.textContent="Live event create hone ke baad yahan direct YouTube watch link aayega.";}
-      }
+      if(watchBox){if(job?.broadcastId){const watchUrl="https://www.youtube.com/watch?v="+encodeURIComponent(job.broadcastId);watchBox.innerHTML='<a href="'+watchUrl+'" target="_blank" rel="noopener">Open this Live / Watch on YouTube ↗</a><br><small>YouTube par public dikhne ke liye broadcast live hona zaroori hai.</small>';}else{watchBox.textContent="Live event create hone ke baad yahan direct YouTube watch link aayega.";}}
       const active=!!job&&["scheduled","worker_claimed","starting","live","stopping"].includes(job.status);
       document.getElementById("liveStart").disabled=active;
-      document.getElementById("liveStop").disabled=!active||job.status==="stopping";
+      document.getElementById("liveStop").disabled=!active;
       if(job?.status==="live"){if(!liveStartedAt)startElapsed(job.updatedAt||job.createdAt);}
-      if(job?.status==="stopping"){msg.textContent="Stop request bhej diya gaya hai; worker stream finalize kar raha hai.";}
+      if(job?.status==="stopping"){msg.textContent="⏳ Stop request sent. Worker stream ko band/finalize karega; status refresh hota rahega.";}
+      else if(job&&active){msg.textContent="Live status: "+job.status+" · Worker: "+(job.workerStatus||"waiting");}
+      else if(job?.status==="complete"||job?.status==="completed"){msg.textContent="✅ Live session complete/stop ho gaya.";}
       box.innerHTML=job?'<div class="queue-row"><div><div class="queue-title">'+esc(job.title||"YouTube Live")+'</div><div class="queue-meta">Status: '+esc(job.status)+' · Worker: '+esc(job.workerStatus||"waiting")+'</div><div class="queue-meta">Start time: '+esc(job.scheduledStartTime||"—")+'</div>'+(job.error?'<div class="queue-meta">Error: '+esc(job.error)+'</div>':'')+'</div><span class="badge '+(job.status==="live"?"ready":"")+'">'+esc(job.status)+'</span></div>':'<div class="empty">Abhi koi active live session nahi hai.</div>';
     }catch(e){box.innerHTML='<div class="empty">Live status error: '+esc(e.message)+'</div>';}
   }
   document.getElementById("liveRefresh").addEventListener("click",refresh);
   document.getElementById("liveStart").addEventListener("click",async()=>{
     const b=document.getElementById("liveStart");b.disabled=true;msg.textContent="YouTube live event create ho raha hai…";
-    try{const r=await fetch(apiUrl("/api/live/create"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({privacyStatus:"public"})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Could not create live event");msg.textContent="Live event ready. Worker ko stream pick karne mein kuch minute lag sakte hain. Stream status refresh hota rahega.";await refresh();}
+    const mode=document.getElementById("liveSourceMode")?.value||"auto";
+    const videoUrl=(document.getElementById("liveVideoUrl")?.value||"").trim();
+    if(mode==="link"&&!videoUrl){msg.textContent="Direct video link mode select hai. Apna direct HTTPS .mp4/.m3u8 URL dalo.";b.disabled=false;return;}
+    try{const r=await fetch(apiUrl("/api/live/create"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({privacyStatus:"public",mediaSource:mode,mediaUrl:mode==="link"?videoUrl:""})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Could not create live event");msg.textContent="Live event create ho gaya. Worker online hona zaroori hai; status refresh hota rahega.";await refresh();}
     catch(e){msg.textContent="Start failed: "+e.message;b.disabled=false;}
   });
   document.getElementById("liveStop").addEventListener("click",async()=>{
     const b=document.getElementById("liveStop");b.disabled=true;msg.textContent="Stop request bhej rahe hain…";
-    try{const r=await fetch(apiUrl("/api/live/stop"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:"{}"});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Stop request failed");msg.textContent=d.message||"Stop request sent.";await refresh();}
+    try{const r=await fetch(apiUrl("/api/live/stop"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:"{}"});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Stop request failed");msg.textContent=d.message||"Stop request sent. Worker online hona chahiye.";await refresh();}
     catch(e){msg.textContent="Stop failed: "+e.message;b.disabled=false;}
   });
-  await refresh();refreshTimer=setInterval(refresh,15000);
+  await refresh();refreshTimer=setInterval(refresh,5000);
 }
 async function loadCreatorLearning(){
   const box=document.getElementById("creatorAnalytics");

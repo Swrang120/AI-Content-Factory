@@ -463,6 +463,24 @@ async function youtube(req){
   const s=(String(task||"")+" "+JSON.stringify(fields||{})).toLowerCase();
   return /news|sports|current|today|latest|breaking|live update|verified source/.test(s);
 }
+function loadCategoryPlaybook(category){
+  const key=String(category||"").toLowerCase();
+  const files=[
+    [/music|song|track|artist/,"music-promotion.md"],
+    [/news|update|current affairs/,"news-updates.md"],
+    [/product|promotion|marketing/,"product-promotion.md"],
+    [/sport|football|cricket/,"sports-information.md"],
+    [/edit|tutorial|creator skill/,"editing-knowledge.md"],
+    [/ai|technology|tech/,"ai-technology.md"]
+  ];
+  const match=files.find(([re])=>re.test(key));
+  if(!match)return "GENERAL CREATOR PLAYBOOK: Identify the audience, verify claims, make an original useful video, use a strong honest hook, clear structure, readable captions, relevant visuals, and run factual/audio/visual/platform QA before publishing.";
+  try{
+    const guidePath=path.join(ROOT,"category-guides",match[1]);
+    if(fs.existsSync(guidePath))return fs.readFileSync(guidePath,"utf8").slice(0,12000);
+  }catch(error){console.warn("Category playbook load failed:",safeErrorMessage(error));}
+  return "CATEGORY PLAYBOOK MISSING: Use category-specific best practices, verify facts, do not invent evidence or trend metrics, and run quality checks.";
+}
 async function generateWithChatGPT(task,fields){
   // Free-provider-first fallback: if OpenAI is unconfigured or out of credits,
   // use the already configured Gemini API instead of failing the Boss Room job.
@@ -904,19 +922,20 @@ async function generateAutomaticJob(item,req){
   const learningContext=creatorLearning
     ? "CREATOR PERFORMANCE LEARNINGS (use as evidence-informed guidance; do not invent stats):\n"+String(typeof creatorLearning==="string"?creatorLearning:JSON.stringify(creatorLearning)).slice(0,5000)
     : "CREATOR PERFORMANCE LEARNINGS unavailable; do not claim analytics-based personalization.";
+  const categoryPlaybook=loadCategoryPlaybook(item.category);
   const topicRaw=await generateWithChatGPT("automatic_topic",{
     category:item.category,language:item.language,format:item.format,scheduleTime:item.time,direction:item.prompt,
-    creatorLearning:learningContext,
-    requirement:"Return one original YouTube video topic/title only. Use creator performance learnings when available. For News/Sports, do not invent a current fact; return a research-needed topic if no verified source is provided."
+    categoryPlaybook,creatorLearning:learningContext,
+    requirement:"Act like a careful creator/influencer and content strategist. Consider audience fit, freshness, usefulness, search/discovery potential, novelty, evidence strength and whether this topic can be made well in the requested format. Use live trend/source evidence when available; never fabricate trend scores, search volume, virality or analytics. Prefer a specific, timely, category-correct topic over generic filler. Return one original YouTube topic/title only. For News/Sports, do not invent current facts; if no verified source is available, choose a research-needed angle."
   });
   const topic=String(topicRaw||"AI Content Factory").replace(/^["']|["']$/g,"").trim().split("\n")[0].slice(0,180);
   await setAgentState("research","WORKING",45,"Researching: "+topic,id);
   const job={id,status:"researching",topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[],createdAt:new Date().toISOString(),auto:true,scheduledSlot:item.slot};
   jobs[id]=job; saveJobs(jobs); await persistJob(job);
-  job.research=await generateWithChatGPT("research_plan",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,sourceText:"",sources:[]});
+  job.research=await generateWithChatGPT("research_plan",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,categoryPlaybook,creatorLearning:learningContext,sourceText:"",sources:[],requirement:"Research the topic before scripting. Check freshness, source quality, audience relevance, and what evidence supports the angle. Use official/primary sources when possible and corroborate important claims. For trend claims, provide the source and observed date; do not call a topic trending unless there is evidence. Return usable facts, source URLs, uncertainty, and a recommended video angle."});
   await setAgentState("research","SLEEPING",100,"Research complete",id);
   await setAgentState("script","WORKING",25,"Writing the production script",id);
-  job.script=await generateWithChatGPT("script",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,research:job.research,sources:[],creatorLearning:learningContext,requirement:"Apply evidence-informed creator learning to the hook, pacing, structure, title promise and retention plan when metrics are available. Do not claim guaranteed performance."});
+  job.script=await generateWithChatGPT("script",{topic,category:item.category,language:item.language,format:item.format,notes:item.prompt,research:job.research,categoryPlaybook, sources:[],creatorLearning:learningContext,requirement:"Act like a thoughtful category-specific influencer, researcher, editor and audience analyst—not a generic script generator. Follow the supplied category playbook. Use research evidence and real channel analytics when available; distinguish measured facts from hypotheses. Make the opening compelling within the first 1–3 seconds, deliver useful substance quickly, use a clear narrative and visual plan, natural language for the selected language, and a satisfying ending/CTA. Match pacing and scene design to the requested format. Include a title, script, scene-by-scene visual directions, caption/subtitle guidance, source notes when factual, and QA checks in a parseable structured output if supported by the task. Never invent trend data, stats, quotes, results, product claims, sports scores or news facts; never promise virality."});
   job.status="script_ready";
   await setAgentState("script","SLEEPING",100,"Script complete",id);
   await setAgentState("voice","WORKING",20,"Generating narration audio",id);

@@ -452,7 +452,43 @@ async function renderSchedule(){
     }catch(e){box.innerHTML='<div class="empty">Live status error: '+esc(e.message)+'</div>';}
   }
   async function loadSavedLiveMedia(){const box=document.getElementById("liveMediaPreview");try{const r=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Cannot load saved media");const m=d.media;document.getElementById("liveMediaDelete").disabled=!m;box.innerHTML=m?'<b>'+esc(m.title||"Saved video")+'</b><br><video controls playsinline preload="metadata" style="width:100%;max-height:240px" src="'+esc(m.videoUrl)+'"></video>':"No saved video yet.";document.getElementById("liveThumbPreview").innerHTML=m&&m.thumbnailUrl?'<img alt="Thumbnail preview" src="'+esc(m.thumbnailUrl)+'" style="width:180px;max-width:100%;border-radius:10px">':"";if(m)document.getElementById("liveMediaTitle").value=m.title||"";}catch(e){box.textContent="Saved video: "+e.message;}}
-  document.getElementById("liveMediaUpload").addEventListener("click",async()=>{const btn=document.getElementById("liveMediaUpload"),vf=document.getElementById("liveVideoFile").files[0],tf=document.getElementById("liveThumbFile").files[0];if(!vf){msg.textContent="Pehle video file select karo.";return;}if(vf.size>500*1024*1024||tf&&tf.size>10*1024*1024){msg.textContent="Video max 500 MB aur thumbnail max 10 MB hona chahiye.";return;}btn.disabled=true;msg.textContent="Uploading…";try{const upload=async(file)=>{const r=await fetch(apiUrl("/api/media/presign"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({filename:file.name,contentType:file.type||"application/octet-stream"})}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Upload URL failed");const put=await fetch(d.uploadUrl,{method:"PUT",headers:{"Content-Type":file.type||"application/octet-stream"},body:file});if(!put.ok)throw new Error("File upload failed "+put.status);return {url:d.uploadUrl.split("?")[0],pathname:d.pathname,filename:file.name,size:file.size,contentType:file.type};};const video=await upload(vf),thumbnail=tf?await upload(tf):null;const r=await fetch(apiUrl("/api/live/media"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({title:document.getElementById("liveMediaTitle").value.trim()||vf.name,video,thumbnail})}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Save failed");msg.textContent="Video saved.";await loadSavedLiveMedia();}catch(e){msg.textContent="Upload failed: "+e.message;}finally{btn.disabled=false;}});
+  document.getElementById("liveMediaUpload").addEventListener("click",async()=>{
+    const btn=document.getElementById("liveMediaUpload"),vf=document.getElementById("liveVideoFile").files[0],tf=document.getElementById("liveThumbFile").files[0],preview=document.getElementById("liveMediaPreview");
+    if(!vf){msg.textContent="Pehle video file select karo.";return;}
+    if(vf.size>500*1024*1024||tf&&tf.size>10*1024*1024){msg.textContent="Video max 500 MB aur thumbnail max 10 MB hona chahiye.";return;}
+    btn.disabled=true;btn.textContent="⏳ Uploading…";document.getElementById("liveMediaDelete").disabled=true;
+    const fmtSize=n=>n<1024*1024?(n/1024).toFixed(0)+" KB":(n/1024/1024).toFixed(1)+" MB";
+    const progress=(label,pct,detail)=>{const safePct=Math.max(0,Math.min(100,Math.round(pct)));preview.innerHTML='<div style="font-weight:700;margin-bottom:6px">'+esc(label)+' · '+safePct+'%</div><div style="height:10px;background:#203044;border-radius:8px;overflow:hidden"><div style="height:100%;width:'+safePct+'%;background:#38bdf8;transition:width .2s"></div></div><div style="margin-top:6px;font-size:12px">'+esc(detail||"Please keep this page open.")+'</div>';};
+    const upload=async(file,label,base,weight)=>{
+      progress(label,base,"Preparing secure upload · "+fmtSize(file.size));
+      const r=await fetch(apiUrl("/api/media/presign"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({filename:file.name,contentType:file.type||"application/octet-stream"})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.ok)throw new Error(d.error||("Could not prepare upload (HTTP "+r.status+")"));
+      await new Promise((resolve,reject)=>{
+        const xhr=new XMLHttpRequest();xhr.open("PUT",d.uploadUrl);xhr.setRequestHeader("Content-Type",file.type||"application/octet-stream");
+        xhr.upload.onprogress=e=>{if(e.lengthComputable){const p=e.loaded/e.total;progress(label,base+p*weight,fmtSize(e.loaded)+" / "+fmtSize(e.total)+" uploaded");}};
+        xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){progress(label,base+weight,"Upload bytes sent; verifying storage response…");resolve();}else reject(new Error("Storage upload failed (HTTP "+xhr.status+")."));};
+        xhr.onerror=()=>reject(new Error("Network error during upload. Check connection and try again."));
+        xhr.onabort=()=>reject(new Error("Upload cancelled."));
+        xhr.send(file);
+      });
+      return {url:d.uploadUrl.split("?")[0],pathname:d.pathname,filename:file.name,size:file.size,contentType:file.type};
+    };
+    try{
+      const video=await upload(vf,"Uploading video",0,tf?82:94);
+      const thumbnail=tf?await upload(tf,"Uploading thumbnail",82,12):null;
+      progress("Saving video details",97,"Almost done — registering the saved video.");
+      const r=await fetch(apiUrl("/api/live/media"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({title:document.getElementById("liveMediaTitle").value.trim()||vf.name,video,thumbnail})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.ok)throw new Error(d.error||("Could not save video (HTTP "+r.status+")"));
+      progress("✅ Upload complete",100,"Video saved successfully. You can now start Live.");
+      await loadSavedLiveMedia();
+      msg.textContent="✅ Video uploaded and saved successfully. Start Live ab use kar sakte ho.";
+    }catch(e){
+      msg.textContent="❌ Upload failed: "+e.message;
+      preview.innerHTML='<div style="color:#fca5a5;font-weight:700">❌ Upload failed</div><div style="margin-top:6px">'+esc(e.message)+'</div><div style="font-size:12px;margin-top:6px">Saved video ko delete nahi kiya gaya. Network check karke dobara try karo.</div>';
+    }finally{btn.disabled=false;btn.textContent="⬆ Upload & Save";}
+  });
   document.getElementById("liveMediaDelete").addEventListener("click",async()=>{if(!confirm("Saved video aur thumbnail delete karein?"))return;try{const r=await fetch(apiUrl("/api/live/media"),{method:"DELETE",credentials:"include"}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Delete failed");msg.textContent="Saved video deleted.";await loadSavedLiveMedia();}catch(e){msg.textContent="Delete failed: "+e.message;}});
   document.getElementById("liveRefresh").addEventListener("click",refresh);
   document.getElementById("liveStart").addEventListener("click",async()=>{

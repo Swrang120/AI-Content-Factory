@@ -2841,7 +2841,7 @@ async function selectLiveMedia(dateKey,mediaSource,mediaUrl){
     let parsed;try{parsed=new URL(raw);}catch{throw new Error("Video URL invalid hai.");}
     if(parsed.protocol!=="https:"||!parsed.hostname||parsed.username||parsed.password)throw new Error("Sirf public HTTPS direct video URL allowed hai.");
     if(/(^|\.)localhost$|^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^169\.254\./i.test(parsed.hostname))throw new Error("Private/internal URLs allowed nahi hain.");
-    if(/youtube\\.com\\/watch|youtu\\.be\\//i.test(raw))throw new Error("YouTube watch-page URL direct stream source nahi hai. Direct authorized media URL do.");
+    if((/youtube\.com$/i.test(parsed.hostname)&&parsed.pathname==="/watch")||/youtu\.be$/i.test(parsed.hostname))throw new Error("YouTube watch-page URL direct stream source nahi hai. Direct authorized media URL do.");
     // Convert a public Google Drive sharing link to its download endpoint.
     // Large files may trigger Google's confirmation page and then need a direct file URL.
     if(/(^|\\.)drive\\.google\\.com$/i.test(parsed.hostname)){

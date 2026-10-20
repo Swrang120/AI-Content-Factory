@@ -1031,7 +1031,15 @@ async function runAutomaticFactory(req){
     try{results.push(await generateAutomaticJob(item,req));}
     catch(e){results.push({ok:false,category:item.category,time:item.time,error:e.message});}
   }
-  return {ok:true,enabled:true,due:due.map(x=>x.category),results,bossUploads:bossResults};
+  const failedResults=results.filter(r=>!r.ok);
+  return {
+    ok:failedResults.length===0,
+    enabled:true,
+    due:due.map(x=>x.category),
+    results,
+    bossUploads:bossResults,
+    ...(failedResults.length?{message:"Scheduled job did not complete successfully; inspect results[].error and retry the failed stage."}:{})
+  };
 }
 
 app.post("/api/content/sync",requireAppKey,async(req,res)=>{

@@ -20,7 +20,7 @@ const defaultData={
   schedule:[],
   settings:{automationOnline:true,autoGenerate:true,approval:false,autoPublish:true}
 };
-let data=JSON.parse(localStorage.getItem(KEY)||"null")||defaultData;
+let data=(()=>{try{const saved=JSON.parse(localStorage.getItem(KEY)||"null");if(!saved||typeof saved!=="object")return structuredClone(defaultData);return {...structuredClone(defaultData),...saved,categories:Array.isArray(saved.categories)?saved.categories:structuredClone(defaultData.categories),content:Array.isArray(saved.content)?saved.content:structuredClone(defaultData.content),schedule:Array.isArray(saved.schedule)?saved.schedule:[],settings:{...defaultData.settings,...(saved.settings&&typeof saved.settings==="object"?saved.settings:{})}};}catch(_){return structuredClone(defaultData);}})();
 let contentSyncTimer=null;
 async function syncReadyContent(){
   try{

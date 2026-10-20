@@ -408,8 +408,9 @@ async function renderSchedule(){
   <div class="table-card"><div class="section-head"><div><h3>📡 Live control</h3><span class="muted">YouTube · Manual session</span></div><button class="small-btn" id="liveRefresh">↻ Refresh</button></div>
   <div class="table-card" style="margin:12px 0"><h3>📺 Target YouTube Channel</h3><div id="liveChannelPanel" class="queue-meta">Connected channel check ho raha hai…</div></div>
   <div class="table-card" style="margin:14px 0;padding:14px">
-    <h3>🎞️ Live video upload</h3><p class="queue-meta">Upload once and reuse this saved video whenever you start Live.</p>
-    <label class="field-label" for="liveVideoFile">Video file (MP4 recommended)<input id="liveVideoFile" class="input" type="file" accept="video/mp4,video/*"></label>
+    <h3>🎞️ Live video source</h3><p class="queue-meta">Video upload karo ya public Google Drive sharing link paste karo. Drive file access “Anyone with the link” hona chahiye.</p>
+    <label class="field-label" for="liveDriveUrl">Google Drive video link (optional)<input id="liveDriveUrl" class="input" type="url" placeholder="https://drive.google.com/file/d/FILE_ID/view"></label><div class="queue-meta" style="margin:5px 0 12px">Drive link use karoge toh large video ko phone se dobara upload nahi karna padega. Link public-accessible hona chahiye.</div>
+    <label class="field-label" for="liveVideoFile">Or upload video file (MP4 recommended)<input id="liveVideoFile" class="input" type="file" accept="video/mp4,video/*"></label>
     <div style="margin-top:10px"><label class="field-label" for="liveThumbFile">Thumbnail image (optional)<input id="liveThumbFile" class="input" type="file" accept="image/jpeg,image/png,image/webp"></label></div>
     <div style="margin-top:10px"><label class="field-label" for="liveMediaTitle">Video title<input id="liveMediaTitle" class="input" maxlength="100" placeholder="My live video"></label></div>
     <div class="queue-row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveMediaUpload" type="button">⬆ Upload & Save</button><button class="small-btn" id="liveMediaDelete" type="button" disabled>🗑 Delete saved video</button></div>
@@ -493,7 +494,21 @@ async function renderSchedule(){
   document.getElementById("liveRefresh").addEventListener("click",refresh);
   document.getElementById("liveStart").addEventListener("click",async()=>{
     const b=document.getElementById("liveStart");b.disabled=true;msg.textContent="YouTube live event create ho raha hai…";
-    try{const saved=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"});const sm=await saved.json();if(!saved.ok||!sm.ok||!sm.media)throw new Error("Pehle video upload aur save karo.");const r=await fetch(apiUrl("/api/live/create"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({privacyStatus:"public",mediaSource:"saved"})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Could not create live event");msg.textContent="Live event create ho gaya. Worker online hona zaroori hai; status refresh hota rahega.";await refresh();}
+    try{
+      const driveUrl=document.getElementById("liveDriveUrl").value.trim();
+      let payload={privacyStatus:"public",mediaSource:"saved"};
+      if(driveUrl){
+        if(!/^https:\/\/(drive\.google\.com|docs\.google\.com)\//i.test(driveUrl))throw new Error("Google Drive ka valid sharing link paste karo.");
+        payload={privacyStatus:"public",mediaSource:"link",mediaUrl:driveUrl};
+        msg.textContent="Google Drive link validate karke Live source prepare kar rahe hain…";
+      }else{
+        const saved=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"});const sm=await saved.json();
+        if(!saved.ok||!sm.ok||!sm.media)throw new Error("Video upload karo ya Google Drive link paste karo.");
+      }
+      const r=await fetch(apiUrl("/api/live/create"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(payload)});const d=await r.json();
+      if(!r.ok||!d.ok)throw new Error(d.error||"Could not create live event");
+      msg.textContent="Live event create ho gaya. Worker online hona zaroori hai; status refresh hota rahega.";await refresh();
+    }
     catch(e){msg.textContent="Start failed: "+e.message;b.disabled=false;}
   });
   document.getElementById("liveStop").addEventListener("click",async()=>{

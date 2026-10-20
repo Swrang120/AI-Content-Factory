@@ -605,50 +605,70 @@ app.post("/api/self-heal/fix-now",requireAppKey,async(req,res)=>{
 });
 app.post("/api/self-heal/test",requireAppKey,async(req,res)=>{try{const incident=rememberIncident(new Error("Self-heal test incident"),{route:"/api/self-heal/test",operation:"diagnostic_test",status:503});const diagnosis=await diagnoseIncident(incident);res.json({ok:true,incident:{id:incident.id,message:incident.message},diagnosis});}catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}});
 
-function requireElevenLabs(){if(!process.env.ELEVENLABS_API_KEY)throw new Error("ElevenLabs is not configured. Add ELEVENLABS_API_KEY on the server.");}
+function requireSarvam(){
+  if(!process.env.SARVAM_API_KEY)throw new Error("Sarvam AI is not configured. Add SARVAM_API_KEY in Vercel Environment Variables.");
+}
 
-async function generateElevenLabsAudio(text,voiceId,modelId,languageCode){
-  requireElevenLabs();
-  const voice=voiceId||process.env.ELEVENLABS_VOICE_ID;
-  if(!voice)throw new Error("No ElevenLabs voice ID is configured for this language.");
-  const model=modelId||process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2";
+function sarvamLanguageCode(language){
+  const value=String(language||"").toLowerCase();
+  // Bulbul v4 Flash supports Hindi and Indian English. For bilingual scripts,
+  // Hindi is the primary normalization language; the bilingual speaker handles code-mixing.
+  if(value.includes("english")&&!value.includes("hindi")&&!value.includes("hinglish"))return "en-IN";
+  return "hi-IN";
+}
+
+function sarvamSpeakerForLanguage(language){
+  // One consistent bilingual voice for Hindi + English. Override in Vercel if desired.
+  return String(process.env.SARVAM_TTS_SPEAKER||"simran_enhi_customer").trim().toLowerCase();
+}
+
+async function generateSarvamAudio(text,languageCode,speaker){
+  requireSarvam();
   const cleanText=String(text||"").trim();
   if(!cleanText)throw new Error("Voice script is empty.");
-  const payload={text:cleanText,model_id:model};
-  if(languageCode)payload.language_code=languageCode;
-  const url="https://api.elevenlabs.io/v1/text-to-speech/"+encodeURIComponent(voice)+"?output_format=mp3_44100_128";
-  const r=await fetch(url,{method:"POST",headers:{"xi-api-key":process.env.ELEVENLABS_API_KEY,"Content-Type":"application/json","Accept":"audio/mpeg"},body:JSON.stringify(payload)});
-  if(!r.ok){
-    let body={};try{body=await r.json();}catch{}
-    const detail=body?.detail;
-    const message=typeof detail==="string"?detail:(detail?.message||detail?.status||body?.message||"");
-    throw new Error("ElevenLabs HTTP "+r.status+(message?": "+String(message):" — check API key, voice ID, model access and quota."));
+  if(cleanText.length>2500)throw new Error("Sarvam Bulbul v4 Flash REST accepts up to 2,500 characters per request. Shorten the script or split long narration into smaller scenes.");
+  const payload={
+    text:cleanText,
+    model:process.env.SARVAM_TTS_MODEL||"bulbul:v4-flash",
+    language_code:languageCode||"hi-IN",
+    speaker:speaker||"simran_enhi_customer",
+    speech_sample_rate:24000,
+    output_audio_codec:"mp3",
+    enable_preprocessing:true
+  };
+  const response=await fetch("https://api.sarvam.ai/text-to-speech",{
+    method:"POST",
+    headers:{
+      "api-subscription-key":process.env.SARVAM_API_KEY,
+      "Content-Type":"application/json",
+      "Accept":"application/json"
+    },
+    body:JSON.stringify(payload)
+  });
+  if(!response.ok){
+    let body={};try{body=await response.json();}catch{}
+    const message=body?.message||body?.error?.message||body?.detail||body?.error||"";
+    throw new Error("Sarvam TTS HTTP "+response.status+(message?": "+String(message).slice(0,400):" — check API key, model, speaker and available credits."));
   }
-  const audio=Buffer.from(await r.arrayBuffer());
-  const contentType=String(r.headers.get("content-type")||"").toLowerCase();
-  if(!audio.length||contentType.includes("application/json")||contentType.includes("text/html")){
-    throw new Error("ElevenLabs returned an empty or non-audio response (content-type: "+(contentType||"unknown")+", bytes: "+audio.length+").");
-  }
+  const result=await response.json();
+  const encoded=Array.isArray(result?.audios)?result.audios.join(""):"";
+  if(!encoded)throw new Error("Sarvam returned no audio data. Check the selected model, speaker and script.");
+  const audio=Buffer.from(encoded,"base64");
+  if(!audio.length||audio.length<100)throw new Error("Sarvam returned an empty or invalid audio file.");
   return audio;
 }
-function voiceForLanguage(language){
-  const value=String(language||"").toLowerCase();
-  if(value.includes("hindi"))return process.env.ELEVENLABS_HINDI_VOICE_ID||process.env.ELEVENLABS_HINDI_BOY_VOICE_ID_2||process.env.ELEVENLABS_HINDI_BOY_VOICE_ID_1||process.env.ELEVENLABS_VOICE_ID||"7b9mYhmnp0y2qSH1FnBL";
-  if(value.includes("english"))return process.env.ELEVENLABS_ENGLISH_VOICE_ID||process.env.ELEVENLABS_ENGLISH_BOY_VOICE_ID||process.env.ELEVENLABS_VOICE_ID||"2zRM7PkgwBPiau2jvVXc";
-  return process.env.ELEVENLABS_VOICE_ID||process.env.ELEVENLABS_ENGLISH_VOICE_ID||process.env.ELEVENLABS_ENGLISH_BOY_VOICE_ID||"2zRM7PkgwBPiau2jvVXc";
-}
+
 async function runVoiceForJob(job){
-  if(!process.env.ELEVENLABS_API_KEY)return {status:"voice_waiting_api",error:"ElevenLabs API key is not configured."};
+  if(!process.env.SARVAM_API_KEY)return {status:"voice_waiting_api",error:"Sarvam AI API key is not configured. Add SARVAM_API_KEY in Vercel and redeploy."};
   if(!job.script)return {status:"voice_waiting_script",error:"Script is not ready."};
-  const selectedVoice=voiceForLanguage(job.language);
-  if(!selectedVoice)return {status:"voice_waiting_voice",error:"No ElevenLabs voice ID is configured for "+String(job.language||"the selected language")+"."};
-  const language=String(job.language||"").toLowerCase();
-  const languageCode=language.includes("assamese")?"as":language.includes("hindi")?"hi":undefined;
-  const audio=await generateElevenLabsAudio(job.script,selectedVoice,process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",languageCode);
+  const selectedSpeaker=sarvamSpeakerForLanguage(job.language);
+  const languageCode=sarvamLanguageCode(job.language);
+  const model=process.env.SARVAM_TTS_MODEL||"bulbul:v4-flash";
+  const audio=await generateSarvamAudio(job.script,languageCode,selectedSpeaker);
   const {put}=await import("@vercel/blob");
   const blob=await put("voices/"+job.id+".mp3",audio,{access:"public",contentType:"audio/mpeg",...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
-  if(!blob?.url)throw new Error("Voice audio was generated but Vercel Blob did not return a playable URL.");
-  job.voice={status:"ready",file:blob.url,model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voiceId:selectedVoice,bytes:audio.length,generatedAt:new Date().toISOString()};
+  if(!blob?.url)throw new Error("Sarvam generated audio but Vercel Blob did not return a playable URL.");
+  job.voice={status:"ready",file:blob.url,model,voiceId:selectedSpeaker,speaker:selectedSpeaker,languageCode,provider:"sarvam",bytes:audio.length,generatedAt:new Date().toISOString()};
   job.status="voice_ready";
   job.updatedAt=new Date().toISOString();
   return job.voice;

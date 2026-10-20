@@ -2842,16 +2842,13 @@ async function selectLiveMedia(dateKey,mediaSource,mediaUrl){
     if(parsed.protocol!=="https:"||!parsed.hostname||parsed.username||parsed.password)throw new Error("Sirf public HTTPS direct video URL allowed hai.");
     if(/(^|\.)localhost$|^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^169\.254\./i.test(parsed.hostname))throw new Error("Private/internal URLs allowed nahi hain.");
     if((/youtube\.com$/i.test(parsed.hostname)&&parsed.pathname==="/watch")||/youtu\.be$/i.test(parsed.hostname))throw new Error("YouTube watch-page URL direct stream source nahi hai. Direct authorized media URL do.");
-    // Convert a public Google Drive sharing link to its download endpoint.
-    // Large files may trigger Google's confirmation page and then need a direct file URL.
-    if(/(^|\\.)drive\\.google\\.com$/i.test(parsed.hostname)){
+    // Convert a public Google Drive sharing link without regex path parsing.
+    if(parsed.hostname.toLowerCase()==="drive.google.com"||parsed.hostname.toLowerCase().endsWith(".drive.google.com")){
       let fileId="";
-      const pathMatch=parsed.pathname.match(/\\/file\\/d\\/([a-zA-Z0-9_-]+)/);
-      if(pathMatch)fileId=pathMatch[1];
-      if(!fileId)fileId=parsed.searchParams.get("id")||"";
+      const pathParts=parsed.pathname.split("/").filter(Boolean);
+      if(pathParts[0]==="file"&&pathParts[1]==="d"&&pathParts[2])fileId=pathParts[2];
       if(!fileId)fileId=parsed.searchParams.get("id")||"";
       if(fileId.length<10||!/^[a-zA-Z0-9_-]+$/.test(fileId))throw new Error("Google Drive link se file ID nahi mila. Standard file sharing link paste karo.");
-      if(!/^[a-zA-Z0-9_-]{10,}$/.test(fileId))throw new Error("Google Drive link se file ID nahi mila. Standard file sharing link paste karo.");
       return {mediaType:"video",mediaUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(fileId),mediaTitle:"Google Drive video"};
     }
     return {mediaType:"video",mediaUrl:raw,mediaTitle:"User-provided authorized video"};

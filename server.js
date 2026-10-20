@@ -2849,6 +2849,8 @@ async function selectLiveMedia(dateKey,mediaSource,mediaUrl){
       const pathMatch=parsed.pathname.match(/\\/file\\/d\\/([a-zA-Z0-9_-]+)/);
       if(pathMatch)fileId=pathMatch[1];
       if(!fileId)fileId=parsed.searchParams.get("id")||"";
+      if(!fileId)fileId=parsed.searchParams.get("id")||"";
+      if(fileId.length<10||!/^[a-zA-Z0-9_-]+$/.test(fileId))throw new Error("Google Drive link se file ID nahi mila. Standard file sharing link paste karo.");
       if(!/^[a-zA-Z0-9_-]{10,}$/.test(fileId))throw new Error("Google Drive link se file ID nahi mila. Standard file sharing link paste karo.");
       return {mediaType:"video",mediaUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(fileId),mediaTitle:"Google Drive video"};
     }

@@ -430,7 +430,7 @@ async function renderSchedule(){
     const box=document.getElementById("liveStatusPanel");if(!box)return;
     try{
       const r=await fetch(apiUrl("/api/live/status"),{cache:"no-store",credentials:"include"});const s=await r.json();if(!r.ok||!s.ok)throw new Error(s.error||"Live status unavailable");
-      const jobs=s.jobs||[];const job=jobs.find(x=>["scheduled","worker_claimed","starting","live","stopping"].includes(x.status))||jobs[0]||null;lastJob=job;
+      const jobs=s.jobs||[];const job=jobs.slice().sort((a,b)=>new Date(b.updatedAt||b.createdAt||0)-new Date(a.updatedAt||a.createdAt||0))[0]||null;lastJob=job;
       const channelBox=document.getElementById("liveChannelPanel");
       if(channelBox&&!channelBox.dataset.loaded){
         channelBox.dataset.loaded="1";
@@ -445,7 +445,7 @@ async function renderSchedule(){
       document.getElementById("liveStart").disabled=active;
       document.getElementById("liveStop").disabled=!active;
       if(job?.status==="live"){if(!liveStartedAt)startElapsed(job.updatedAt||job.createdAt);}
-      if(job?.status==="stopping"){msg.textContent="⏳ Stop request sent. Worker stream ko band/finalize karega; status refresh hota rahega.";}
+      if(job?.status==="stopping"){const age=Date.now()-new Date(job.updatedAt||job.createdAt||Date.now()).getTime();msg.textContent=age>120000?"⚠️ Stop pending for over 2 minutes. Worker has not confirmed stream finalization yet; check the GitHub Live Worker run.":"⏳ Stop request sent. Waiting for worker to stop FFmpeg and finalize YouTube."; }
       else if(job&&active){msg.textContent="Live status: "+job.status+" · Worker: "+(job.workerStatus||"waiting");}
       else if(job?.status==="complete"||job?.status==="completed"){msg.textContent="✅ Live session complete/stop ho gaya.";}
       box.innerHTML=job?'<div class="queue-row"><div><div class="queue-title">'+esc(job.title||"YouTube Live")+'</div><div class="queue-meta">Status: '+esc(job.status)+' · Worker: '+esc(job.workerStatus||"waiting")+'</div><div class="queue-meta">Start time: '+esc(job.scheduledStartTime||"—")+'</div>'+(job.error?'<div class="queue-meta">Error: '+esc(job.error)+'</div>':'')+'</div><span class="badge '+(job.status==="live"?"ready":"")+'">'+esc(job.status)+'</span></div>':'<div class="empty">Abhi koi active live session nahi hai.</div>';

@@ -1002,6 +1002,9 @@ async function toggleAutomationOnline(){
   }
 }
 document.getElementById("themeBtn").onclick=()=>document.body.classList.toggle("light");
-loadServerSettings().finally(()=>{setView("dashboard");setTimeout(loadCreatorLearning,500);});
+// Render the dashboard immediately; a slow or stalled server-settings request must never leave the main panel blank.
+setView("dashboard");
+setTimeout(loadCreatorLearning,500);
+Promise.race([loadServerSettings(),new Promise(resolve=>setTimeout(resolve,2500))]).catch(()=>{});
 window.setBackendUrl=function(url){const v=String(url||"").trim().replace(/\/+$/,"");if(v){localStorage.setItem("acf_backend_url",v);}else{localStorage.removeItem("acf_backend_url");}location.reload();};
 setTimeout(syncReadyContent,800);

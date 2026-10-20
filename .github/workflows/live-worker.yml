@@ -102,7 +102,21 @@ try: print("true" if json.load(sys.stdin).get("stopRequested") else "false")
 except Exception: print("false")')"
             if [ "$STOP_REQUESTED" = "true" ]; then
               echo "Manual stop requested; stopping FFmpeg."
+              # Try graceful shutdown, then force termination if FFmpeg hangs.
               kill -INT "$FFMPEG_PID" 2>/dev/null || true
+              for attempt in $(seq 1 10); do
+                kill -0 "$FFMPEG_PID" 2>/dev/null || break
+                sleep 1
+              done
+              if kill -0 "$FFMPEG_PID" 2>/dev/null; then
+                echo "FFmpeg did not exit after SIGINT; sending SIGTERM."
+                kill -TERM "$FFMPEG_PID" 2>/dev/null || true
+                sleep 3
+              fi
+              if kill -0 "$FFMPEG_PID" 2>/dev/null; then
+                echo "FFmpeg still running; sending SIGKILL."
+                kill -KILL "$FFMPEG_PID" 2>/dev/null || true
+              fi
               break
             fi
             sleep 10

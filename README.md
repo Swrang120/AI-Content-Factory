@@ -15,7 +15,7 @@ Research + Sources
   ↓
 ChatGPT Script
   ↓
-ElevenLabs Voice
+Sarvam AI Bulbul v4 Flash Voice (Hindi + English)
   ↓
 Video Production (existing Remotion path or optional FFmpeg Actions worker)
   ↓
@@ -78,10 +78,20 @@ Keep API keys, OAuth tokens, Make webhook URLs and private account data out of G
 
 Veryfi's Make app is a document OCR/data-extraction integration, not a general web-research engine, so it should only be added where document extraction is actually needed.
 
+## Sarvam AI voice setup
+
+Set these server-side Vercel Environment Variables and redeploy:
+
+- `SARVAM_API_KEY` — API key from your Sarvam dashboard (never expose it in browser code or commit it).
+- `SARVAM_TTS_MODEL` — optional; defaults to `bulbul:v4-flash`.
+- `SARVAM_TTS_SPEAKER` — optional; defaults to `simran_enhi_customer` for a consistent Hindi/English code-mixed voice.
+
+The backend sends TTS requests to Sarvam's `/text-to-speech` REST endpoint, decodes the returned base64 MP3, stores it in Vercel Blob, and passes the audio URL to the existing video-render pipeline. The current REST request limit is 2,500 characters per script. English-only jobs use `en-IN`; Hindi and mixed-language jobs use `hi-IN`. This adapter replaces ElevenLabs for new voice jobs.
+
 ## Existing integrations
 
 - ChatGPT/OpenAI content generation
-- ElevenLabs voice generation
+- Sarvam AI Bulbul v4 Flash voice generation (bilingual Hindi + Indian English)
 - YouTube OAuth/upload adapter
 - Approval and Auto Publish controls
 - AI Robot Control Room
@@ -93,7 +103,7 @@ Veryfi's Make app is a document OCR/data-extraction integration, not a general w
 - [x] Job/state model foundation
 - [x] Research → Script pipeline endpoint
 - [x] Make.com research webhook bridge
-- [x] ElevenLabs voice adapter
+- [x] Sarvam AI bilingual voice adapter
 - [x] Optional FFmpeg rendering worker
 - [ ] Persistent production database
 - [ ] End-to-end background queue dispatch

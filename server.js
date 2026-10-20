@@ -24,6 +24,10 @@ const supabase=(SUPABASE_URL&&SUPABASE_KEY)?createClient(SUPABASE_URL,SUPABASE_K
 const supabaseAdmin=(SUPABASE_URL&&SUPABASE_SERVICE_KEY)?createClient(SUPABASE_URL,SUPABASE_SERVICE_KEY,{auth:{autoRefreshToken:false,persistSession:false}}):null;
 const MUSIC_STORAGE_BUCKET="music-library";
 const BLOB_TOKEN=process.env.BLOB_READ_WRITE_TOKEN||process.env.BLOB_READ_WRITE_TOKEN_READ_WRITE_TOKEN||"";
+// Vercel's Blob SDK reads only the canonical variable name. The connected
+// store in this project exposes the token under a generated suffixed name,
+// so normalize it before any dynamic @vercel/blob import or SDK call.
+if(!process.env.BLOB_READ_WRITE_TOKEN&&BLOB_TOKEN)process.env.BLOB_READ_WRITE_TOKEN=BLOB_TOKEN;
 const SCOPES=["https://www.googleapis.com/auth/youtube.upload","https://www.googleapis.com/auth/youtube.force-ssl","https://www.googleapis.com/auth/youtube.readonly","https://www.googleapis.com/auth/yt-analytics.readonly"];
 app.use((req,res,next)=>{const origin=req.headers.origin;const allowed=["https://swrang120.github.io","https://ai-content-factory-zeta-ruby.vercel.app","https://ai-content-factory-gussvkdme-swrang120.vercel.app","https://ai-content-factory-4yj61h1a0-swrang120.vercel.app",process.env.FRONTEND_URL].filter(Boolean);const isOwnVercelPreview=typeof origin==="string"&&/^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin);if(origin&&(allowed.includes(origin)||isOwnVercelPreview)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Credentials","true");res.setHeader("Access-Control-Allow-Headers","Content-Type,X-API-Key");res.setHeader("Access-Control-Allow-Methods","GET,POST,PUT,PATCH,DELETE,OPTIONS");}if(req.method==="OPTIONS")return res.sendStatus(204);next();});
 app.use(express.json({limit:"1mb"}));

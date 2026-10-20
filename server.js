@@ -927,20 +927,35 @@ async function generateAutomaticJob(item,req){
   await setAgentState("thumb","SLEEPING",100,"Publishing metadata ready",id);
   await setAgentState("qa","WORKING",80,"Final quality and rights gate",id);
   const publishSettings=await hydrateSettings();
+  let publishError=null;
   if(job.renderedVideoUrl && publishSettings.automationOnline!==false && publishSettings.autoGenerate!==false && publishSettings.autoPublish && enabledCategory(publishSettings,job.category)){
-    await setAgentState("publisher","WORKING",45,"Uploading and scheduling on YouTube",id);
-    const scheduledAt=new Date(item.slot);
-    job.buffer=await publishVideoToBuffer({
-      videoUrl:job.renderedVideoUrl,title:job.topic,
-      description:"AI Content Factory — Hindi video. Category: "+item.category+"\n"+String(job.script||"").slice(0,1500)
-    });
-    job.status=job.buffer?.successfulChannels===3?"published":"sent_to_buffer"; job.updatedAt=new Date().toISOString();
+    await setAgentState("publisher","WORKING",45,"Uploading and scheduling through Buffer",id);
+    try{
+      job.buffer=await publishVideoToBuffer({
+        videoUrl:job.renderedVideoUrl,title:job.topic,
+        description:"AI Content Factory — Hindi video. Category: "+item.category+"\n"+String(job.script||"").slice(0,1500)
+      });
+      job.status=job.buffer?.successfulChannels===3?"published":"sent_to_buffer";
+    }catch(error){
+      publishError=safeErrorMessage(error);
+      job.status="rendered";
+      job.publishError=publishError;
+    }
+    job.updatedAt=new Date().toISOString();
     saveJobs(jobs); await persistJob(job);
+  }else if(!job.renderedVideoUrl){
+    publishError=job.renderError||job.voice?.error||"Video render did not produce a video URL.";
+  }else if(!publishSettings.autoPublish){
+    publishError="Auto-publish is OFF in publishing settings.";
+  }else if(publishSettings.automationOnline===false||publishSettings.autoGenerate===false){
+    publishError="Automation or auto-generation is OFF in settings.";
+  }else if(!enabledCategory(publishSettings,job.category)){
+    publishError="Category is disabled; publishing was blocked.";
   }
   await setAgentState("qa","SLEEPING",100,"Quality and rights checks complete",id);
-  await setAgentState("publisher","SLEEPING",100,job.status==="published"?"YouTube publish complete":"Waiting for publish approval",id);
-  await setAgentState("manager","SLEEPING",100,"Production job complete",id);
-  return {ok:true,skipped:false,jobId:id,status:job.status,topic:job.topic,videoUrl:job.renderedVideoUrl||null};
+  await setAgentState("publisher",publishError?"ERROR":"SLEEPING",100,publishError|| (job.status==="published"?"Publishing complete":"Video accepted by Buffer; destination publishing may still be pending"),id);
+  await setAgentState("manager",publishError?"ERROR":"SLEEPING",100,publishError||"Production job complete",id);
+  return {ok:!publishError && ["published","sent_to_buffer"].includes(job.status),skipped:false,jobId:id,status:job.status,topic:job.topic,videoUrl:job.renderedVideoUrl||null,...(publishError?{error:publishError}:{}),buffer:job.buffer?{successfulChannels:job.buffer.successfulChannels,failedChannels:job.buffer.failedChannels}:null};
 }
 async function processQueuedContentJob(job,req){
   const currentSettings=await hydrateSettings();

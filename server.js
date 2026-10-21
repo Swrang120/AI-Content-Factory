@@ -3022,6 +3022,26 @@ async function selectLiveMedia(dateKey,mediaSource,mediaUrl){
   // If no rendered media is available, use the built-in cartoon driving scene rendered by the FFmpeg worker.
   return {mediaType:"car_animation",mediaUrl:null,mediaTitle:"Cartoon Car Driving Live"};
 }
+async function dispatchLiveWorkerWithRetry(ghToken){
+  let last={ok:false,status:503,detail:"GitHub Actions did not respond."};
+  for(let attempt=0;attempt<4;attempt++){
+    try{
+      const response=await fetch("https://api.github.com/repos/Swrang120/AI-Content-Factory/actions/workflows/live-worker.yml/dispatches",{
+        method:"POST",
+        headers:{Authorization:"Bearer "+ghToken,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json"},
+        body:JSON.stringify({ref:"main"}),
+        signal:AbortSignal.timeout(15000)
+      });
+      const detail=response.ok?"":await response.text().catch(()=> "");
+      last={ok:response.ok,status:response.status,detail};
+      if(response.ok||![429,500,502,503,504].includes(response.status))return {ok:last.ok,status:last.status,text:async()=>last.detail};
+    }catch(error){
+      last={ok:false,status:503,detail:safeErrorMessage(error)};
+    }
+    if(attempt<3)await sleep(800*Math.pow(2,attempt));
+  }
+  return {ok:last.ok,status:last.status,text:async()=>last.detail};
+}
 async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   const now=Date.now();
   const targetDate=dateKey||liveDateKey(new Date(now+10*60000));

@@ -3085,6 +3085,10 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   // does not sit in Upcoming for several minutes while the worker boots.
   const start=new Date(now+30*1000);
   const end=new Date(now+310*60000);
+  // Fail before creating a YouTube Upcoming event if the worker cannot be woken now.
+  // A five-minute cron fallback is too slow for the user's quick-start requirement.
+  const ghToken=String(process.env.GITHUB_ACTIONS_TOKEN||process.env.GH_ACTIONS_TOKEN||"").trim();
+  if(!ghToken)throw new Error("Quick Live start blocked: Vercel Production mein GITHUB_ACTIONS_TOKEN missing hai. GitHub Actions write permission wala token add karo; worker trigger ke bina YouTube sirf Upcoming dikhayega.");
   const yt=await youtube(req||{headers:{}});
   const privacy=String(privacyStatus||process.env.YOUTUBE_LIVE_PRIVACY||"public");
   if(!["private","unlisted","public"].includes(privacy))throw new Error("Invalid YOUTUBE_LIVE_PRIVACY.");
@@ -3100,20 +3104,26 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   if(!ingestion.ingestionAddress||!ingestion.streamName)throw new Error("YouTube did not return RTMP ingestion information.");
   const job={id:"live_"+targetDate+"_"+Date.now().toString(36),dateKey:targetDate,day:schedule.day,title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),status:"scheduled",workerStatus:"waiting",broadcastId:broadcast.data.id,streamId:stream.data.id,ingestionAddress:ingestion.ingestionAddress,streamName:ingestion.streamName,mediaType:media.mediaType,mediaUrl:media.mediaUrl,mediaPlaylist:Array.isArray(media.mediaPlaylist)?media.mediaPlaylist:[],mediaTitle:media.mediaTitle||title,trackId:media.trackId||null,sourceJobId:media.jobId||null,privacyStatus:privacy,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
   existingJobs[targetDate]=job; await writeLiveJobs(existingJobs);
-  // Best-effort immediate worker wake-up. Without a configured GitHub Actions token,
-  // the five-minute scheduled poll remains the fallback and can delay Live startup.
-  let workerDispatch="scheduled-poll";
-  const ghToken=String(process.env.GITHUB_ACTIONS_TOKEN||process.env.GH_ACTIONS_TOKEN||"").trim();
-  if(ghToken){
-    try{
-      const response=await fetch("https://api.github.com/repos/Swrang120/AI-Content-Factory/actions/workflows/live-worker.yml/dispatches",{
-        method:"POST",
-        headers:{Authorization:"Bearer "+ghToken,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json"},
-        body:JSON.stringify({ref:"main"})
-      });
-      if(response.ok){workerDispatch="dispatched";job.workerDispatch=workerDispatch;existingJobs[targetDate]=job;await writeLiveJobs(existingJobs);}
-      else {workerDispatch="scheduled-poll";console.warn("[live] GitHub Actions dispatch failed:",response.status,await response.text().catch(()=> ""));}
-    }catch(error){console.warn("[live] GitHub Actions dispatch request failed:",safeErrorMessage(error));}
+  let workerDispatch="dispatch-failed";
+  try{
+    const response=await fetch("https://api.github.com/repos/Swrang120/AI-Content-Factory/actions/workflows/live-worker.yml/dispatches",{
+      method:"POST",
+      headers:{Authorization:"Bearer "+ghToken,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json"},
+      body:JSON.stringify({ref:"main"})
+    });
+    if(response.ok){workerDispatch="dispatched";job.workerDispatch=workerDispatch;existingJobs[targetDate]=job;await writeLiveJobs(existingJobs);}
+    else {
+      const detail=await response.text().catch(()=> "");
+      console.error("[live] GitHub Actions dispatch failed:",response.status,detail);
+      job.workerDispatch="dispatch-failed";job.error="Worker dispatch failed ("+response.status+"). Stop this scheduled event and check GITHUB_ACTIONS_TOKEN permissions.";
+      existingJobs[targetDate]=job;await writeLiveJobs(existingJobs);
+      try{await yt.liveBroadcasts.delete({id:job.broadcastId});job.status="error";job.workerStatus="dispatch-failed";job.broadcastId=null;job.updatedAt=new Date().toISOString();existingJobs[targetDate]=job;await writeLiveJobs(existingJobs);}catch(cleanupError){console.error("[live] Could not clean up failed-dispatch broadcast:",safeErrorMessage(cleanupError));}
+      throw new Error("Live worker trigger failed ("+response.status+"). Scheduled broadcast cleanup attempted; check GITHUB_ACTIONS_TOKEN with Actions: write permission.");
+    }
+  }catch(error){
+    if(String(error?.message||"").includes("Live worker trigger failed"))throw error;
+    console.error("[live] GitHub Actions dispatch request failed:",safeErrorMessage(error));
+    throw new Error("Live worker dispatch failed: "+safeErrorMessage(error));
   }
   return {...safeLiveJob(job),workerDispatch};
 }

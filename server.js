@@ -890,6 +890,8 @@ async function renderFactoryVideo(job,req){
   const dimensions=frame==="9:16"?{width:720,height:1280}:frame==="1:1"?{width:720,height:720}:{width:1280,height:720};
   const requestedFormat=String(job.format||"").toLowerCase();
   const durationSeconds=job.music?30:/long/.test(requestedFormat)?180:/youtube short/.test(requestedFormat)?55:/short reel/.test(requestedFormat)?25:/reel/.test(requestedFormat)?45:/promo/.test(requestedFormat)?30:45;
+  console.info("[ACF_RENDER] bundle ready",JSON.stringify({jobId:job.id,elapsedMs:Date.now()-renderStartedAt}));
+  const renderConcurrency=Math.max(1,Math.min(10,Number(process.env.ACF_RENDER_CONCURRENCY||8)));
   const {sandboxFilePath}=await renderMediaOnVercel({
     sandbox,
     serveUrl,
@@ -898,8 +900,10 @@ async function renderFactoryVideo(job,req){
     durationInFrames:24*durationSeconds,
     inputProps:{title,script,audioUrl,musicUrl,musicStartSeconds,musicDurationSeconds,spotifyUrl:job.music?.spotifyUrl||"",artist:job.music?.artist||"",durationSeconds,category,aspectRatio:frame},
     codec:"h264",
+    concurrency:renderConcurrency,
     outputFile:"/tmp/factory-video.mp4"
   });
+  console.info("[ACF_RENDER] render complete",JSON.stringify({jobId:job.id,elapsedMs:Date.now()-renderStartedAt,renderConcurrency}));
   const uploaded=await uploadToVercelBlob({
     sandbox,
     sandboxFilePath,

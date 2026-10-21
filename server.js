@@ -667,17 +667,76 @@ async function generateSarvamAudio(text,languageCode,speaker){
   return audio;
 }
 
+
+function splitNarration(text,maxChars){
+  const source=String(text||"").trim();
+  if(!source)return [];
+  const sentences=source.match(/[^.!?。！？]+[.!?。！？]?/g)||[source];
+  const chunks=[];let current="";
+  for(const sentenceRaw of sentences){
+    let sentence=String(sentenceRaw||"").trim();if(!sentence)continue;
+    while(sentence.length>maxChars){
+      if(current){chunks.push(current.trim());current="";}
+      let cut=sentence.lastIndexOf(" ",maxChars);
+      if(cut<Math.floor(maxChars*0.55))cut=maxChars;
+      chunks.push(sentence.slice(0,cut).trim());sentence=sentence.slice(cut).trim();
+    }
+    if(!sentence)continue;
+    if((current+" "+sentence).trim().length>maxChars){if(current)chunks.push(current.trim());current=sentence;}
+    else current=(current+" "+sentence).trim();
+  }
+  if(current)chunks.push(current.trim());
+  return chunks;
+}
+async function generateElevenLabsAudio(text){
+  const apiKey=String(process.env.ELEVENLABS_API_KEY||"").trim();
+  const voiceId=String(process.env.ELEVENLABS_VOICE_ID||"").trim();
+  if(!apiKey)throw new Error("ElevenLabs fallback is not configured: add ELEVENLABS_API_KEY in Vercel.");
+  if(!voiceId)throw new Error("ElevenLabs fallback needs ELEVENLABS_VOICE_ID in Vercel.");
+  const chunks=splitNarration(text,4500);
+  if(!chunks.length)throw new Error("Voice script is empty.");
+  const audioParts=[];
+  for(const chunk of chunks){
+    const response=await fetch("https://api.elevenlabs.io/v1/text-to-speech/"+encodeURIComponent(voiceId)+"/stream?output_format=mp3_44100_128",{
+      method:"POST",
+      headers:{"xi-api-key":apiKey,"Content-Type":"application/json","Accept":"audio/mpeg"},
+      body:JSON.stringify({text:chunk,model_id:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voice_settings:{stability:0.5,similarity_boost:0.75}})
+    });
+    if(!response.ok){const detail=(await response.text().catch(()=> "" )).slice(0,300);throw new Error("ElevenLabs TTS HTTP "+response.status+(detail?": "+detail:""));}
+    const bytes=Buffer.from(await response.arrayBuffer());
+    if(bytes.length<100)throw new Error("ElevenLabs returned an empty audio chunk.");
+    audioParts.push(bytes);
+  }
+  return Buffer.concat(audioParts);
+}
+async function generateVoiceAudioWithFallback(text,languageCode,speaker){
+  const failures=[];
+  if(process.env.SARVAM_API_KEY){
+    try{
+      const chunks=splitNarration(text,2300);
+      if(!chunks.length)throw new Error("Voice script is empty.");
+      const parts=[];
+      for(const chunk of chunks)parts.push(await generateSarvamAudio(chunk,languageCode,speaker));
+      return {audio:Buffer.concat(parts),provider:"sarvam",model:process.env.SARVAM_TTS_MODEL||"bulbul:v4-flash",voiceId:speaker,languageCode};
+    }catch(error){failures.push("Sarvam: "+safeErrorMessage(error));}
+  }else failures.push("Sarvam: SARVAM_API_KEY is not configured");
+  if(process.env.ELEVENLABS_API_KEY){
+    try{return {audio:await generateElevenLabsAudio(text),provider:"elevenlabs",model:process.env.ELEVENLABS_MODEL_ID||"eleven_multilingual_v2",voiceId:process.env.ELEVENLABS_VOICE_ID||"",languageCode};}
+    catch(error){failures.push("ElevenLabs: "+safeErrorMessage(error));}
+  }else failures.push("ElevenLabs: ELEVENLABS_API_KEY is not configured");
+  throw new Error("Both voice providers failed. "+failures.join(" | "));
+}
+
 async function runVoiceForJob(job){
-  if(!process.env.SARVAM_API_KEY)return {status:"voice_waiting_api",error:"Sarvam AI API key is not configured. Add SARVAM_API_KEY in Vercel and redeploy."};
   if(!job.script)return {status:"voice_waiting_script",error:"Script is not ready."};
   const selectedSpeaker=sarvamSpeakerForLanguage(job.language);
   const languageCode=sarvamLanguageCode(job.language);
-  const model=process.env.SARVAM_TTS_MODEL||"bulbul:v4-flash";
-  const audio=await generateSarvamAudio(job.script,languageCode,selectedSpeaker);
+  const generated=await generateVoiceAudioWithFallback(job.script,languageCode,selectedSpeaker);
+  const audio=generated.audio;
   const {put}=await import("@vercel/blob");
   const blob=await put("voices/"+job.id+".mp3",audio,{access:"public",contentType:"audio/mpeg",...(BLOB_TOKEN?{token:BLOB_TOKEN}:{})});
-  if(!blob?.url)throw new Error("Sarvam generated audio but Vercel Blob did not return a playable URL.");
-  job.voice={status:"ready",file:blob.url,model,voiceId:selectedSpeaker,speaker:selectedSpeaker,languageCode,provider:"sarvam",bytes:audio.length,generatedAt:new Date().toISOString()};
+  if(!blob?.url)throw new Error(generated.provider+" generated audio but Vercel Blob did not return a playable URL.");
+  job.voice={status:"ready",file:blob.url,model:generated.model,voiceId:generated.voiceId,speaker:selectedSpeaker,languageCode:generated.languageCode,provider:generated.provider,bytes:audio.length,generatedAt:new Date().toISOString()};
   job.status="voice_ready";
   job.updatedAt=new Date().toISOString();
   return job.voice;

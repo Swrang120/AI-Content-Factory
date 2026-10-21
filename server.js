@@ -3031,7 +3031,31 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
     // cleaned up and the new click gets a fresh broadcast and worker job.
     const ageMs=now-new Date(existing.updatedAt||existing.createdAt||now).getTime();
     const activeStatuses=["scheduled","worker_claimed","starting","live"];
-    if(existing.status!=="stopping" && activeStatuses.includes(existing.status)) return safeLiveJob(existing);
+    if(existing.status!=="stopping" && activeStatuses.includes(existing.status)){
+      // A scheduled broadcast with a worker still waiting is not proof that streaming
+      // started. Re-dispatch the worker instead of silently returning the stuck job.
+      if(existing.status==="scheduled" && existing.workerStatus==="waiting" && ageMs>45000){
+        const ghToken=String(process.env.GITHUB_ACTIONS_TOKEN||process.env.GH_ACTIONS_TOKEN||"").trim();
+        let workerDispatch="scheduled-poll";
+        if(ghToken){
+          try{
+            const response=await fetch("https://api.github.com/repos/Swrang120/AI-Content-Factory/actions/workflows/live-worker.yml/dispatches",{
+              method:"POST",
+              headers:{Authorization:"Bearer "+ghToken,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json"},
+              body:JSON.stringify({ref:"main"})
+            });
+            if(response.ok)workerDispatch="dispatched";
+            else console.warn("[live] Retry dispatch failed:",response.status,await response.text().catch(()=> ""));
+          }catch(error){console.warn("[live] Retry dispatch request failed:",safeErrorMessage(error));}
+        }
+        existing.workerDispatch=workerDispatch;
+        existing.updatedAt=new Date().toISOString();
+        existingJobs[targetDate]=existing;
+        await writeLiveJobs(existingJobs);
+        return {...safeLiveJob(existing),workerDispatch,retriedWorker:true,message:workerDispatch==="dispatched"?"Existing broadcast worker re-triggered.":"Worker token missing or dispatch failed; scheduled polling remains fallback."};
+      }
+      return safeLiveJob(existing);
+    }
     if(existing.status==="stopping" && ageMs<120000) {
       throw new Error("Pichhla Live abhi Stop ho raha hai. Stop ko complete hone do; 2 minute baad bhi stuck ho to Reset Stuck Live dabao.");
     }

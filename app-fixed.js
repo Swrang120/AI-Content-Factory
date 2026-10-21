@@ -410,6 +410,7 @@ async function renderSchedule(){
   <div class="table-card" style="margin:14px 0;padding:14px">
     <h3>🎞️ Live video source</h3><p class="queue-meta">Google Drive se video seedha select karo. Folder ko “Anyone with the link” access dena zaroori hai.</p>
     <div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:12px;margin:10px 0;background:rgba(56,189,248,.05)">
+      <div class="queue-row" style="gap:8px;align-items:center;flex-wrap:wrap"><strong>🔐 Google Drive</strong><span id="driveOAuthStatus" class="queue-meta">Connection status checking…</span><button class="small-btn" id="driveOAuthConnect" type="button">Connect Google Drive</button></div>
       <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link<input id="liveDriveFolderUrl" class="input" type="url" placeholder="https://drive.google.com/drive/folders/FOLDER_ID"></label>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Drive Videos</button></div>
       <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Google Drive folder link paste karke videos load karo.</div>
@@ -461,6 +462,13 @@ async function renderSchedule(){
   }
   async function loadSavedLiveMedia(){const box=document.getElementById("liveMediaPreview");try{const r=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Cannot load saved media");const m=d.media;document.getElementById("liveMediaDelete").disabled=!m;box.innerHTML=m?'<b>'+esc(m.title||"Saved video")+'</b><br><video controls playsinline preload="metadata" style="width:100%;max-height:240px" src="'+esc(m.videoUrl)+'"></video>':"No saved video yet.";document.getElementById("liveThumbPreview").innerHTML=m&&m.thumbnailUrl?'<img alt="Thumbnail preview" src="'+esc(m.thumbnailUrl)+'" style="width:180px;max-width:100%;border-radius:10px">':"";if(m)document.getElementById("liveMediaTitle").value=m.title||"";}catch(e){box.textContent="Saved video: "+e.message;}}
   let loadedDriveFiles=[];
+  refreshDriveOAuthStatus();
+  async function refreshDriveOAuthStatus(){
+    const box=document.getElementById("driveOAuthStatus");if(!box)return;
+    try{const r=await fetch(apiUrl("/api/drive/oauth/status"),{credentials:"include",cache:"no-store"});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"status unavailable");box.textContent=d.connected?"✅ Connected":"Not connected";const btn=document.getElementById("driveOAuthConnect");if(btn)btn.textContent=d.connected?"Reconnect Google Drive":"Connect Google Drive";}
+    catch(e){box.textContent="Status unavailable";}
+  }
+  document.getElementById("driveOAuthConnect").addEventListener("click",()=>{window.location.href=apiUrl("/auth/drive");});
   async function loadDriveVideos(){
     const url=document.getElementById("liveDriveFolderUrl").value.trim();
     const box=document.getElementById("liveDriveFiles"),btn=document.getElementById("liveDriveLoad");

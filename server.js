@@ -3215,7 +3215,7 @@ app.get("/auth/drive",async(req,res)=>{
     const client=driveOAuthClient();
     const state=crypto.randomBytes(24).toString("hex");
     setCookie(res,"acf_drive_oauth_state",state,900);
-    const url=client.generateAuthUrl({access_type:"offline",prompt:"consent",include_granted_scopes:true,state,scope:["https://www.googleapis.com/auth/drive.readonly"]});
+    const url=client.generateAuthUrl({access_type:"offline",prompt:"consent",include_granted_scopes:true,state,scope:["https://www.googleapis.com/auth/drive.file"]});
     res.redirect(url);
   }catch(e){res.status(500).type("text").send("Google Drive OAuth configuration error: "+safeErrorMessage(e));}
 });
@@ -3267,6 +3267,65 @@ async function writeLiveMediaSelection(media){
   if(saved.error)throw saved.error;
   return media;
 }
+
+// Resumable Google Drive upload proxy. Browser sends small chunks so uploads work
+// within serverless request-body limits; OAuth credentials never leave the server.
+function validateDriveUploadSession(value){
+  const raw=String(value||"");
+  let u;
+  try{u=new URL(raw);}catch{throw new Error("Upload session invalid hai. Upload dobara start karo.");}
+  if(u.protocol!=="https:"||u.hostname!=="www.googleapis.com"||u.pathname!=="/upload/drive/v3/files"||u.searchParams.get("uploadType")!=="resumable"||!u.searchParams.get("upload_id")){
+    throw new Error("Google Drive upload session URL valid nahi hai.");
+  }
+  return u.toString();
+}
+app.post("/api/live/drive/upload/start",requireAppKey,async(req,res)=>{
+  try{
+    const name=String(req.body?.name||"").trim().slice(0,180);
+    const mimeType=String(req.body?.mimeType||"video/mp4").trim().slice(0,120);
+    const size=Number(req.body?.size)||0;
+    if(!name)throw new Error("Video ka naam missing hai.");
+    if(!mimeType.startsWith("video/"))throw new Error("Sirf video files upload kar sakte ho.");
+    if(!Number.isSafeInteger(size)||size<1||size>5*1024*1024*1024)throw new Error("Video size 1 byte se 5 GB ke beech hona chahiye.");
+    const client=await getDriveOAuthClient();
+    if(!client)throw new Error("Google Drive connected nahi hai. Pehle Connect Google Drive dabao.");
+    const tokenResult=await client.getAccessToken();
+    const accessToken=tokenResult?.token||client.credentials?.access_token;
+    if(!accessToken)throw new Error("Google Drive access token nahi mila. Drive ko reconnect karo.");
+    const response=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime",{
+      method:"POST",
+      headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/json","X-Upload-Content-Type":mimeType,"X-Upload-Content-Length":String(size)},
+      body:JSON.stringify({name,mimeType})
+    });
+    if(!response.ok)throw new Error("Google Drive upload start failed (HTTP "+response.status+"): "+(await response.text().catch(()=> "")).slice(0,300));
+    const session=response.headers.get("location");
+    if(!session)throw new Error("Google Drive ne resumable upload session return nahi ki.");
+    return res.json({ok:true,uploadUrl:validateDriveUploadSession(session),chunkSize:3*1024*1024});
+  }catch(error){return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
+});
+app.put("/api/live/drive/upload/chunk",requireAppKey,express.raw({type:"application/octet-stream",limit:"4mb"}),async(req,res)=>{
+  try{
+    const uploadUrl=validateDriveUploadSession(req.query.uploadUrl);
+    const start=Number(req.query.start),end=Number(req.query.end),total=Number(req.query.total);
+    if(!Buffer.isBuffer(req.body)||!req.body.length)throw new Error("Upload chunk empty hai.");
+    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||!Number.isSafeInteger(total)||start<0||end<start||end-start+1!==req.body.length||end>=total)throw new Error("Upload chunk range invalid hai.");
+    const client=await getDriveOAuthClient();
+    if(!client)throw new Error("Google Drive connected nahi hai. Reconnect karo.");
+    const tokenResult=await client.getAccessToken();
+    const accessToken=tokenResult?.token||client.credentials?.access_token;
+    const response=await fetch(uploadUrl,{method:"PUT",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/octet-stream","Content-Length":String(req.body.length),"Content-Range":"bytes "+start+"-"+end+"/"+total},body:req.body});
+    if(response.status===308){
+      const range=response.headers.get("range")||"";
+      const matched=range.match(/bytes=0-(\d+)/);
+      return res.json({ok:true,complete:false,nextOffset:matched?Number(matched[1])+1:end+1});
+    }
+    const raw=await response.text();
+    let file={};try{file=JSON.parse(raw);}catch{}
+    if(!response.ok)throw new Error("Google Drive chunk upload failed (HTTP "+response.status+"): "+raw.slice(0,300));
+    return res.json({ok:true,complete:true,file:{id:file.id,name:file.name,mimeType:file.mimeType,size:Number(file.size)||total,webViewLink:file.webViewLink||("https://drive.google.com/file/d/"+file.id+"/view"),thumbnailLink:file.thumbnailLink||null,modifiedTime:file.modifiedTime||null}});
+  }catch(error){return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
+});
+
 app.get("/api/live/drive/list",requireAppKey,async(req,res)=>{
   try{
     const folderInput=String(req.query.folderId||req.query.folderUrl||"").trim();

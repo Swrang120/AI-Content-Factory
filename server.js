@@ -3290,6 +3290,64 @@ app.delete("/api/live/media",requireAppKey,async(req,res)=>{
   catch(error){return res.status(500).json({ok:false,error:safeErrorMessage(error)});}
 });
 
+const LIVE_PLAYLISTS_KEY="__acf_live_playlists";
+async function readLivePlaylists(){
+  if(!supabaseAdmin)throw new Error("Supabase server key is missing; saved playlists cannot be loaded securely.");
+  const {data,error}=await supabaseAdmin.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+  if(error)throw error;
+  const list=data?.tokens?.[LIVE_PLAYLISTS_KEY];
+  return Array.isArray(list)?list.filter(x=>x&&typeof x.id==="string"&&Array.isArray(x.playlist)):[]; 
+}
+async function writeLivePlaylists(list){
+  if(!supabaseAdmin)throw new Error("Supabase server key is missing; saved playlists cannot be stored securely.");
+  const {data,error}=await supabaseAdmin.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+  if(error)throw error;
+  const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
+  const saved=await supabaseAdmin.from("youtube_connections").upsert({id:"default",tokens:{...existing,[LIVE_PLAYLISTS_KEY]:list},updated_at:new Date().toISOString()},{onConflict:"id"});
+  if(saved.error)throw saved.error;
+  return list;
+}
+app.get("/api/live/playlists",requireAppKey,async(req,res)=>{
+  try{return res.json({ok:true,playlists:await readLivePlaylists()});}
+  catch(error){return res.status(500).json({ok:false,error:safeErrorMessage(error)});}
+});
+app.post("/api/live/playlists",requireAppKey,async(req,res)=>{
+  try{
+    const body=req.body&&typeof req.body==="object"?req.body:{};
+    const name=String(body.name||"").trim().slice(0,70);
+    if(!name)throw new Error("Playlist ka naam likho.");
+    const current=await readLiveMediaSelection();
+    if(!current||current.mediaType!=="playlist"||!Array.isArray(current.playlist)||!current.playlist.length)throw new Error("Pehle kam se kam ek video select karke Save Selected Playlist dabao.");
+    const playlists=await readLivePlaylists();
+    const id="pl_"+Date.now().toString(36)+"_"+crypto.randomBytes(4).toString("hex");
+    const item={id,name,mediaType:"playlist",folderId:current.folderId||null,title:name,playlist:current.playlist,count:current.playlist.length,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+    const next=[...playlists.filter(p=>p.name.toLowerCase()!==name.toLowerCase()),item].slice(-50);
+    await writeLivePlaylists(next);
+    return res.json({ok:true,playlist:item,playlists:next,message:"Playlist saved: "+name});
+  }catch(error){return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
+});
+app.post("/api/live/playlists/select",requireAppKey,async(req,res)=>{
+  try{
+    const id=String(req.body?.id||"");
+    const playlists=await readLivePlaylists();
+    const chosen=playlists.find(p=>p.id===id);
+    if(!chosen)throw new Error("Saved playlist nahi mili. Refresh karke dobara select karo.");
+    const media={sourceType:"drive_playlist",mediaType:"playlist",folderId:chosen.folderId||null,title:chosen.name,playlist:chosen.playlist,count:chosen.playlist.length,videoUrl:chosen.playlist[0]?.url||"",mediaUrl:chosen.playlist[0]?.url||"",createdAt:new Date().toISOString()};
+    await writeLiveMediaSelection(media);
+    return res.json({ok:true,media,playlist:chosen,message:"Selected playlist: "+chosen.name});
+  }catch(error){return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
+});
+app.delete("/api/live/playlists/:id",requireAppKey,async(req,res)=>{
+  try{
+    const id=String(req.params.id||"");
+    const playlists=await readLivePlaylists();
+    const next=playlists.filter(p=>p.id!==id);
+    if(next.length===playlists.length)throw new Error("Playlist nahi mili.");
+    await writeLivePlaylists(next);
+    return res.json({ok:true,playlists:next,message:"Playlist deleted."});
+  }catch(error){return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
+});
+
 app.get("/api/live/status",async(req,res)=>{
   try{
     const jobs=await readLiveJobs();

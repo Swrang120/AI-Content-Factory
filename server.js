@@ -871,8 +871,15 @@ async function renderFactoryVideo(job,req){
   const bundleDir=await getRemotionBundle();
   const sandbox=await createSandbox();
   const serveUrl=await addBundleToSandbox({sandbox,bundleDir});
-  const origin=((req.headers["x-forwarded-proto"]||req.protocol)+"//"+req.get("host"));
-  const audioUrl=job.voice?.file?new URL(job.voice.file,origin).toString():"";
+  const forwardedProto=String(req.headers["x-forwarded-proto"]||req.protocol||"https").split(",")[0].trim().replace(/:$/,"");
+  const requestHost=String(req.get("host")||req.headers.host||"").trim();
+  if(!requestHost)throw new Error("Video renderer could not determine the request host.");
+  const origin=forwardedProto+"://"+requestHost;
+  let audioUrl="";
+  if(job.voice?.file){
+    try{audioUrl=new URL(String(job.voice.file),origin).toString();}
+    catch(error){throw new Error("Generated voice audio URL is invalid; regenerate voice audio and retry. Details: "+safeErrorMessage(error));}
+  }
   const script=typeof job.script==="string"?job.script:(job.script?.output||job.script?.text||JSON.stringify(job.script||""));
   const musicUrl=job.music?.audioUrl||"";
   const musicStartSeconds=Math.max(0,Number(job.music?.hookStartSeconds)||0);

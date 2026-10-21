@@ -12,7 +12,7 @@
   ],
   "functions": {
     "api/index.js": {
-      "includeFiles": "{index.html,styles.css,app-fixed.js,youtube-skills.js,music-library-fixed.js,live-status.js,notifications.js,assets/**,remotion-bundle/**,remotion/**,node_modules/@remotion/studio/**,node_modules/remotion/**}"
+      "includeFiles": "{index.html,drive-library.html,styles.css,app-fixed.js,youtube-skills.js,music-library-fixed.js,live-status.js,notifications.js,assets/**,remotion-bundle/**,remotion/**,node_modules/@remotion/studio/**,node_modules/remotion/**}"
     }
   },
   "crons": [

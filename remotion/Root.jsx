@@ -105,4 +105,4 @@ export const FactoryVideo=({title="AI Content Factory",script="",audioUrl="",mus
   {musicUrl?<AbsoluteFill style={{justifyContent:"flex-end",padding:"0 7% 13%",pointerEvents:"none"}}><div style={{alignSelf:"center",textAlign:"center",background:"linear-gradient(135deg,#090b18eF,#35124deF)",border:"2px solid #ffd166aa",borderRadius:28,padding:"22px 34px",maxWidth:"86%",color:"#fff",fontFamily:"Arial,sans-serif",boxShadow:"0 0 55px #ff4f9155"}}><div style={{fontSize:34,fontWeight:900,color:"#ffd166"}}>♫ ORIGINAL RELEASE</div><div style={{fontSize:42,fontWeight:900,marginTop:8}}>{title}</div><div style={{fontSize:25,opacity:.9,marginTop:8}}>{artist}</div><div style={{fontSize:20,opacity:.8,marginTop:10}}>LISTEN • SAVE • SHARE</div></div></AbsoluteFill>:null}
  </AbsoluteFill>;
 };
-export const FACTORY_FPS=30;export const FACTORY_WIDTH=1920;export const FACTORY_HEIGHT=1080;export const FACTORY_DURATION_SECONDS=45;
+export const FACTORY_FPS=24;export const FACTORY_WIDTH=1280;export const FACTORY_HEIGHT=720;export const FACTORY_DURATION_SECONDS=45;

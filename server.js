@@ -3325,7 +3325,7 @@ app.post("/api/live/drive/import-commons",requireAppKey,async(req,res)=>{
     if(!allowed)throw new Error("Is file ka license auto-check pass nahi hua ("+(license||"unknown") +"). Sirf CC BY 3.0/4.0, CC0 ya Public Domain accepted.");
     if(!String(info.mime||"").startsWith("video/"))throw new Error("Commons page video file nahi hai.");
     const size=Number(info.size)||0;
-    if(size<1||size>50*1024*1024)throw new Error("Automatic Commons import abhi 50 MB tak supported hai; is file ka size "+(size/1048576).toFixed(1)+" MB hai.");
+    if(size<1||size>100*1024*1024)throw new Error("Automatic Commons import abhi 100 MB tak supported hai; is file ka size "+(size/1048576).toFixed(1)+" MB hai.");
     const directUrl=new URL(info.url);
     if(directUrl.protocol!=="https:"||directUrl.hostname!=="upload.wikimedia.org")throw new Error("Wikimedia original file host validation failed.");
     const sourceResponse=await fetch(directUrl,{headers:{"User-Agent":"AI-Content-Factory/1.0"}});

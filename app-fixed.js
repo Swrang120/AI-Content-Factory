@@ -589,7 +589,7 @@ async function renderSchedule(){
   document.getElementById("livePlaylistDelete").addEventListener("click",async()=>{
     const select=document.getElementById("liveSavedPlaylistSelect"),id=select.value;if(!id)return;
     const p=(select._playlistData||[]).find(x=>x.id===id);if(!confirm("Delete saved playlist "+(p?.name||"")+"?"))return;
-    try{const r=await fetch(apiUrl("/api/live/playlists/"+encodeURIComponent(id),{method:"DELETE",credentials:"include"}));const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Delete failed");await loadSavedPlaylists(d.playlists||[]);msg.textContent="Saved playlist deleted.";}catch(e){msg.textContent="Delete failed: "+e.message;}
+    try{const r=await fetch(apiUrl("/api/live/playlists/"+encodeURIComponent(id)),{method:"DELETE",credentials:"include"});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Delete failed");await loadSavedPlaylists(d.playlists||[]);msg.textContent="Saved playlist deleted.";}catch(e){msg.textContent="Delete failed: "+e.message;}
   });
   loadSavedPlaylists();
   if(liveDrivePrefs.folderUrl)setTimeout(()=>loadDriveVideos(),450);

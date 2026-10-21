@@ -2905,7 +2905,7 @@ const LIVE_PREP_MINUTES=5;
 const LIVE_STATE_KEY="__acf_live_jobs";
 
 function liveWorkerAuthorized(req){
-  const expected=String(process.env.LIVE_WORKER_TOKEN||process.env.ACF_CRON_SECRET||process.env.CRON_SECRET||"").trim();
+  const expected=String(process.env.ACF_CRON_SECRET||process.env.CRON_SECRET||process.env.LIVE_WORKER_TOKEN||"").trim();
   if(!expected)return {ok:false,status:503,error:"LIVE_WORKER_TOKEN is not configured on the server."};
   const supplied=String(req.headers["x-live-worker-token"]||"").trim();
   if(!supplied||supplied!==expected)return {ok:false,status:401,error:"Unauthorized live worker."};
@@ -3409,7 +3409,7 @@ app.get("/api/live/status",async(req,res)=>{
     const keys=Object.keys(jobs).sort().reverse();
     const recent=keys.slice(0,7).map(k=>safeLiveJob(jobs[k]));
     const settings=await hydrateSettings();
-    res.json({ok:true,controlMode:"manual",schedulerEnabled:false,workerConfigured:!!process.env.LIVE_WORKER_TOKEN,automationEnabled:false,jobs:recent});
+    res.json({ok:true,controlMode:"manual",schedulerEnabled:false,workerConfigured:!!(process.env.ACF_CRON_SECRET||process.env.CRON_SECRET||process.env.LIVE_WORKER_TOKEN),automationEnabled:false,jobs:recent});
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 

@@ -2951,11 +2951,27 @@ function safeLiveJob(job){
     scheduledStartTime:job.scheduledStartTime,scheduledEndTime:job.scheduledEndTime,
     status:job.status,broadcastId:job.broadcastId||null,streamId:job.streamId||null,
     youtubeUrl:job.broadcastId?"https://www.youtube.com/watch?v="+job.broadcastId:null,
-    mediaType:job.mediaType||null,mediaUrl:job.mediaUrl||null,workerStatus:job.workerStatus||"waiting",
+    mediaType:job.mediaType||null,mediaUrl:job.mediaUrl||null,mediaPlaylist:Array.isArray(job.mediaPlaylist)?job.mediaPlaylist:[],workerStatus:job.workerStatus||"waiting",
     createdAt:job.createdAt,updatedAt:job.updatedAt,error:job.error||null
   };
 }
 async function selectLiveMedia(dateKey,mediaSource,mediaUrl){
+  if(mediaSource==="saved"){
+    const saved=await readLiveMediaSelection();
+    if(!saved)throw new Error("Pehle Live Stream mein Google Drive se video select karke Save karo.");
+    if(saved.mediaType==="playlist"&&Array.isArray(saved.playlist)&&saved.playlist.length){
+      return {mediaType:"playlist",mediaUrl:saved.playlist[0].url,mediaPlaylist:saved.playlist,mediaTitle:saved.title||"Google Drive Live Playlist",sourceFolderId:saved.folderId};
+    }
+    if(saved.mediaUrl||saved.videoUrl)return {mediaType:"video",mediaUrl:saved.mediaUrl||saved.videoUrl,mediaTitle:saved.title||"Saved Live video",thumbnailUrl:saved.thumbnailUrl||null};
+    throw new Error("Saved Live source has no playable video URL.");
+  }
+  if(mediaSource==="drive_file"){
+    const fileId=extractDriveId(mediaUrl);
+    if(!fileId)throw new Error("Google Drive video file link valid nahi hai.");
+    const f=await driveApi("files/"+encodeURIComponent(fileId),{fields:"id,name,mimeType"});
+    if(!String(f.mimeType||"").startsWith("video/"))throw new Error("Google Drive item video nahi hai.");
+    return {mediaType:"video",mediaUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(fileId),mediaTitle:f.name||"Google Drive video"};
+  }
   if(mediaSource==="link"){
     const raw=String(mediaUrl||"").trim();
     let parsed;try{parsed=new URL(raw);}catch{throw new Error("Video URL invalid hai.");}
@@ -3015,7 +3031,7 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   await yt.liveBroadcasts.bind({part:"id,contentDetails",id:broadcast.data.id,streamId:stream.data.id});
   const ingestion=stream.data.cdn?.ingestionInfo||{};
   if(!ingestion.ingestionAddress||!ingestion.streamName)throw new Error("YouTube did not return RTMP ingestion information.");
-  const job={id:"live_"+targetDate+"_"+Date.now().toString(36),dateKey:targetDate,day:schedule.day,title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),status:"scheduled",workerStatus:"waiting",broadcastId:broadcast.data.id,streamId:stream.data.id,ingestionAddress:ingestion.ingestionAddress,streamName:ingestion.streamName,mediaType:media.mediaType,mediaUrl:media.mediaUrl,mediaTitle:media.mediaTitle||title,trackId:media.trackId||null,sourceJobId:media.jobId||null,privacyStatus:privacy,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+  const job={id:"live_"+targetDate+"_"+Date.now().toString(36),dateKey:targetDate,day:schedule.day,title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),status:"scheduled",workerStatus:"waiting",broadcastId:broadcast.data.id,streamId:stream.data.id,ingestionAddress:ingestion.ingestionAddress,streamName:ingestion.streamName,mediaType:media.mediaType,mediaUrl:media.mediaUrl,mediaPlaylist:Array.isArray(media.mediaPlaylist)?media.mediaPlaylist:[],mediaTitle:media.mediaTitle||title,trackId:media.trackId||null,sourceJobId:media.jobId||null,privacyStatus:privacy,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
   existingJobs[targetDate]=job; await writeLiveJobs(existingJobs); return safeLiveJob(job);
 }
 async function transitionLiveBroadcast(job,broadcastStatus){
@@ -3040,6 +3056,106 @@ async function runLiveScheduler(){
     return {ok:false,dateKey,error:safeErrorMessage(error)};
   }
 }
+
+
+/* Google Drive source picker for Live Stream. Drive folders/files must be shared as
+   "Anyone with the link" because this uses a server-side API key to read public metadata. */
+const LIVE_MEDIA_KEY="__acf_live_media";
+function driveApiKey(){return String(process.env.GOOGLE_DRIVE_API_KEY||process.env.GOOGLE_API_KEY||"").trim();}
+function extractDriveId(value){
+  const raw=String(value||"").trim();
+  if(/^[a-zA-Z0-9_-]{10,}$/.test(raw))return raw;
+  try{
+    const u=new URL(raw);
+    if(!/(^|\.)drive\.google\.com$/i.test(u.hostname)&&!/(^|\.)docs\.google\.com$/i.test(u.hostname))return "";
+    const parts=u.pathname.split("/").filter(Boolean);
+    if(parts[0]==="folders"&&parts[1])return parts[1];
+    if(parts[0]==="file"&&parts[1]==="d"&&parts[2])return parts[2];
+    return u.searchParams.get("id")||"";
+  }catch{return "";}
+}
+async function driveApi(pathname,params={}){
+  const key=driveApiKey();
+  if(!key)throw new Error("Google Drive API key missing. Vercel Environment Variables mein GOOGLE_DRIVE_API_KEY add karke redeploy karo.");
+  const u=new URL("https://www.googleapis.com/drive/v3/"+pathname);
+  for(const [k,v] of Object.entries(params))if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,String(v));
+  u.searchParams.set("key",key);
+  const r=await fetch(u.toString(),{headers:{Accept:"application/json"}});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(data?.error?.message||("Google Drive API returned HTTP "+r.status));
+  return data;
+}
+async function readLiveMediaSelection(){
+  if(!supabaseAdmin)throw new Error("Supabase server key is missing; cannot save the Live video selection securely.");
+  const {data,error}=await supabaseAdmin.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+  if(error)throw error;
+  return data?.tokens?.[LIVE_MEDIA_KEY]||null;
+}
+async function writeLiveMediaSelection(media){
+  if(!supabaseAdmin)throw new Error("Supabase server key is missing; cannot save the Live video selection securely.");
+  const {data,error}=await supabaseAdmin.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+  if(error)throw error;
+  const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
+  const tokens={...existing,[LIVE_MEDIA_KEY]:media};
+  const saved=await supabaseAdmin.from("youtube_connections").upsert({id:"default",tokens,updated_at:new Date().toISOString()},{onConflict:"id"});
+  if(saved.error)throw saved.error;
+  return media;
+}
+app.get("/api/live/drive/list",requireAppKey,async(req,res)=>{
+  try{
+    const folderId=extractDriveId(req.query.folderId||req.query.folderUrl);
+    if(!folderId)return res.status(400).json({ok:false,error:"Google Drive folder link/ID valid nahi hai."});
+    const files=[];let pageToken="";
+    do{
+      const page=await driveApi("files",{q:"'"+folderId.replace(/'/g,"\\'")+"' in parents and trashed = false",pageSize:1000,orderBy:"name",fields:"nextPageToken,files(id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime)",pageToken});
+      for(const f of page.files||[]){
+        if(f.mimeType==="application/vnd.google-apps.folder")continue;
+        if(!String(f.mimeType||"").startsWith("video/"))continue;
+        files.push({id:f.id,name:f.name,mimeType:f.mimeType,size:Number(f.size)||0,webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),thumbnailLink:f.thumbnailLink||null,modifiedTime:f.modifiedTime||null,downloadUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id)});
+      }
+      pageToken=page.nextPageToken||"";
+    }while(pageToken&&files.length<500);
+    return res.json({ok:true,folderId,count:files.length,files:files.slice(0,500),note:"Folder/files must be shared as Anyone with the link."});
+  }catch(error){return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
+});
+app.get("/api/live/media",requireAppKey,async(req,res)=>{
+  try{
+    const media=await readLiveMediaSelection();
+    return res.json({ok:true,media});
+  }catch(error){return res.status(500).json({ok:false,error:safeErrorMessage(error)});}
+});
+app.post("/api/live/media",requireAppKey,async(req,res)=>{
+  try{
+    const body=req.body&&typeof req.body==="object"?req.body:{};
+    const now=new Date().toISOString();
+    let media=null;
+    if(body.sourceType==="drive_file"){
+      const fileId=extractDriveId(body.fileId||body.fileUrl);
+      if(!fileId)throw new Error("Google Drive video file ID valid nahi hai.");
+      const f=await driveApi("files/"+encodeURIComponent(fileId),{fields:"id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime"});
+      if(!String(f.mimeType||"").startsWith("video/"))throw new Error("Selected Google Drive item video file nahi hai.");
+      media={sourceType:"drive_file",mediaType:"video",fileId:f.id,title:String(body.title||f.name||"Google Drive video").slice(0,100),videoUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id),mediaUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id),webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),thumbnailUrl:f.thumbnailLink||null,size:Number(f.size)||0,createdAt:now};
+    }else if(body.sourceType==="drive_playlist"){
+      const folderId=extractDriveId(body.folderId||body.folderUrl);
+      if(!folderId)throw new Error("Google Drive folder link/ID valid nahi hai.");
+      const page=await driveApi("files",{q:"'"+folderId.replace(/'/g,"\\'")+"' in parents and trashed = false",pageSize:1000,orderBy:"name",fields:"files(id,name,mimeType,size,webViewLink,thumbnailLink)"});
+      const files=(page.files||[]).filter(f=>String(f.mimeType||"").startsWith("video/")).slice(0,100);
+      if(!files.length)throw new Error("Is folder mein koi video nahi mili. Folder ko Anyone with the link access do aur video files directly folder ke andar rakho.");
+      const playlist=files.map(f=>({id:f.id,name:f.name,url:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id),webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),size:Number(f.size)||0}));
+      media={sourceType:"drive_playlist",mediaType:"playlist",folderId,title:String(body.title||"Google Drive Live Playlist").slice(0,100),playlist,count:playlist.length,videoUrl:playlist[0].url,mediaUrl:playlist[0].url,createdAt:now};
+    }else if(body.video&&body.video.url){
+      media={sourceType:"upload",mediaType:"video",title:String(body.title||body.video.filename||"Saved live video").slice(0,100),videoUrl:String(body.video.url),mediaUrl:String(body.video.url),pathname:String(body.video.pathname||""),thumbnailUrl:body.thumbnail?.url||null,createdAt:now};
+    }else{
+      throw new Error("Drive video select karo ya Google Drive folder ki playlist save karo.");
+    }
+    await writeLiveMediaSelection(media);
+    return res.json({ok:true,media,message:media.mediaType==="playlist"?"Google Drive playlist saved. Videos will play in name order and repeat.":"Live video source saved."});
+  }catch(error){return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
+});
+app.delete("/api/live/media",requireAppKey,async(req,res)=>{
+  try{await writeLiveMediaSelection(null);return res.json({ok:true,message:"Saved Live source removed."});}
+  catch(error){return res.status(500).json({ok:false,error:safeErrorMessage(error)});}
+});
 
 app.get("/api/live/status",async(req,res)=>{
   try{
@@ -3083,7 +3199,7 @@ app.get("/api/live/worker/claim",async(req,res)=>{
     const next={...job,status:job.status==="scheduled"?"worker_claimed":job.status,workerStatus:"claimed",updatedAt:new Date().toISOString()};
     jobs[job.dateKey]=next; await writeLiveJobs(jobs);
     // The raw RTMP target is only exposed to a request authenticated with LIVE_WORKER_TOKEN.
-    return res.json({ok:true,job:{...safeLiveJob(next),ingestionAddress:next.ingestionAddress,streamName:next.streamName,rtmpUrl:next.ingestionAddress+"/"+next.streamName}});
+    return res.json({ok:true,job:{...safeLiveJob(next),mediaPlaylist:Array.isArray(next.mediaPlaylist)?next.mediaPlaylist:[],ingestionAddress:next.ingestionAddress,streamName:next.streamName,rtmpUrl:next.ingestionAddress+"/"+next.streamName}});
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 app.post("/api/live/worker/start",async(req,res)=>{

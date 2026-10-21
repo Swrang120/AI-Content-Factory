@@ -435,71 +435,69 @@ function acfCreativeContext(task,fields={}){
   task:String(task||"")
  };
 }
-async function fallbackTextGeneration(task,fields){
-   // Try all server-side Gemini key slots, without exposing key values. A single
-   // stale key should not prevent a configured backup key from being used.
-   // Support the legacy key plus eight explicitly numbered Vercel slots.
-   // Duplicate values are removed; keys are never returned to clients or logs.
-   const keys=[
-     process.env.GEMINI_API_KEY,
-     ...Array.from({length:8},(_,i)=>process.env["GEMINI_API_KEY_"+(i+1)]),
-     process.env.GEMINI_API_KEY_2,
-     process.env.GEMINI_API_KEY_3,
-     process.env.GOOGLE_API_KEY
-   ].map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
-   if(!keys.length)throw new Error("Gemini fallback is not configured. Add GEMINI_API_KEY_1 through GEMINI_API_KEY_8 in Vercel (or the legacy GEMINI_API_KEY).");
-   const models=[process.env.GEMINI_MODEL,"gemini-3.5-flash-lite","gemini-3.5-flash","gemini-3.6-flash","gemini-3.8-flash"]
-     .map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
-   const brainContext=acfCreativeContext(task,fields);
-   const prompt=[
-   "You are the creative brain of AI Content Factory: an influencer strategist, cultural researcher, niche expert, director, community manager and ethical brand strategist. You are an AI system; never claim to be a real human or fabricate personal experiences.",
-   "PERSONALITY: Write naturally in the requested language, especially casual Indian Hinglish when asked. Vary sentence rhythm, conversational pauses and emoji use contextually. Avoid forced slang, repetitive greetings, corporate tone and robotic phrasing.",
-   "HUMAN BEHAVIOUR: Identify the intended audience, their knowledge, pain point, curiosity, emotional context and likely objection. Use curiosity, surprise, empathy, humor and relatable examples without exploiting fear or misleading viewers.",
-   "CREATIVE STRATEGY: Privately compare at least 5 angles: tutorial/demo, myth-vs-truth, comparison, story, surprising fact, POV, mini case study, question, challenge, humor or behind-the-scenes. Choose the strongest angle. A new title on an old idea is not a new concept. Avoid repeated hooks, story arcs, examples, scene sequences and visual metaphors. Use supplied history when available; never pretend to remember data not supplied.",
-   "CULTURE: Match language, region and audience context. Use memes, slang and pop-culture references only when relevant; do not assume a trend is current without evidence. Keep humor non-harassing and age-appropriate.",
-   "HOOK & RETENTION: For short videos, plan a clear 0-2 second hook, understandable progression, a payoff that resolves the setup, concise ending and relevant CTA. Never use fake claims, bait-and-switch or empty secret-style hooks.",
-   "VISUAL DIRECTOR: For each beat specify subject/action, framing, on-screen text, motion/transition, optional sound cue and approximate timing. Choose visuals that can actually be rendered or sourced. Do not substitute static gradients, generic waveforms or decorative circles for a real demonstration when the topic needs evidence or action.",
-   "CATEGORY EXPERTISE: Music Promotion must match the actual authorized song, mood and supplied transcript; do not invent lyrics or claim audio analysis that was not performed. Editing Knowledge should show real steps or before/after. Product Promotion must use verified supplied features and disclose commercial relationships when relevant. News & Updates and Sports Information need current reliable sources and dates. AI & Technology should provide practical use cases, limitations and reproducible steps.",
-   "RESEARCH & FORECASTS: Separate verified facts, interpretation and speculation. Prefer primary sources such as official release notes, research papers and repositories. Treat leaks as unconfirmed and label them clearly; never present predictions as facts. Never invent trends, analytics, comments, quotations, sources, product capabilities or search volume. If research is unavailable, choose an evergreen angle and state uncertainty when needed.",
-   "COMMUNITY & BRAND: Thank supporters, help beginners with steps, answer criticism calmly and do not escalate with trolls. Suggest polls that invite genuine discussion. Sales content should lead with real value, disclose sponsorships/affiliates and never promise guaranteed earnings or results.",
-   "LEARNING: When past posts, comments or analytics are provided, compare available watch time, completion, shares, saves and comments and recommend experiments. Do not claim causation without evidence or persistent memory unless actual history is provided.",
-   "OUTPUT: Respect category, language, platform, duration, aspect ratio and task schema. Preserve required JSON/schema exactly. Prioritize audience value, factual integrity, originality and production feasibility over fake virality.",
-   "TASK: "+task,"INPUT:",JSON.stringify(fields||{},null,2)
- ].join("\n");
-  const bodyInput={
-    model,
-    instructions,
-    input:[{role:"user",content:prompt}],
-    store:false
-  };
-  if(live){
-    bodyInput.tools=[{
-      type:"web_search",
-      search_context_size:"high",
-      user_location:{type:"approximate",country:"IN",timezone:"Asia/Kolkata"}
-    }];
-  }
-  const response=await fetch("https://api.openai.com/v1/responses",{
-    method:"POST",
-    headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},
-    body:JSON.stringify(bodyInput)
-  });
-  const body=await response.json();
-  if(!response.ok){
-    const err=new Error(body?.error?.message||"ChatGPT API request failed");
-    // Fall back to Gemini for quota/credit errors as well as transient failures.
-    // This prevents exhausted OpenAI credits from stopping Boss Room text generation.
-    if([process.env.GEMINI_API_KEY,...Array.from({length:8},(_,i)=>process.env["GEMINI_API_KEY_"+(i+1)]),process.env.GOOGLE_API_KEY].some(x=>String(x||"").trim())){
-      try{return await fallbackTextGeneration(task,fields);}
-      catch(fallbackError){
-        const incident=rememberIncident(fallbackError,{operation:"gemini_fallback_generation",route:"/api/ai/generate",status:response.status});
-        diagnoseIncident(incident).catch(()=>{});
-        throw new Error("OpenAI failed and Gemini fallback failed: "+safeErrorMessage(fallbackError));
-      }
+async function fallbackTextGeneration(task,fields={}){
+  // Generate text with the configured Gemini keys. This deliberately avoids
+  // relying on out-of-scope variables such as model, instructions or live.
+  const keys=[
+    process.env.GEMINI_API_KEY,
+    ...Array.from({length:8},(_,i)=>process.env["GEMINI_API_KEY_"+(i+1)]),
+    process.env.GOOGLE_API_KEY
+  ].map(x=>String(x||"").trim()).filter((x,i,a)=>x&&a.indexOf(x)===i);
+  if(!keys.length){
+    if(process.env.OPENAI_API_KEY){
+      const prompt="You are the AI Content Factory creative assistant. Write accurate, original, production-ready content in the requested language. Task: "+String(task||"")+"\nInput: "+JSON.stringify(fields||{});
+      const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||"gpt-4o-mini",input:prompt,store:false})});
+      const b=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(b?.error?.message||"OpenAI text generation failed (HTTP "+r.status+").");
+      const out=String(b.output_text||"").trim();
+      if(!out)throw new Error("OpenAI returned an empty text response.");
+      return out;
     }
-    throw err;
+    throw new Error("AI text generation is not configured. Add a valid GEMINI_API_KEY_1–GEMINI_API_KEY_8 or OPENAI_API_KEY in Vercel.");
   }
-  return body.output_text||"";
+  const configured=String(process.env.GEMINI_MODEL||"").trim();
+  const models=[configured,"gemini-2.5-flash","gemini-2.0-flash"]
+    .filter((x,i,a)=>x&&a.indexOf(x)===i);
+  const brainContext=acfCreativeContext(task,fields||{});
+  const prompt=[
+    "You are the creative brain of AI Content Factory. Produce original, factual and practical creator content.",
+    "Write naturally in the requested language. Follow the supplied task and output schema exactly.",
+    "For short videos include a strong opening hook, clear scene-by-scene visuals, concise narration, on-screen text and a relevant ending.",
+    "Never invent facts, sources, analytics, product features or song lyrics. Mark uncertainty clearly.",
+    "Task: "+String(task||"general_content"),
+    "Creative context: "+JSON.stringify(brainContext||{}),
+    "Input: "+JSON.stringify(fields||{},null,2)
+  ].join("\n\n");
+  const failures=[];
+  for(const key of keys){
+    for(const modelName of models){
+      try{
+        const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(modelName)+":generateContent",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","x-goog-api-key":key},
+          body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.7,maxOutputTokens:4096}})
+        });
+        const body=await response.json().catch(()=>({}));
+        if(!response.ok){
+          const msg=body?.error?.message||("HTTP "+response.status);
+          failures.push(modelName+": "+String(msg).slice(0,180));
+          continue;
+        }
+        const output=(body?.candidates||[]).flatMap(c=>c?.content?.parts||[]).map(p=>p?.text||"").join("\n").trim();
+        if(output)return output;
+        failures.push(modelName+": empty response");
+      }catch(error){failures.push(modelName+": "+safeErrorMessage(error));}
+    }
+  }
+  if(process.env.OPENAI_API_KEY){
+    try{
+      const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_MODEL||"gpt-4o-mini",input:prompt,store:false})});
+      const body=await response.json().catch(()=>({}));
+      if(response.ok&&String(body?.output_text||"").trim())return String(body.output_text).trim();
+      failures.push("OpenAI: "+String(body?.error?.message||"empty response").slice(0,180));
+    }catch(error){failures.push("OpenAI: "+safeErrorMessage(error));}
+  }
+  throw new Error("AI text generation failed with all configured providers. "+failures.slice(-6).join(" | "));
 }
 
 // Compatibility adapter used by the script-idea, research, analytics and

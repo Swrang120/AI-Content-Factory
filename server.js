@@ -941,7 +941,9 @@ const WEEKLY_LIVE_SCHEDULE=[
 {id:"funny_romantic_sunday",day:"Sunday",dayIndex:0,icon:"😂💙",category:"Funny + Romantic Live",title:"Funny & Romantic",prompt:"Original funny and romantic content."}
 ];
 function weeklyLiveSchedule(){
- return WEEKLY_LIVE_SCHEDULE.map(x=>({...x,startTime:"14:00",endTime:"16:00",durationMinutes:120,timeZone:"Asia/Kolkata"}));
+ // Live is manual-only. Keep this endpoint for backward compatibility, but
+ // do not expose or create a daily/weekly time-based live schedule.
+ return [];
 }
 
 function autoSlotId(item){return "auto_"+item.id+"_"+item.date+"_"+item.time.replace(":","");}
@@ -3115,10 +3117,13 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
     else {
       const detail=await response.text().catch(()=> "");
       console.error("[live] GitHub Actions dispatch failed:",response.status,detail);
-      job.workerDispatch="dispatch-failed";job.error="Worker dispatch failed ("+response.status+"). Stop this scheduled event and check GITHUB_ACTIONS_TOKEN permissions.";
+      let apiDetail=detail;
+      try { const parsed=JSON.parse(detail); apiDetail=[parsed.message,Array.isArray(parsed.errors)?parsed.errors.map(e=>typeof e==="string"?e:(e.message||JSON.stringify(e))).join("; "):""].filter(Boolean).join(" — "); } catch {}
+      apiDetail=String(apiDetail||"No response body").replace(/[\\r\\n\\t]+/g," ").slice(0,700);
+      job.workerDispatch="dispatch-failed";job.error="Worker dispatch failed ("+response.status+"): "+apiDetail;
       existingJobs[targetDate]=job;await writeLiveJobs(existingJobs);
       try{await yt.liveBroadcasts.delete({id:job.broadcastId});job.status="error";job.workerStatus="dispatch-failed";job.broadcastId=null;job.updatedAt=new Date().toISOString();existingJobs[targetDate]=job;await writeLiveJobs(existingJobs);}catch(cleanupError){console.error("[live] Could not clean up failed-dispatch broadcast:",safeErrorMessage(cleanupError));}
-      throw new Error("Live worker trigger failed ("+response.status+"). Scheduled broadcast cleanup attempted; check GITHUB_ACTIONS_TOKEN with Actions: write permission.");
+      throw new Error("Live worker trigger failed ("+response.status+"): "+apiDetail+" Scheduled broadcast cleanup attempted.");
     }
   }catch(error){
     if(String(error?.message||"").includes("Live worker trigger failed"))throw error;
@@ -3133,21 +3138,9 @@ async function transitionLiveBroadcast(job,broadcastStatus){
   return result.data;
 }
 async function runLiveScheduler(){
-  const now=new Date();
-  const settings=await hydrateSettings();
-  const automation=!!settings.liveAutomation;
-  if(!automation)return {ok:true,skipped:true,reason:"Live Automation is OFF.",at:now.toISOString()};
-  const dateKey=liveDateKey(now);
-  const start=liveDateTime(dateKey,LIVE_START_HOUR,0);
-  const prep=liveDateTime(dateKey,LIVE_START_HOUR, -LIVE_PREP_MINUTES);
-  if(now<prep)return {ok:true,skipped:true,reason:"Before live preparation window.",dateKey,prepareAt:prep.toISOString()};
-  if(now>=liveDateTime(dateKey,LIVE_END_HOUR,0))return {ok:true,skipped:true,reason:"Today's live window has ended.",dateKey};
-  try{
-    const job=await createYouTubeLiveJob({dateKey});
-    return {ok:true,scheduled:true,dateKey,job};
-  }catch(error){
-    return {ok:false,dateKey,error:safeErrorMessage(error)};
-  }
+  // Explicit product behavior: Live is controlled only by the user's Start/Stop
+  // buttons. Never create a broadcast from a clock-based scheduler.
+  return {ok:true,skipped:true,reason:"Live scheduling is disabled; use manual Start/Stop."};
 }
 
 

@@ -3046,7 +3046,23 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   const ingestion=stream.data.cdn?.ingestionInfo||{};
   if(!ingestion.ingestionAddress||!ingestion.streamName)throw new Error("YouTube did not return RTMP ingestion information.");
   const job={id:"live_"+targetDate+"_"+Date.now().toString(36),dateKey:targetDate,day:schedule.day,title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),status:"scheduled",workerStatus:"waiting",broadcastId:broadcast.data.id,streamId:stream.data.id,ingestionAddress:ingestion.ingestionAddress,streamName:ingestion.streamName,mediaType:media.mediaType,mediaUrl:media.mediaUrl,mediaPlaylist:Array.isArray(media.mediaPlaylist)?media.mediaPlaylist:[],mediaTitle:media.mediaTitle||title,trackId:media.trackId||null,sourceJobId:media.jobId||null,privacyStatus:privacy,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
-  existingJobs[targetDate]=job; await writeLiveJobs(existingJobs); return safeLiveJob(job);
+  existingJobs[targetDate]=job; await writeLiveJobs(existingJobs);
+  // Best-effort immediate worker wake-up. Without a configured GitHub Actions token,
+  // the five-minute scheduled poll remains the fallback and can delay Live startup.
+  let workerDispatch="scheduled-poll";
+  const ghToken=String(process.env.GITHUB_ACTIONS_TOKEN||process.env.GH_ACTIONS_TOKEN||"").trim();
+  if(ghToken){
+    try{
+      const response=await fetch("https://api.github.com/repos/Swrang120/AI-Content-Factory/actions/workflows/live-worker.yml/dispatches",{
+        method:"POST",
+        headers:{Authorization:"Bearer "+ghToken,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json"},
+        body:JSON.stringify({ref:"main"})
+      });
+      if(response.ok){workerDispatch="dispatched";job.workerDispatch=workerDispatch;existingJobs[targetDate]=job;await writeLiveJobs(existingJobs);}
+      else {workerDispatch="scheduled-poll";console.warn("[live] GitHub Actions dispatch failed:",response.status,await response.text().catch(()=> ""));}
+    }catch(error){console.warn("[live] GitHub Actions dispatch request failed:",safeErrorMessage(error));}
+  }
+  return {...safeLiveJob(job),workerDispatch};
 }
 async function transitionLiveBroadcast(job,broadcastStatus){
   const yt=await youtube({});

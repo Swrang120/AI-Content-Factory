@@ -407,7 +407,7 @@ async function renderSchedule(){
   view.innerHTML=`<div class="hero"><p class="eyebrow">MANUAL YOUTUBE LIVE</p><h2>🔴 Live Stream</h2><p>Live ko tum khud start aur stop karoge. Koi daily schedule nahi chalega.</p></div>
   <div class="table-card"><div class="section-head"><div><h3>📡 Live control</h3><span class="muted">YouTube · Manual session</span></div><button class="small-btn" id="liveRefresh">↻ Refresh</button></div>
   <div class="table-card" style="margin:12px 0"><h3>📺 Target YouTube Channel</h3><div id="liveChannelPanel" class="queue-meta">Connected channel check ho raha hai…</div></div>
-  <div class="table-card" style="margin:14px 0;padding:14px">
+  <div class="table-card" id="liveMediaStep" style="margin:14px 0;padding:14px">
     <h3>🎞️ Live video source</h3><p class="queue-meta">Google Drive se video seedha select karo. Folder ko “Anyone with the link” access dena zaroori hai.</p>
     <div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:12px;margin:10px 0;background:rgba(56,189,248,.05)">
       <div class="queue-row" style="gap:8px;align-items:center;flex-wrap:wrap"><strong>🔐 Google Drive</strong><span id="driveOAuthStatus" class="queue-meta">Connection status checking…</span><button class="small-btn" id="driveOAuthConnect" type="button">Connect Google Drive</button></div>
@@ -416,6 +416,7 @@ async function renderSchedule(){
       <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="small-btn" id="liveDriveSelectAll" type="button">☑ Select / Deselect All</button><button class="primary-btn" id="liveDriveSavePlaylist" type="button">💾 Save Selected Playlist</button><button class="small-btn" id="liveDriveSaveOne" type="button">▶ Use First Selected Video</button></div>
       <div class="queue-meta" style="margin-top:6px">Playlist save karne par videos naam ke order mein chalengi aur phir repeat hongi. Blank folder ke saath bhi selected videos save ho sakti hain.</div>
+      <div class="queue-row" style="margin-top:12px"><button class="primary-btn" id="liveWizardNext" type="button">Next: Live Details →</button></div>
       <div style="display:none">
         <input id="liveDriveUrl" type="url"><input id="liveVideoFile" type="file"><input id="liveThumbFile" type="file"><input id="liveMediaTitle" type="text">
         <button id="liveMediaUpload" type="button">Upload</button><button id="liveMediaDelete" type="button" disabled>Delete</button>
@@ -423,7 +424,8 @@ async function renderSchedule(){
       </div>
     </div>
   </div>
-   <div class="table-card" style="margin:12px 0;padding:14px"><h3>📝 YouTube Live details</h3>
+   <div class="table-card" id="liveDetailsStep" style="display:none;margin:12px 0;padding:14px"><h3>STEP 2 · 📝 YouTube Live details</h3>
+     <button class="small-btn" id="liveWizardBack" type="button">← Back to video selection</button>
      <label class="field-label" for="liveWizardTitle">Title <input id="liveWizardTitle" class="input" maxlength="100" required placeholder="Live stream title"></label>
      <label class="field-label" for="liveWizardDescription">Description <textarea id="liveWizardDescription" class="input" rows="4" maxlength="4500" placeholder="Live stream description"></textarea></label>
      <label class="field-label" for="liveWizardHashtags">Hashtags <input id="liveWizardHashtags" class="input" placeholder="#Live #Gaming #Hindi"></label>
@@ -431,7 +433,7 @@ async function renderSchedule(){
    </div>
   <div id="liveStatusPanel"><div class="empty">Live status check ho raha hai…</div></div>
   <div class="table-card" style="margin:12px 0"><h3>🔗 Live / Watch Link</h3><div id="liveWatchPanel" class="queue-meta">Live banne ke baad link yahan dikhega.</div></div>
-  <div class="queue-row" style="gap:10px;flex-wrap:wrap"><button class="primary-btn" id="liveStart" style="min-height:46px">▶ Start Live</button><button class="small-btn" id="liveStop" style="min-height:46px" disabled>⏹ Stop Live</button></div>
+  <div class="queue-row" style="gap:10px;flex-wrap:wrap"><button class="primary-btn" id="liveStart" style="min-height:46px;display:none">▶ Start Live</button><button class="small-btn" id="liveStop" style="min-height:46px" disabled>⏹ Stop Live</button></div>
   <p id="liveActionMessage" class="queue-meta" aria-live="polite">Video source select karo, phir Start Live dabao. Stop request worker online hone par stream finalize karegi.</p>
   <div class="queue-meta">Elapsed time: <strong id="liveElapsed">00:00:00</strong></div></div>`;
   let elapsedTimer=null,refreshTimer=null,liveStartedAt=null,lastJob=null,liveRecoveryInProgress=false;
@@ -557,6 +559,25 @@ async function renderSchedule(){
   });
   document.getElementById("liveMediaDelete").addEventListener("click",async()=>{if(!confirm("Saved video aur thumbnail delete karein?"))return;try{const r=await fetch(apiUrl("/api/live/media"),{method:"DELETE",credentials:"include"}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Delete failed");msg.textContent="Saved video deleted.";await loadSavedLiveMedia();}catch(e){msg.textContent="Delete failed: "+e.message;}});
   document.getElementById("liveRefresh").addEventListener("click",refresh);
+  document.getElementById("liveWizardNext").addEventListener("click",async()=>{
+    const next=document.getElementById("liveWizardNext");next.disabled=true;msg.textContent="Saved video/playlist verify ho rahi hai…";
+    try{
+      const r=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"});const d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.ok||!d.media)throw new Error(d.error||"Pehle Google Drive se video select karke Save Selected Playlist dabao.");
+      document.getElementById("liveMediaStep").style.display="none";
+      document.getElementById("liveDetailsStep").style.display="block";
+      document.getElementById("liveStart").style.display="inline-flex";
+      msg.textContent="Step 2/2: Title, description aur hashtags check karo. Phir Start Live dabao.";
+      document.getElementById("liveWizardTitle").focus();
+    }catch(e){msg.textContent="Next nahi ho saka: "+e.message;}
+    finally{next.disabled=false;}
+  });
+  document.getElementById("liveWizardBack").addEventListener("click",()=>{
+    document.getElementById("liveDetailsStep").style.display="none";
+    document.getElementById("liveMediaStep").style.display="block";
+    document.getElementById("liveStart").style.display="none";
+    msg.textContent="Step 1/2: Video/playlist change kar sakte ho.";
+  });
   document.getElementById("liveStart").addEventListener("click",async()=>{
     const b=document.getElementById("liveStart");
     const title=document.getElementById("liveWizardTitle").value.trim();

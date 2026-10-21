@@ -411,7 +411,7 @@ async function renderSchedule(){
     <h3>🎞️ Live video source</h3><p class="queue-meta">Google Drive se video seedha select karo. Folder ko “Anyone with the link” access dena zaroori hai.</p>
     <div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:12px;margin:10px 0;background:rgba(56,189,248,.05)">
       <div class="queue-row" style="gap:8px;align-items:center;flex-wrap:wrap"><strong>🔐 Google Drive</strong><span id="driveOAuthStatus" class="queue-meta">Connection status checking…</span><button class="small-btn" id="driveOAuthConnect" type="button">Connect Google Drive</button></div>
-      <label class="field-label" for="liveDriveFolderUrl">📂 Optional folder link<input id="liveDriveFolderUrl" class="input" type="url" placeholder="Blank chhodo to poori Drive load hogi"></label>
+      <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link<input id="liveDriveFolderUrl" class="input" type="url" value="https://drive.google.com/drive/folders/1AHf7Ld_f-tWG9YIPtLzuceDCaROOvi04" placeholder="Drive folder link paste karo"></label>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Photos & Videos</button></div>
       <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveSaveOne" type="button">▶ Use Selected Video</button></div>
@@ -576,7 +576,7 @@ async function renderSchedule(){
     try{const r=await fetch(apiUrl("/api/live/stop"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:"{}"});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Stop request failed");msg.textContent=d.message||"Stop request sent. Worker online hona chahiye.";await refresh();}
     catch(e){msg.textContent="Stop failed: "+e.message;b.disabled=false;}
   });
-  await refresh();refreshTimer=setInterval(refresh,5000);
+  await Promise.all([refresh(),loadDriveVideos()]);refreshTimer=setInterval(refresh,5000);
 }
 async function loadCreatorLearning(){
   const box=document.getElementById("creatorAnalytics");

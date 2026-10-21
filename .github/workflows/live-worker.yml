@@ -198,7 +198,19 @@ jobs:
           # leaving the dashboard stuck forever at worker_claimed.
           START_RESPONSE="$(curl --silent --show-error --max-time 90 -X POST \
             -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" -H "Content-Type: application/json" \
-            -d "{\"id\":\"$JOB_ID\"}" -w 
+            -d "{\"id\":\"$JOB_ID\"}" -w 'HTTP_STATUS:%{http_code}' "${BASE}/api/live/worker/start" || true)"
+          printf '%s\\n' "$START_RESPONSE"
+          if ! printf '%s' "$START_RESPONSE" | grep -q '"ok":true'; then
+            python3 - "$JOB_ID" "$START_RESPONSE" <<'PY' > worker-start-error.json
+          import json,sys
+          print(json.dumps({"id":sys.argv[1],"error":"Live startup failed: "+sys.argv[2][-1200:]}))
+          PY
+            curl --silent --show-error --max-time 30 -X POST \
+              -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" -H "Content-Type: application/json" \
+              --data-binary @worker-start-error.json "${BASE}/api/live/worker/error" || true
+            echo "::error::YouTube did not confirm live startup; job marked as error."
+            exit 1
+          fi
           # Poll the dashboard stop request while FFmpeg is streaming.
           STOP_REQUESTED="false"
           while kill -0 "$FFMPEG_PID" 2>/dev/null; do

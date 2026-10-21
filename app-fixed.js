@@ -411,9 +411,9 @@ async function renderSchedule(){
     <h3>🎞️ Live video source</h3><p class="queue-meta">Google Drive se video seedha select karo. Folder ko “Anyone with the link” access dena zaroori hai.</p>
     <div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:12px;margin:10px 0;background:rgba(56,189,248,.05)">
       <div class="queue-row" style="gap:8px;align-items:center;flex-wrap:wrap"><strong>🔐 Google Drive</strong><span id="driveOAuthStatus" class="queue-meta">Connection status checking…</span><button class="small-btn" id="driveOAuthConnect" type="button">Connect Google Drive</button></div>
-      <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link<input id="liveDriveFolderUrl" class="input" type="url" placeholder="https://drive.google.com/drive/folders/FOLDER_ID"></label>
-      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Drive Videos</button></div>
-      <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Google Drive folder link paste karke videos load karo.</div>
+      <label class="field-label" for="liveDriveFolderUrl">📂 Optional folder link<input id="liveDriveFolderUrl" class="input" type="url" placeholder="Blank chhodo to poori Drive load hogi"></label>
+      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Photos & Videos</button></div>
+      <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveSaveOne" type="button">▶ Use Selected Video</button></div>
       <div class="queue-meta" style="margin-top:6px">Bas Google Drive se video select karo, phir Start Live dabao.</div>
       <div style="display:none">
@@ -472,14 +472,14 @@ async function renderSchedule(){
   async function loadDriveVideos(){
     const url=document.getElementById("liveDriveFolderUrl").value.trim();
     const box=document.getElementById("liveDriveFiles"),btn=document.getElementById("liveDriveLoad");
-    if(!url){box.textContent="Pehle Google Drive folder link paste karo.";return;}
-    btn.disabled=true;box.textContent="Google Drive se videos load ho rahe hain…";
+    btn.disabled=true;box.textContent="Google Drive ki photos aur videos load ho rahe hain…";
     try{
-      const r=await fetch(apiUrl("/api/live/drive/list?folderId="+encodeURIComponent(url)),{credentials:"include",cache:"no-store"});
+      const endpoint="/api/live/drive/list"+(url?"?folderId="+encodeURIComponent(url):"");
+      const r=await fetch(apiUrl(endpoint),{credentials:"include",cache:"no-store"});
       const d=await r.json().catch(()=>({}));
       if(!r.ok||!d.ok)throw new Error(d.error||("Drive list failed (HTTP "+r.status+")"));
       loadedDriveFiles=Array.isArray(d.files)?d.files:[];
-      if(!loadedDriveFiles.length){box.textContent="Folder mein video files nahi mili. Folder sharing 'Anyone with the link' karo aur videos folder ke andar rakho.";return;}
+      if(!loadedDriveFiles.length){box.textContent="Is Drive mein photo ya video nahi mili. Sahi Google account connect hai ya nahi check karo.";return;}
       box.innerHTML='<div style="margin-bottom:8px;font-weight:700">Found '+loadedDriveFiles.length+' videos</div>'+loadedDriveFiles.map((f,i)=>'<label style="display:flex;gap:8px;align-items:flex-start;padding:8px;border-bottom:1px solid rgba(148,163,184,.15)"><input type="checkbox" data-drive-select="'+esc(f.id)+'" '+(i===0?'checked':'')+' style="margin-top:4px"><span><b>'+esc(f.name)+'</b><br><small>'+((Number(f.size)||0)>0?(Number(f.size)/1024/1024).toFixed(1)+' MB':'Size unavailable')+'</small></span><a href="'+esc(f.webViewLink||'https://drive.google.com/file/d/'+f.id+'/view')+'" target="_blank" rel="noopener" style="margin-left:auto">Open ↗</a></label>').join("");
     }catch(e){loadedDriveFiles=[];box.textContent="Drive error: "+e.message;}
     finally{btn.disabled=false;}

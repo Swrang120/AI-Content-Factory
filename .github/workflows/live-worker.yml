@@ -110,18 +110,28 @@ jobs:
           folder.mkdir(exist_ok=True)
           lines=[]
           for index,item in enumerate(items,1):
+              name=str(item.get("name") or f"video {index}")
               url=item.get("url") or ""
               if not url.startswith("https://drive.google.com/"):
-                  raise SystemExit("Playlist contains an invalid Google Drive download URL.")
+                  print(f"Skipping {name}: invalid Google Drive URL.")
+                  continue
               target=(folder/f"{index:03d}.mp4").resolve()
-              request=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
-              with urllib.request.urlopen(request,timeout=180) as response, target.open("wb") as output:
-                  shutil.copyfileobj(response,output)
-                  content_type=response.headers.get("Content-Type","")
-              if target.stat().st_size < 1024 or "text/html" in content_type.lower():
-                  raise SystemExit("Google Drive did not return a video file for: "+str(item.get("name") or index)+". Check file sharing is Anyone with the link.")
-              lines.append("file '"+str(target).replace("'","'\\''")+"'")
-              print(f"Downloaded {index}/{len(items)}: {item.get('name') or target.name} ({target.stat().st_size} bytes)")
+              try:
+                  request=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
+                  with urllib.request.urlopen(request,timeout=180) as response, target.open("wb") as output:
+                      shutil.copyfileobj(response,output)
+                      content_type=response.headers.get("Content-Type","")
+                  if target.stat().st_size < 1024 or "text/html" in content_type.lower():
+                      target.unlink(missing_ok=True)
+                      print(f"Skipping {name}: Drive did not return a video file. Set sharing to Anyone with the link.")
+                      continue
+                  lines.append("file '"+str(target).replace("'","'\\''")+"'")
+                  print(f"Downloaded {index}/{len(items)}: {name} ({target.stat().st_size} bytes)")
+              except Exception as exc:
+                  target.unlink(missing_ok=True)
+                  print(f"Skipping {name}: download failed ({type(exc).__name__}: {exc})")
+          if not lines:
+              raise SystemExit("No playlist videos were downloadable. Check Google Drive link sharing.")
           pathlib.Path("drive-playlist.txt").write_text("\n".join(lines)+"\n",encoding="utf-8")
           PY
             ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -f concat -safe 0 -i drive-playlist.txt \

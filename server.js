@@ -3409,7 +3409,7 @@ app.get("/api/live/status",async(req,res)=>{
     const keys=Object.keys(jobs).sort().reverse();
     const recent=keys.slice(0,7).map(k=>safeLiveJob(jobs[k]));
     const settings=await hydrateSettings();
-    res.json({ok:true,timeZone:LIVE_TZ,startTime:"14:00",endTime:"16:00",workerConfigured:!!process.env.LIVE_WORKER_TOKEN,automationEnabled:!!settings.liveAutomation,jobs:recent});
+    res.json({ok:true,controlMode:"manual",schedulerEnabled:false,workerConfigured:!!process.env.LIVE_WORKER_TOKEN,automationEnabled:false,jobs:recent});
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 

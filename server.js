@@ -865,6 +865,8 @@ async function createMusicPromotionJob({spotifyUrl,audioUrl,storagePath="",title
 }
 
 async function renderFactoryVideo(job,req){
+  const renderStartedAt=Date.now();
+  console.info("[ACF_RENDER] start",JSON.stringify({jobId:job.id,category:job.category,format:job.format,aspectRatio:job.aspectRatio||job.frame}));
   const {createSandbox,addBundleToSandbox,renderMediaOnVercel,uploadToVercelBlob}=await import("@remotion/vercel");
   const bundleDir=await getRemotionBundle();
   const sandbox=await createSandbox();
@@ -878,7 +880,7 @@ async function renderFactoryVideo(job,req){
   const title=job.title||job.topic||"AI Content Factory";
   const category=String(job.category||"");
   const frame=String(job.aspectRatio||job.frame||"16:9");
-  const dimensions=frame==="9:16"?{width:1080,height:1920}:frame==="1:1"?{width:1080,height:1080}:{width:1920,height:1080};
+  const dimensions=frame==="9:16"?{width:720,height:1280}:frame==="1:1"?{width:720,height:720}:{width:1280,height:720};
   const requestedFormat=String(job.format||"").toLowerCase();
   const durationSeconds=job.music?30:/long/.test(requestedFormat)?180:/youtube short/.test(requestedFormat)?55:/short reel/.test(requestedFormat)?25:/reel/.test(requestedFormat)?45:/promo/.test(requestedFormat)?30:45;
   const {sandboxFilePath}=await renderMediaOnVercel({
@@ -886,7 +888,7 @@ async function renderFactoryVideo(job,req){
     serveUrl,
     compositionId:"FactoryVideo",
     ...dimensions,
-    durationInFrames:30*durationSeconds,
+    durationInFrames:24*durationSeconds,
     inputProps:{title,script,audioUrl,musicUrl,musicStartSeconds,musicDurationSeconds,spotifyUrl:job.music?.spotifyUrl||"",artist:job.music?.artist||"",durationSeconds,category,aspectRatio:frame},
     codec:"h264",
     outputFile:"/tmp/factory-video.mp4"
@@ -900,6 +902,7 @@ async function renderFactoryVideo(job,req){
     blobPath:"renders/"+job.id+".mp4"
   });
   try{await sandbox.stop();}catch{}
+  console.info("[ACF_RENDER] complete",JSON.stringify({jobId:job.id,elapsedMs:Date.now()-renderStartedAt}));
   return uploaded.url;
 }
 

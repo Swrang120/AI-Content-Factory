@@ -3074,9 +3074,14 @@ function extractDriveId(value){
   if(/^[a-zA-Z0-9_-]{10,}$/.test(raw))return raw;
   try{
     const u=new URL(raw);
-    if(!/(^|\.)drive\.google\.com$/i.test(u.hostname)&&!/(^|\.)docs\.google\.com$/i.test(u.hostname))return "";
+    if(!/(^|\\.)drive\\.google\\.com$/i.test(u.hostname)&&!/(^|\\.)docs\\.google\\.com$/i.test(u.hostname))return "";
     const parts=u.pathname.split("/").filter(Boolean);
+    // Standard Google Drive folder links use /drive/folders/<ID>.
+    const folderIndex=parts.findIndex((part,i)=>part==="folders"&&i>0&&parts[i-1]==="drive");
+    if(folderIndex>=0&&parts[folderIndex+1])return parts[folderIndex+1];
     if(parts[0]==="folders"&&parts[1])return parts[1];
+    const fileIndex=parts.findIndex((part,i)=>part==="d"&&i>0&&parts[i-1]==="file");
+    if(fileIndex>=0&&parts[fileIndex+1])return parts[fileIndex+1];
     if(parts[0]==="file"&&parts[1]==="d"&&parts[2])return parts[2];
     return u.searchParams.get("id")||"";
   }catch{return "";}

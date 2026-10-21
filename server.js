@@ -3031,12 +3031,15 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   const schedule=liveScheduleForDate(targetDate);
   // Manual start: schedule the broadcast a few minutes ahead so the free GitHub worker can pick it up.
   const start=new Date(now+8*60000);
-  const end=new Date(now+150*60000);
+  const end=new Date(now+310*60000);
   const yt=await youtube(req||{headers:{}});
   const privacy=String(privacyStatus||process.env.YOUTUBE_LIVE_PRIVACY||"public");
   if(!["private","unlisted","public"].includes(privacy))throw new Error("Invalid YOUTUBE_LIVE_PRIVACY.");
-  const title=String(media.mediaType==="car_animation"?"Cartoon Car Driving Live":(schedule.title||"AI Content Factory Live")).slice(0,100);
-  const description=("AI Content Factory · Manual live stream · "+String(schedule.category||"Live")).slice(0,5000);
+  const requestedTitle=String(req?.body?.title||"").trim();
+  const title=String(requestedTitle||(media.mediaType==="car_animation"?"Cartoon Car Driving Live":(schedule.title||"AI Content Factory Live"))).slice(0,100);
+  const requestedDescription=String(req?.body?.description||"").trim();
+  const hashtags=String(req?.body?.hashtags||"").trim().split(/\s+/).filter(x=>x.startsWith("#")&&/^#[A-Za-z0-9_]+$/.test(x)).slice(0,30).join(" ");
+  const description=String([requestedDescription||("AI Content Factory · Manual live stream · "+String(schedule.category||"Live")),hashtags].filter(Boolean).join("\n\n")).slice(0,5000);
   const broadcast=await yt.liveBroadcasts.insert({part:"snippet,status,contentDetails",requestBody:{snippet:{title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),categoryId:"20"},status:{privacyStatus:privacy},contentDetails:{enableAutoStart:false,enableAutoStop:false,enableDvr:true,recordFromStart:true}}});
   const stream=await yt.liveStreams.insert({part:"snippet,cdn,contentDetails",requestBody:{snippet:{title:title+" · Stream"},cdn:{frameRate:"30fps",ingestionType:"rtmp",resolution:"720p"},contentDetails:{isReusable:false}}});
   await yt.liveBroadcasts.bind({part:"id,contentDetails",id:broadcast.data.id,streamId:stream.data.id});
@@ -3240,13 +3243,20 @@ app.post("/api/live/media",requireAppKey,async(req,res)=>{
       if(!String(f.mimeType||"").startsWith("video/"))throw new Error("Selected Google Drive item video file nahi hai.");
       media={sourceType:"drive_file",mediaType:"video",fileId:f.id,title:String(body.title||f.name||"Google Drive video").slice(0,100),videoUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id),mediaUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id),webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),thumbnailUrl:f.thumbnailLink||null,size:Number(f.size)||0,createdAt:now};
     }else if(body.sourceType==="drive_playlist"){
-      const folderId=extractDriveId(body.folderId||body.folderUrl);
-      if(!folderId)throw new Error("Google Drive folder link/ID valid nahi hai.");
-      const page=await driveApi("files",{q:"'"+folderId.replace(/'/g,"\\'")+"' in parents and trashed = false",pageSize:1000,orderBy:"name",fields:"files(id,name,mimeType,size,webViewLink,thumbnailLink)"});
-      const allVideos=(page.files||[]).filter(f=>String(f.mimeType||"").startsWith("video/"));
-      const requestedIds=Array.isArray(body.fileIds)?body.fileIds.map(x=>String(x)).filter(x=>/^[a-zA-Z0-9_-]{10,}$/.test(x)):[];
-      const files=(requestedIds.length?requestedIds.map(id=>allVideos.find(f=>f.id===id)).filter(Boolean):allVideos).slice(0,100);
-      if(!files.length)throw new Error("Is folder mein koi video nahi mili. Folder ko Anyone with the link access do aur video files directly folder ke andar rakho.");
+      const folderId=extractDriveId(body.folderId||body.folderUrl)||null;
+      const requestedIds=Array.isArray(body.fileIds)?[...new Set(body.fileIds.map(x=>String(x)).filter(x=>/^[a-zA-Z0-9_-]{10,}$/.test(x)))].slice(0,100):[];
+      let files=[];
+      if(requestedIds.length){
+        for(const id of requestedIds){
+          const f=await driveApi("files/"+encodeURIComponent(id),{fields:"id,name,mimeType,size,webViewLink,thumbnailLink"});
+          if(String(f.mimeType||"").startsWith("video/"))files.push(f);
+        }
+      }else{
+        if(!folderId)throw new Error("Selected video IDs nahi mile. Drive list dobara load karke videos select karo.");
+        const page=await driveApi("files",{q:"'"+folderId.replace(/'/g,"\\'")+"' in parents and trashed = false",pageSize:1000,orderBy:"name",fields:"files(id,name,mimeType,size,webViewLink,thumbnailLink)"});
+        files=(page.files||[]).filter(f=>String(f.mimeType||"").startsWith("video/")).slice(0,100);
+      }
+      if(!files.length)throw new Error("Selected Google Drive videos nahi mili. Drive access check karke dobara select karo.");
       const playlist=files.map(f=>({id:f.id,name:f.name,url:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id),webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),size:Number(f.size)||0}));
       media={sourceType:"drive_playlist",mediaType:"playlist",folderId,title:String(body.title||"Google Drive Live Playlist").slice(0,100),playlist,count:playlist.length,videoUrl:playlist[0].url,mediaUrl:playlist[0].url,createdAt:now};
     }else if(body.video&&body.video.url){

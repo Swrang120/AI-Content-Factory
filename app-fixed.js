@@ -415,7 +415,13 @@ async function renderSchedule(){
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Photos & Videos</button></div>
       <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="small-btn" id="liveDriveSelectAll" type="button">☑ Select / Deselect All</button><button class="primary-btn" id="liveDriveSavePlaylist" type="button">💾 Save Selected Playlist</button><button class="small-btn" id="liveDriveSaveOne" type="button">▶ Use First Selected Video</button></div>
-      <div class="queue-meta" style="margin-top:6px">Playlist save karne par videos naam ke order mein chalengi aur phir repeat hongi. Blank folder ke saath bhi selected videos save ho sakti hain.</div>
+      <div class="queue-meta" style="margin-top:6px">Playlist ek baar save karo; agli baar bas saved playlist choose karke direct Live start kar sakte ho.</div>
+      <div class="live-saved-playlists" style="margin-top:14px;padding:12px;border:1px solid rgba(212,175,55,.38);border-radius:14px;background:linear-gradient(135deg,rgba(212,175,55,.09),rgba(15,23,42,.35))">
+        <div class="queue-row" style="align-items:center;gap:8px;flex-wrap:wrap"><strong>✨ My Saved Playlists</strong><span class="live-gold-pill">GOLD LIBRARY</span><button class="small-btn" id="livePlaylistRefresh" type="button">↻ Refresh</button></div>
+        <div class="queue-row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><select id="liveSavedPlaylistSelect" class="input" style="flex:1;min-width:180px"><option value="">Choose saved playlist…</option></select><button class="primary-btn" id="livePlaylistUse" type="button">Use Playlist</button></div>
+        <div id="liveSavedPlaylistInfo" class="queue-meta" style="margin-top:8px">Save 2–10+ videos as separate named playlists. Select one here whenever you want to go Live.</div>
+        <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="small-btn" id="livePlaylistDelete" type="button" disabled>🗑 Delete selected playlist</button></div>
+      </div>
       <div class="queue-row" style="margin-top:12px"><button class="primary-btn" id="liveWizardNext" type="button">Next: Live Details →</button></div>
       <div style="display:none">
         <input id="liveDriveUrl" type="url"><input id="liveVideoFile" type="file"><input id="liveThumbFile" type="file"><input id="liveMediaTitle" type="text">
@@ -537,7 +543,17 @@ async function renderSchedule(){
       if(!r.ok||!d.ok)throw new Error(d.error||("Could not save Drive source (HTTP "+r.status+")"));
       document.getElementById("liveDriveUrl").value="";
       await loadSavedLiveMedia();
-      msg.textContent=asPlaylist?"✅ Playlist saved: "+(d.media?.count||chosen.length)+" videos. They will play in order and repeat.":"✅ Selected Drive video saved: "+(d.media?.title||chosen[0].name);
+      if(asPlaylist){
+        const name=window.prompt("Is playlist ka naam rakho (jaise Gaming Mix 1, Music Live 2):","Live Playlist "+new Date().toLocaleDateString("en-IN"));
+        if(name&&name.trim()){
+          const pr=await fetch(apiUrl("/api/live/playlists"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({name:name.trim()})});
+          const pd=await pr.json().catch(()=>({}));if(!pr.ok||!pd.ok)throw new Error(pd.error||"Named playlist save nahi hui.");
+          await loadSavedPlaylists(pd.playlists||[]);
+          const select=document.getElementById("liveSavedPlaylistSelect");if(select)select.value=pd.playlist.id;
+          msg.textContent="✅ "+pd.message+" · "+(d.media?.count||chosen.length)+" videos saved. Next time just choose this playlist.";
+        }else{msg.textContent="Videos current selection mein save hain. Named playlist banane ke liye Save Selected Playlist phir dabao.";}
+      }else{msg.textContent="✅ Selected Drive video saved: "+(d.media?.title||chosen[0].name);}
+
     }catch(e){msg.textContent="❌ Google Drive save failed: "+e.message;}
     finally{btn.disabled=false;}
   }
@@ -548,6 +564,34 @@ async function renderSchedule(){
   });
   document.getElementById("liveDriveSaveOne").addEventListener("click",()=>saveDriveSelection(false));
   document.getElementById("liveDriveSavePlaylist").addEventListener("click",()=>saveDriveSelection(true));
+  async function loadSavedPlaylists(initial){
+    const select=document.getElementById("liveSavedPlaylistSelect"),info=document.getElementById("liveSavedPlaylistInfo"),del=document.getElementById("livePlaylistDelete");
+    if(!select)return;
+    try{
+      let list=initial;
+      if(!Array.isArray(list)){const r=await fetch(apiUrl("/api/live/playlists"),{credentials:"include",cache:"no-store"});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Playlist library unavailable");list=d.playlists||[];}
+      const previous=select.value;select.innerHTML='<option value="">Choose saved playlist…</option>'+list.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+' · '+Number(p.count||p.playlist?.length||0)+' videos</option>').join("");
+      if(list.some(p=>p.id===previous))select.value=previous;
+      select._playlistData=list;
+      if(info)info.textContent=list.length?list.length+" saved playlist(s). Choose one, then tap Use Playlist.":"No named playlists yet. Select videos and tap Save Selected Playlist.";
+      if(del)del.disabled=!select.value;
+    }catch(e){if(info)info.textContent="Playlist library error: "+e.message;}
+  }
+  document.getElementById("livePlaylistRefresh").addEventListener("click",()=>loadSavedPlaylists());
+  document.getElementById("liveSavedPlaylistSelect").addEventListener("change",e=>{document.getElementById("livePlaylistDelete").disabled=!e.target.value;const p=(e.target._playlistData||[]).find(x=>x.id===e.target.value);if(p)document.getElementById("liveSavedPlaylistInfo").textContent=p.name+" · "+(p.count||p.playlist?.length||0)+" videos · Ready to use for Live.";});
+  document.getElementById("livePlaylistUse").addEventListener("click",async()=>{
+    const select=document.getElementById("liveSavedPlaylistSelect"),id=select.value,btn=document.getElementById("livePlaylistUse");
+    if(!id){msg.textContent="Pehle saved playlist choose karo.";return;}
+    btn.disabled=true;msg.textContent="Saved playlist load ho rahi hai…";
+    try{const r=await fetch(apiUrl("/api/live/playlists/select"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify({id})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Playlist select nahi hui.");await loadSavedPlaylists(d.playlists);await loadSavedLiveMedia();msg.textContent="✅ "+d.message+" · "+(d.media?.playlist?.length||0)+" videos ready. Next → Live Details."; }
+    catch(e){msg.textContent="Playlist load failed: "+e.message;}finally{btn.disabled=false;}
+  });
+  document.getElementById("livePlaylistDelete").addEventListener("click",async()=>{
+    const select=document.getElementById("liveSavedPlaylistSelect"),id=select.value;if(!id)return;
+    const p=(select._playlistData||[]).find(x=>x.id===id);if(!confirm("Delete saved playlist "+(p?.name||"")+"?"))return;
+    try{const r=await fetch(apiUrl("/api/live/playlists/"+encodeURIComponent(id),{method:"DELETE",credentials:"include"}));const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Delete failed");await loadSavedPlaylists(d.playlists||[]);msg.textContent="Saved playlist deleted.";}catch(e){msg.textContent="Delete failed: "+e.message;}
+  });
+  loadSavedPlaylists();
   if(liveDrivePrefs.folderUrl)setTimeout(()=>loadDriveVideos(),450);
   document.getElementById("liveMediaUpload").addEventListener("click",async()=>{
     const btn=document.getElementById("liveMediaUpload"),vf=document.getElementById("liveVideoFile").files[0],tf=document.getElementById("liveThumbFile").files[0],preview=document.getElementById("liveMediaPreview");

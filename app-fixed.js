@@ -408,7 +408,15 @@ async function renderSchedule(){
   <div class="table-card"><div class="section-head"><div><h3>📡 Live control</h3><span class="muted">YouTube · Manual session</span></div><button class="small-btn" id="liveRefresh">↻ Refresh</button></div>
   <div class="table-card" style="margin:12px 0"><h3>📺 Target YouTube Channel</h3><div id="liveChannelPanel" class="queue-meta">Connected channel check ho raha hai…</div></div>
   <div class="table-card" style="margin:14px 0;padding:14px">
-    <h3>🎞️ Live video source</h3><p class="queue-meta">Video upload karo ya public Google Drive sharing link paste karo. Drive file access “Anyone with the link” hona chahiye.</p>
+    <h3>🎞️ Live video source</h3><p class="queue-meta">Google Drive se video seedha select karo. Folder ko “Anyone with the link” access dena zaroori hai.</p>
+    <div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:12px;margin:10px 0;background:rgba(56,189,248,.05)">
+      <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link<input id="liveDriveFolderUrl" class="input" type="url" placeholder="https://drive.google.com/drive/folders/FOLDER_ID"></label>
+      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Drive Videos</button><button class="small-btn" id="liveDriveSelectAll" type="button">☑ Select All</button></div>
+      <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Folder link paste karke Load Drive Videos dabao.</div>
+      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveSaveOne" type="button">▶ Save Selected Video</button><button class="small-btn" id="liveDriveSavePlaylist" type="button">🔁 Save Selected Playlist</button></div>
+      <div class="queue-meta" style="margin-top:6px">Playlist videos naam ke order mein chalengi, phir list repeat hogi. Zyada se zyada 100 videos.</div>
+    </div>
+    <p class="queue-meta">Optional: ek public Drive file link directly bhi de sakte ho.</p>
     <label class="field-label" for="liveDriveUrl">Google Drive video link (optional)<input id="liveDriveUrl" class="input" type="url" placeholder="https://drive.google.com/file/d/FILE_ID/view"></label><div class="queue-meta" style="margin:5px 0 12px">Drive link use karoge toh large video ko phone se dobara upload nahi karna padega. Link public-accessible hona chahiye.</div>
     <label class="field-label" for="liveVideoFile">Or upload video file (MP4 recommended)<input id="liveVideoFile" class="input" type="file" accept="video/mp4,video/*"></label>
     <div style="margin-top:10px"><label class="field-label" for="liveThumbFile">Thumbnail image (optional)<input id="liveThumbFile" class="input" type="file" accept="image/jpeg,image/png,image/webp"></label></div>
@@ -453,6 +461,49 @@ async function renderSchedule(){
     }catch(e){box.innerHTML='<div class="empty">Live status error: '+esc(e.message)+'</div>';}
   }
   async function loadSavedLiveMedia(){const box=document.getElementById("liveMediaPreview");try{const r=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Cannot load saved media");const m=d.media;document.getElementById("liveMediaDelete").disabled=!m;box.innerHTML=m?'<b>'+esc(m.title||"Saved video")+'</b><br><video controls playsinline preload="metadata" style="width:100%;max-height:240px" src="'+esc(m.videoUrl)+'"></video>':"No saved video yet.";document.getElementById("liveThumbPreview").innerHTML=m&&m.thumbnailUrl?'<img alt="Thumbnail preview" src="'+esc(m.thumbnailUrl)+'" style="width:180px;max-width:100%;border-radius:10px">':"";if(m)document.getElementById("liveMediaTitle").value=m.title||"";}catch(e){box.textContent="Saved video: "+e.message;}}
+  let loadedDriveFiles=[];
+  async function loadDriveVideos(){
+    const url=document.getElementById("liveDriveFolderUrl").value.trim();
+    const box=document.getElementById("liveDriveFiles"),btn=document.getElementById("liveDriveLoad");
+    if(!url){box.textContent="Pehle Google Drive folder link paste karo.";return;}
+    btn.disabled=true;box.textContent="Google Drive se videos load ho rahe hain…";
+    try{
+      const r=await fetch(apiUrl("/api/live/drive/list?folderId="+encodeURIComponent(url)),{credentials:"include",cache:"no-store"});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.ok)throw new Error(d.error||("Drive list failed (HTTP "+r.status+")"));
+      loadedDriveFiles=Array.isArray(d.files)?d.files:[];
+      if(!loadedDriveFiles.length){box.textContent="Folder mein video files nahi mili. Folder sharing 'Anyone with the link' karo aur videos folder ke andar rakho.";return;}
+      box.innerHTML='<div style="margin-bottom:8px;font-weight:700">Found '+loadedDriveFiles.length+' videos</div>'+loadedDriveFiles.map((f,i)=>'<label style="display:flex;gap:8px;align-items:flex-start;padding:8px;border-bottom:1px solid rgba(148,163,184,.15)"><input type="checkbox" data-drive-select="'+esc(f.id)+'" '+(i===0?'checked':'')+' style="margin-top:4px"><span><b>'+esc(f.name)+'</b><br><small>'+((Number(f.size)||0)>0?(Number(f.size)/1024/1024).toFixed(1)+' MB':'Size unavailable')+'</small></span><a href="'+esc(f.webViewLink||'https://drive.google.com/file/d/'+f.id+'/view')+'" target="_blank" rel="noopener" style="margin-left:auto">Open ↗</a></label>').join("");
+    }catch(e){loadedDriveFiles=[];box.textContent="Drive error: "+e.message;}
+    finally{btn.disabled=false;}
+  }
+  function selectedDriveFiles(){
+    const ids=new Set(Array.from(document.querySelectorAll("#liveDriveFiles [data-drive-select]:checked")).map(x=>x.getAttribute("data-drive-select")));
+    return loadedDriveFiles.filter(f=>ids.has(f.id));
+  }
+  async function saveDriveSelection(asPlaylist){
+    const chosen=selectedDriveFiles(),folderUrl=document.getElementById("liveDriveFolderUrl").value.trim();
+    if(!chosen.length){msg.textContent="Pehle list mein kam se kam ek video select karo.";return;}
+    const btn=document.getElementById(asPlaylist?"liveDriveSavePlaylist":"liveDriveSaveOne");
+    btn.disabled=true;msg.textContent="Google Drive selection save ho rahi hai…";
+    try{
+      const payload=asPlaylist?{sourceType:"drive_playlist",folderUrl,fileIds:chosen.map(f=>f.id),title:"Google Drive Live Playlist"}:{sourceType:"drive_file",fileId:chosen[0].id,title:chosen[0].name};
+      const r=await fetch(apiUrl("/api/live/media"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(payload)});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok||!d.ok)throw new Error(d.error||("Could not save Drive source (HTTP "+r.status+")"));
+      document.getElementById("liveDriveUrl").value="";
+      await loadSavedLiveMedia();
+      msg.textContent=asPlaylist?"✅ Playlist saved: "+(d.media?.count||chosen.length)+" videos. They will play in order and repeat.":"✅ Selected Drive video saved: "+(d.media?.title||chosen[0].name);
+    }catch(e){msg.textContent="❌ Google Drive save failed: "+e.message;}
+    finally{btn.disabled=false;}
+  }
+  document.getElementById("liveDriveLoad").addEventListener("click",loadDriveVideos);
+  document.getElementById("liveDriveSelectAll").addEventListener("click",()=>{
+    const checks=Array.from(document.querySelectorAll("#liveDriveFiles [data-drive-select]"));
+    const shouldCheck=checks.some(x=>!x.checked);checks.forEach(x=>x.checked=shouldCheck);
+  });
+  document.getElementById("liveDriveSaveOne").addEventListener("click",()=>saveDriveSelection(false));
+  document.getElementById("liveDriveSavePlaylist").addEventListener("click",()=>saveDriveSelection(true));
   document.getElementById("liveMediaUpload").addEventListener("click",async()=>{
     const btn=document.getElementById("liveMediaUpload"),vf=document.getElementById("liveVideoFile").files[0],tf=document.getElementById("liveThumbFile").files[0],preview=document.getElementById("liveMediaPreview");
     if(!vf){msg.textContent="Pehle video file select karo.";return;}

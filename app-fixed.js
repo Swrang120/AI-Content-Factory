@@ -414,16 +414,21 @@ async function renderSchedule(){
       <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link (optional — blank = all Drive)<input id="liveDriveFolderUrl" class="input" type="url" value="" placeholder="Blank chhodo = poori Drive; ya folder link paste karo"></label>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Photos & Videos</button></div>
       <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
-      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveSaveOne" type="button">▶ Use Selected Video</button></div>
-      <div class="queue-meta" style="margin-top:6px">Bas Google Drive se video select karo, phir Start Live dabao.</div>
+      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="small-btn" id="liveDriveSelectAll" type="button">☑ Select / Deselect All</button><button class="primary-btn" id="liveDriveSavePlaylist" type="button">💾 Save Selected Playlist</button><button class="small-btn" id="liveDriveSaveOne" type="button">▶ Use First Selected Video</button></div>
+      <div class="queue-meta" style="margin-top:6px">Playlist save karne par videos naam ke order mein chalengi aur phir repeat hongi. Blank folder ke saath bhi selected videos save ho sakti hain.</div>
       <div style="display:none">
-        <button id="liveDriveSelectAll" type="button">Select All</button><button id="liveDriveSavePlaylist" type="button">Save Playlist</button>
         <input id="liveDriveUrl" type="url"><input id="liveVideoFile" type="file"><input id="liveThumbFile" type="file"><input id="liveMediaTitle" type="text">
         <button id="liveMediaUpload" type="button">Upload</button><button id="liveMediaDelete" type="button" disabled>Delete</button>
         <div id="liveMediaPreview"></div><div id="liveThumbPreview"></div>
       </div>
     </div>
   </div>
+   <div class="table-card" style="margin:12px 0;padding:14px"><h3>📝 YouTube Live details</h3>
+     <label class="field-label" for="liveWizardTitle">Title <input id="liveWizardTitle" class="input" maxlength="100" required placeholder="Live stream title"></label>
+     <label class="field-label" for="liveWizardDescription">Description <textarea id="liveWizardDescription" class="input" rows="4" maxlength="4500" placeholder="Live stream description"></textarea></label>
+     <label class="field-label" for="liveWizardHashtags">Hashtags <input id="liveWizardHashtags" class="input" placeholder="#Live #Gaming #Hindi"></label>
+     <div class="queue-meta">Start Live se pehle selected video/playlist aur details check kar lo. Live public hoga.</div>
+   </div>
   <div id="liveStatusPanel"><div class="empty">Live status check ho raha hai…</div></div>
   <div class="table-card" style="margin:12px 0"><h3>🔗 Live / Watch Link</h3><div id="liveWatchPanel" class="queue-meta">Live banne ke baad link yahan dikhega.</div></div>
   <div class="queue-row" style="gap:10px;flex-wrap:wrap"><button class="primary-btn" id="liveStart" style="min-height:46px">▶ Start Live</button><button class="small-btn" id="liveStop" style="min-height:46px" disabled>⏹ Stop Live</button></div>
@@ -553,13 +558,19 @@ async function renderSchedule(){
   document.getElementById("liveMediaDelete").addEventListener("click",async()=>{if(!confirm("Saved video aur thumbnail delete karein?"))return;try{const r=await fetch(apiUrl("/api/live/media"),{method:"DELETE",credentials:"include"}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Delete failed");msg.textContent="Saved video deleted.";await loadSavedLiveMedia();}catch(e){msg.textContent="Delete failed: "+e.message;}});
   document.getElementById("liveRefresh").addEventListener("click",refresh);
   document.getElementById("liveStart").addEventListener("click",async()=>{
-    const b=document.getElementById("liveStart");b.disabled=true;msg.textContent="YouTube live event create ho raha hai…";
+    const b=document.getElementById("liveStart");
+    const title=document.getElementById("liveWizardTitle").value.trim();
+    const description=document.getElementById("liveWizardDescription").value.trim();
+    const hashtags=document.getElementById("liveWizardHashtags").value.trim();
+    if(!title){msg.textContent="YouTube Live ka title likho.";document.getElementById("liveWizardTitle").focus();return;}
+    if(title.length>100){msg.textContent="Title 100 characters se chhota rakho.";return;}
+    b.disabled=true;msg.textContent="YouTube live event create ho raha hai…";
     try{
       const driveUrl=document.getElementById("liveDriveUrl").value.trim();
-      let payload={privacyStatus:"public",mediaSource:"saved"};
+      let payload={privacyStatus:"public",mediaSource:"saved",title,description,hashtags};
       if(driveUrl){
         if(!/^https:\/\/(drive\.google\.com|docs\.google\.com)\//i.test(driveUrl))throw new Error("Google Drive ka valid sharing link paste karo.");
-        payload={privacyStatus:"public",mediaSource:"link",mediaUrl:driveUrl};
+        payload={privacyStatus:"public",mediaSource:"link",mediaUrl:driveUrl,title,description,hashtags};
         msg.textContent="Google Drive link validate karke Live source prepare kar rahe hain…";
       }else{
         const saved=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"});const sm=await saved.json();

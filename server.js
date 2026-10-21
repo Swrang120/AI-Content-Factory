@@ -3093,7 +3093,7 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   const requestedDescription=String(req?.body?.description||"").trim();
   const hashtags=String(req?.body?.hashtags||"").trim().split(/\s+/).filter(x=>x.startsWith("#")&&/^#[A-Za-z0-9_]+$/.test(x)).slice(0,30).join(" ");
   const description=String([requestedDescription||("AI Content Factory · Manual live stream · "+String(schedule.category||"Live")),hashtags].filter(Boolean).join("\n\n")).slice(0,5000);
-  const broadcast=await yt.liveBroadcasts.insert({part:"snippet,status,contentDetails",requestBody:{snippet:{title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),categoryId:"20"},status:{privacyStatus:privacy},contentDetails:{enableAutoStart:false,enableAutoStop:false,enableDvr:true,recordFromStart:true}}});
+  const broadcast=await yt.liveBroadcasts.insert({part:"snippet,status,contentDetails",requestBody:{snippet:{title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),categoryId:"20"},status:{privacyStatus:privacy},contentDetails:{enableAutoStart:true,enableAutoStop:false,enableDvr:true,recordFromStart:true}}});
   const stream=await yt.liveStreams.insert({part:"snippet,cdn,contentDetails",requestBody:{snippet:{title:title+" · Stream"},cdn:{frameRate:"30fps",ingestionType:"rtmp",resolution:"720p"},contentDetails:{isReusable:false}}});
   await yt.liveBroadcasts.bind({part:"id,contentDetails",id:broadcast.data.id,streamId:stream.data.id});
   const ingestion=stream.data.cdn?.ingestionInfo||{};

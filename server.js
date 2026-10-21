@@ -3499,10 +3499,38 @@ app.post("/api/live/worker/start",async(req,res)=>{
     const id=String(req.body?.id||""); if(!id)return res.status(400).json({ok:false,error:"Live job id is required."});
     const jobs=await readLiveJobs(); const job=Object.values(jobs).find(x=>x?.id===id);
     if(!job)return res.status(404).json({ok:false,error:"Live job not found."});
-    const live=await transitionLiveBroadcast(job,"live");
-    job.status="live";job.workerStatus="streaming";job.updatedAt=new Date().toISOString();job.lastYouTubeStatus=live?.status?.lifeCycleStatus||"live";
+    if(!job.broadcastId)throw new Error("Live job has no YouTube broadcast ID.");
+    const yt=await youtube({});
+    let lifecycle="",live=null,lastError="";
+    // FFmpeg needs time to reach YouTube ingest. A single immediate transition
+    // commonly fails with HTTP 400 while the broadcast is still created/ready.
+    // Poll status and retry only valid transitions; an auto-started broadcast is
+    // treated as success rather than trying to transition live -> live again.
+    for(let attempt=0;attempt<7;attempt++){
+      const current=await yt.liveBroadcasts.list({part:"id,status",id:job.broadcastId});
+      const broadcast=current.data.items?.[0];
+      if(!broadcast)throw new Error("YouTube broadcast not found while starting the stream.");
+      lifecycle=String(broadcast.status?.lifeCycleStatus||"");
+      if(lifecycle==="live"){live=broadcast;break;}
+      if(lifecycle==="complete"||lifecycle==="revoked")throw new Error("YouTube broadcast cannot start because its lifecycle status is "+lifecycle+".");
+      if(["ready","testing"].includes(lifecycle)){
+        try{
+          live=await transitionLiveBroadcast(job,"live");
+          lifecycle=String(live?.status?.lifeCycleStatus||"live");
+          if(lifecycle==="live")break;
+        }catch(error){
+          lastError=safeErrorMessage(error);
+          // Re-read on the next pass: YouTube may have auto-started it meanwhile.
+        }
+      }
+      if(attempt<6)await new Promise(resolve=>setTimeout(resolve,5000));
+    }
+    if(lifecycle!=="live"){
+      throw new Error("YouTube did not confirm the broadcast as live after startup retries (status="+(lifecycle||"unknown")+")"+(lastError?": "+lastError:""));
+    }
+    job.status="live";job.workerStatus="streaming";job.updatedAt=new Date().toISOString();job.lastYouTubeStatus=lifecycle;
     jobs[job.dateKey]=job;await writeLiveJobs(jobs);
-    res.json({ok:true,job:safeLiveJob(job),youtubeStatus:live?.status?.lifeCycleStatus||null});
+    res.json({ok:true,job:safeLiveJob(job),youtubeStatus:lifecycle});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
 app.post("/api/live/worker/finish",async(req,res)=>{

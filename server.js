@@ -3024,8 +3024,36 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   const now=Date.now();
   const targetDate=dateKey||liveDateKey(new Date(now+10*60000));
   const existingJobs=await readLiveJobs();
-  const existing=existingJobs[targetDate];
-  if(existing && ["scheduled","worker_claimed","starting","live","stopping"].includes(existing.status))return safeLiveJob(existing);
+  let existing=existingJobs[targetDate];
+  if(existing && ["scheduled","worker_claimed","starting","live","stopping"].includes(existing.status)){
+    // Never silently return a stale/stopping job when the user presses Start again.
+    // A genuinely streaming job remains protected; stale queued/stopping jobs are
+    // cleaned up and the new click gets a fresh broadcast and worker job.
+    const ageMs=now-new Date(existing.updatedAt||existing.createdAt||now).getTime();
+    const activeStatuses=["scheduled","worker_claimed","starting","live"];
+    if(existing.status!=="stopping" && activeStatuses.includes(existing.status)) return safeLiveJob(existing);
+    if(existing.status==="stopping" && ageMs<120000) {
+      throw new Error("Pichhla Live abhi Stop ho raha hai. Stop ko complete hone do; 2 minute baad bhi stuck ho to Reset Stuck Live dabao.");
+    }
+    if(existing.broadcastId){
+      try{
+        const yt=await youtube(req||{headers:{}});
+        const b=await yt.liveBroadcasts.list({part:"id,status",id:existing.broadcastId});
+        const life=b.data.items?.[0]?.status?.lifeCycleStatus;
+        if(life==="live"||life==="liveStarting"||life==="ready"){
+          await yt.liveBroadcasts.transition({part:"id,status",id:existing.broadcastId,broadcastStatus:"complete"});
+        }
+      }catch(e){console.warn("[live] Could not finalize stale prior broadcast before restart:",safeErrorMessage(e));}
+    }
+    existing.status="completed";
+    existing.workerStatus="recovered";
+    existing.stopRequested=true;
+    existing.broadcastId=null;
+    existing.updatedAt=new Date().toISOString();
+    existing.error="Previous Live session was stale; cleaned up before creating a fresh session.";
+    existingJobs[targetDate]=existing;
+    await writeLiveJobs(existingJobs);
+  }
   const media=await selectLiveMedia(targetDate,req?.body?.mediaSource,req?.body?.mediaUrl);
   if(!media)throw new Error("Could not prepare a live media source.");
   const schedule=liveScheduleForDate(targetDate);

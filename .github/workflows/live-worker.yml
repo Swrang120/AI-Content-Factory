@@ -66,6 +66,35 @@ jobs:
               -f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=44100" \
               -filter_complex "[0:v]drawbox=x=0:y=300:w=1280:h=230:color=0x68b85b:t=fill,drawbox=x=0:y=520:w=1280:h=200:color=0x454b55:t=fill,drawbox=x=0:y=620:w=1280:h=8:color=white:t=fill,drawbox=x=mod(t*180\\,1500)-240:y=555:w=210:h=62:color=0xffc928:t=fill,drawbox=x=mod(t*180\\,1500)-190:y=520:w=120:h=42:color=0x2878d0:t=fill,drawbox=x=mod(t*180\\,1500)-205:y=610:w=42:h=42:color=0x202020:t=fill,drawbox=x=mod(t*180\\,1500)-105:y=610:w=42:h=42:color=0x202020:t=fill,drawbox=x=0:y=0:w=1280:h=105:color=0x101827@0.82:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='CARTOON CAR DRIVE LIVE':fontcolor=white:fontsize=42:x=(w-text_w)/2:y=28,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='AI Content Factory':fontcolor=0xffd76b:fontsize=24:x=(w-text_w)/2:y=76,format=yuv420p[v]" \
               -map "[v]" -map 1:a -t 7200 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
+          elif [ "$MEDIA_TYPE" = "playlist" ]; then
+            # Download the selected public Drive videos and play them in filename order, then repeat the full playlist.
+            python3 - <<'PY'
+          import json, pathlib, shutil, urllib.request
+          job=json.load(open("live-job.json",encoding="utf-8"))
+          items=job.get("mediaPlaylist") or []
+          if not items:
+              raise SystemExit("Playlist job contains no videos.")
+          folder=pathlib.Path("drive-playlist")
+          folder.mkdir(exist_ok=True)
+          lines=[]
+          for index,item in enumerate(items,1):
+              url=item.get("url") or ""
+              if not url.startswith("https://drive.google.com/"):
+                  raise SystemExit("Playlist contains an invalid Google Drive download URL.")
+              target=(folder/f"{index:03d}.mp4").resolve()
+              request=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0"})
+              with urllib.request.urlopen(request,timeout=180) as response, target.open("wb") as output:
+                  shutil.copyfileobj(response,output)
+                  content_type=response.headers.get("Content-Type","")
+              if target.stat().st_size < 1024 or "text/html" in content_type.lower():
+                  raise SystemExit("Google Drive did not return a video file for: "+str(item.get("name") or index)+". Check file sharing is Anyone with the link.")
+              lines.append("file '"+str(target).replace("'","'\\''")+"'")
+              print(f"Downloaded {index}/{len(items)}: {item.get('name') or target.name} ({target.stat().st_size} bytes)")
+          pathlib.Path("drive-playlist.txt").write_text("\\n".join(lines)+"\\n",encoding="utf-8")
+          PY
+            ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -f concat -safe 0 -i drive-playlist.txt \\
+              -t 7200 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \\
+              -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
           elif [ "$MEDIA_TYPE" = "audio" ]; then
             ffmpeg -hide_banner -loglevel warning \
               -re -f lavfi -i "color=c=0x101827:s=1920x1080:r=30" \

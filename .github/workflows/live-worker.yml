@@ -15,10 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
-      - name: Install FFmpeg
+      - name: Prepare FFmpeg (fast path)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          # GitHub-hosted Ubuntu images commonly include FFmpeg already.
+          # Avoid a slow apt index refresh when the binary is available.
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
           ffmpeg -version | head -n 1
 
       - name: Claim live job and stream for up to five hours

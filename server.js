@@ -501,6 +501,16 @@ async function fallbackTextGeneration(task,fields){
   }
   return body.output_text||"";
 }
+
+// Compatibility adapter used by the script-idea, research, analytics and
+// music workflows. Older routes call generateWithChatGPT, while the current
+// provider implementation is the resilient OpenAI -> Gemini fallback layer.
+// Keep this alias so manual Video Generator requests do not fail with a
+// ReferenceError before script/video rendering begins.
+async function generateWithChatGPT(task,fields={}){
+  return fallbackTextGeneration(task,fields||{});
+}
+
 async function generateThumbnailImage(prompt,size="1536x1024"){
   if(!process.env.OPENAI_API_KEY)throw new Error("ChatGPT/OpenAI API is not configured. Add OPENAI_API_KEY on the server.");
   const r=await fetch("https://api.openai.com/v1/images/generations",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},body:JSON.stringify({model:process.env.OPENAI_IMAGE_MODEL||"gpt-image-1",prompt:String(prompt||"").trim(),size})});

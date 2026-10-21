@@ -3061,11 +3061,7 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
         let workerDispatch="scheduled-poll";
         if(ghToken){
           try{
-            const response=await fetch("https://api.github.com/repos/Swrang120/AI-Content-Factory/actions/workflows/live-worker.yml/dispatches",{
-              method:"POST",
-              headers:{Authorization:"Bearer "+ghToken,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json"},
-              body:JSON.stringify({ref:"main"})
-            });
+            const response=await dispatchLiveWorkerWithRetry(ghToken);
             if(response.ok)workerDispatch="dispatched";
             else console.warn("[live] Retry dispatch failed:",response.status,await response.text().catch(()=> ""));
           }catch(error){console.warn("[live] Retry dispatch request failed:",safeErrorMessage(error));}
@@ -3128,11 +3124,7 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   existingJobs[targetDate]=job; await writeLiveJobs(existingJobs);
   let workerDispatch="dispatch-failed";
   try{
-    const response=await fetch("https://api.github.com/repos/Swrang120/AI-Content-Factory/actions/workflows/live-worker.yml/dispatches",{
-      method:"POST",
-      headers:{Authorization:"Bearer "+ghToken,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json"},
-      body:JSON.stringify({ref:"main"})
-    });
+    const response=await dispatchLiveWorkerWithRetry(ghToken);
     if(response.ok){workerDispatch="dispatched";job.workerDispatch=workerDispatch;existingJobs[targetDate]=job;await writeLiveJobs(existingJobs);}
     else {
       const detail=await response.text().catch(()=> "");

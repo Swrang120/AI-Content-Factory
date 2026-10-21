@@ -357,7 +357,7 @@ async function youtube(req){
  }
  function isTransientError(error){
    const s=safeErrorMessage(error).toLowerCase();
-   return /timeout|timed out|econnreset|eai_again|fetch failed|429|rate limit|too many requests|502|503|504|temporar|network|socket hang up/.test(s);
+   return /timeout|timed out|econnreset|eai_again|fetch failed|429|rate limit|too many requests|502|503|504|temporar|service is currently unavailable|backend error|internal error|network|socket hang up/.test(s);
  }
  async function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
  async function retryTransient(fn){
@@ -3099,9 +3099,9 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   const requestedDescription=String(req?.body?.description||"").trim();
   const hashtags=String(req?.body?.hashtags||"").trim().split(/\s+/).filter(x=>x.startsWith("#")&&/^#[A-Za-z0-9_]+$/.test(x)).slice(0,30).join(" ");
   const description=String([requestedDescription||("AI Content Factory · Manual live stream · "+String(schedule.category||"Live")),hashtags].filter(Boolean).join("\n\n")).slice(0,5000);
-  const broadcast=await yt.liveBroadcasts.insert({part:"snippet,status,contentDetails",requestBody:{snippet:{title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),categoryId:"20"},status:{privacyStatus:privacy},contentDetails:{enableAutoStart:true,enableAutoStop:false,enableDvr:true,recordFromStart:true}}});
-  const stream=await yt.liveStreams.insert({part:"snippet,cdn,contentDetails",requestBody:{snippet:{title:title+" · Stream"},cdn:{frameRate:"30fps",ingestionType:"rtmp",resolution:"720p"},contentDetails:{isReusable:false}}});
-  await yt.liveBroadcasts.bind({part:"id,contentDetails",id:broadcast.data.id,streamId:stream.data.id});
+  const broadcast=await retryTransient(()=>yt.liveBroadcasts.insert({part:"snippet,status,contentDetails",requestBody:{snippet:{title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),categoryId:"20"},status:{privacyStatus:privacy},contentDetails:{enableAutoStart:true,enableAutoStop:false,enableDvr:true,recordFromStart:true}}}));
+  const stream=await retryTransient(()=>yt.liveStreams.insert({part:"snippet,cdn,contentDetails",requestBody:{snippet:{title:title+" · Stream"},cdn:{frameRate:"30fps",ingestionType:"rtmp",resolution:"720p"},contentDetails:{isReusable:false}}}));
+  await retryTransient(()=>yt.liveBroadcasts.bind({part:"id,contentDetails",id:broadcast.data.id,streamId:stream.data.id}));
   const ingestion=stream.data.cdn?.ingestionInfo||{};
   if(!ingestion.ingestionAddress||!ingestion.streamName)throw new Error("YouTube did not return RTMP ingestion information.");
   const job={id:"live_"+targetDate+"_"+Date.now().toString(36),dateKey:targetDate,day:schedule.day,title,description,scheduledStartTime:start.toISOString(),scheduledEndTime:end.toISOString(),status:"scheduled",workerStatus:"waiting",broadcastId:broadcast.data.id,streamId:stream.data.id,ingestionAddress:ingestion.ingestionAddress,streamName:ingestion.streamName,mediaType:media.mediaType,mediaUrl:media.mediaUrl,mediaPlaylist:Array.isArray(media.mediaPlaylist)?media.mediaPlaylist:[],mediaTitle:media.mediaTitle||title,trackId:media.trackId||null,sourceJobId:media.jobId||null,privacyStatus:privacy,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};

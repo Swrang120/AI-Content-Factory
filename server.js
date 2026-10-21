@@ -3303,6 +3303,56 @@ app.post("/api/live/drive/upload/start",requireAppKey,async(req,res)=>{
     return res.json({ok:true,uploadUrl:validateDriveUploadSession(session),chunkSize:3*1024*1024});
   }catch(error){return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
 });
+app.post("/api/live/drive/import-commons",requireAppKey,async(req,res)=>{
+  try{
+    const sourcePage=String(req.body?.sourcePage||"").trim();
+    const requestedFolder=String(req.body?.folderName||"Free Racing Gameplay").trim().slice(0,100);
+    let pageUrl;
+    try{pageUrl=new URL(sourcePage);}catch{throw new Error("Wikimedia Commons File page URL daalo.");}
+    if(pageUrl.protocol!=="https:"||pageUrl.hostname!=="commons.wikimedia.org"||!pageUrl.pathname.startsWith("/wiki/File:"))throw new Error("Sirf Wikimedia Commons ke /wiki/File: page allowed hain.");
+    const title=decodeURIComponent(pageUrl.pathname.slice("/wiki/".length)).replace(/_/g," ");
+    const apiUrl=new URL("https://commons.wikimedia.org/w/api.php");
+    apiUrl.searchParams.set("action","query");apiUrl.searchParams.set("format","json");apiUrl.searchParams.set("prop","imageinfo");apiUrl.searchParams.set("iiprop","url|size|mime|extmetadata");apiUrl.searchParams.set("titles",title);
+    const metaResponse=await fetch(apiUrl,{headers:{"Accept":"application/json","User-Agent":"AI-Content-Factory/1.0 (video license verification)"}});
+    if(!metaResponse.ok)throw new Error("Wikimedia license details fetch nahi ho paya.");
+    const metaJson=await metaResponse.json();
+    const page=Object.values(metaJson?.query?.pages||{})[0];
+    const info=page?.imageinfo?.[0];
+    if(!info||page?.missing!==undefined)throw new Error("Wikimedia Commons file nahi mila.");
+    const license=String(info.extmetadata?.LicenseShortName?.value||"").replace(/<[^>]*>/g,"").trim();
+    const licenseUrl=String(info.extmetadata?.LicenseUrl?.value||"").trim();
+    const allowed=/^CC BY (3\.0|4\.0)( Unported)?$/i.test(license)||/^CC0(?: 1\.0)?$/i.test(license)||/^Public domain$/i.test(license);
+    if(!allowed)throw new Error("Is file ka license auto-check pass nahi hua ("+(license||"unknown") +"). Sirf CC BY 3.0/4.0, CC0 ya Public Domain accepted.");
+    if(!String(info.mime||"").startsWith("video/"))throw new Error("Commons page video file nahi hai.");
+    const size=Number(info.size)||0;
+    if(size<1||size>50*1024*1024)throw new Error("Automatic Commons import abhi 50 MB tak supported hai; is file ka size "+(size/1048576).toFixed(1)+" MB hai.");
+    const directUrl=new URL(info.url);
+    if(directUrl.protocol!=="https:"||directUrl.hostname!=="upload.wikimedia.org")throw new Error("Wikimedia original file host validation failed.");
+    const sourceResponse=await fetch(directUrl,{headers:{"User-Agent":"AI-Content-Factory/1.0"}});
+    if(!sourceResponse.ok)throw new Error("Original video download failed: HTTP "+sourceResponse.status);
+    const bytes=Buffer.from(await sourceResponse.arrayBuffer());
+    if(bytes.length!==size)throw new Error("Downloaded file size metadata se match nahi karta.");
+    const oauth=await getDriveOAuthClient();
+    if(!oauth)throw new Error("Google Drive connected nahi hai. Reconnect karo.");
+    const tokenResult=await oauth.getAccessToken();
+    const accessToken=tokenResult?.token||oauth.credentials?.access_token;
+    if(!accessToken)throw new Error("Google Drive access token nahi mila. Reconnect karo.");
+    const safeName=String(page.title||"Racing Gameplay").replace(/^File:/,"").slice(0,160);
+    const folderResponse=await fetch("https://www.googleapis.com/drive/v3/files?fields=id,name",{method:"POST",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/json"},body:JSON.stringify({name:requestedFolder||"Free Racing Gameplay",mimeType:"application/vnd.google-apps.folder"})});
+    const folderData=await folderResponse.json().catch(()=>({}));
+    if(!folderResponse.ok||!folderData.id)throw new Error("Drive folder create failed: "+String(folderData.error?.message||folderResponse.status));
+    const initResponse=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,size,webViewLink",{method:"POST",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/json","X-Upload-Content-Type":String(info.mime||"video/webm"),"X-Upload-Content-Length":String(bytes.length)},body:JSON.stringify({name:safeName,parents:[folderData.id],description:"Source: "+sourcePage+"\nLicense: "+license+"\nLicense URL: "+licenseUrl+"\nAttribution: "+String(info.extmetadata?.Artist?.value||"Wikimedia Commons author").replace(/<[^>]*>/g,"")})});
+    if(!initResponse.ok)throw new Error("Drive upload session create failed: "+(await initResponse.text()).slice(0,300));
+    const uploadUrl=initResponse.headers.get("location");
+    if(!uploadUrl)throw new Error("Drive upload session URL missing.");
+    const uploadUrlObj=new URL(uploadUrl);
+    if(uploadUrlObj.protocol!=="https:"||uploadUrlObj.hostname!=="www.googleapis.com")throw new Error("Drive upload session host invalid.");
+    const uploaded=await fetch(uploadUrl,{method:"PUT",headers:{Authorization:"Bearer "+accessToken,"Content-Type":String(info.mime||"video/webm"),"Content-Length":String(bytes.length),"Content-Range":"bytes 0-"+(bytes.length-1)+"/"+bytes.length},body:bytes});
+    const file=await uploaded.json().catch(()=>({}));
+    if(!uploaded.ok||!file.id)throw new Error("Drive upload failed: "+String(file.error?.message||uploaded.status));
+    return res.json({ok:true,file,folder:{id:folderData.id,name:folderData.name},source:{page:sourcePage,license,licenseUrl,size:bytes.length}});
+  }catch(e){return res.status(400).json({ok:false,error:safeErrorMessage(e)});}
+});
 app.put("/api/live/drive/upload/chunk",requireAppKey,express.raw({type:"application/octet-stream",limit:"4mb"}),async(req,res)=>{
   try{
     const uploadUrl=validateDriveUploadSession(req.query.uploadUrl);

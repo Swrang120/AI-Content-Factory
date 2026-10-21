@@ -411,7 +411,7 @@ async function renderSchedule(){
     <h3>🎞️ Live video source</h3><p class="queue-meta">Google Drive se video seedha select karo. Folder ko “Anyone with the link” access dena zaroori hai.</p>
     <div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:12px;margin:10px 0;background:rgba(56,189,248,.05)">
       <div class="queue-row" style="gap:8px;align-items:center;flex-wrap:wrap"><strong>🔐 Google Drive</strong><span id="driveOAuthStatus" class="queue-meta">Connection status checking…</span><button class="small-btn" id="driveOAuthConnect" type="button">Connect Google Drive</button></div>
-      <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link<input id="liveDriveFolderUrl" class="input" type="url" value="https://drive.google.com/drive/folders/1AHf7Ld_f-tWG9YIPtLzuceDCaROOvi04" placeholder="Drive folder link paste karo"></label>
+      <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link (optional — blank = all Drive)<input id="liveDriveFolderUrl" class="input" type="url" value="" placeholder="Blank chhodo = poori Drive; ya folder link paste karo"></label>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Photos & Videos</button></div>
       <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveSaveOne" type="button">▶ Use Selected Video</button></div>

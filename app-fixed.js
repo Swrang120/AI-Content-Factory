@@ -482,6 +482,15 @@ async function renderSchedule(){
   }
   async function loadSavedLiveMedia(){const box=document.getElementById("liveMediaPreview");try{const r=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Cannot load saved media");const m=d.media;document.getElementById("liveMediaDelete").disabled=!m;box.innerHTML=m?'<b>'+esc(m.title||"Saved video")+'</b><br><video controls playsinline preload="metadata" style="width:100%;max-height:240px" src="'+esc(m.videoUrl)+'"></video>':"No saved video yet.";document.getElementById("liveThumbPreview").innerHTML=m&&m.thumbnailUrl?'<img alt="Thumbnail preview" src="'+esc(m.thumbnailUrl)+'" style="width:180px;max-width:100%;border-radius:10px">':"";if(m)document.getElementById("liveMediaTitle").value=m.title||"";}catch(e){box.textContent="Saved video: "+e.message;}}
   let loadedDriveFiles=[];
+  const LIVE_DRIVE_PREFS_KEY="acf_live_drive_picker_v1";
+  let liveDrivePrefs=(()=>{try{return JSON.parse(localStorage.getItem(LIVE_DRIVE_PREFS_KEY)||"{}")||{};}catch(_){return {};}})();
+  const liveDriveFolderInput=document.getElementById("liveDriveFolderUrl");
+  if(liveDriveFolderInput&&liveDrivePrefs.folderUrl)liveDriveFolderInput.value=liveDrivePrefs.folderUrl;
+  function saveLiveDrivePrefs(extra={}){
+    liveDrivePrefs={...liveDrivePrefs,...extra};
+    try{localStorage.setItem(LIVE_DRIVE_PREFS_KEY,JSON.stringify(liveDrivePrefs));}catch(_){}
+  }
+  if(liveDriveFolderInput)liveDriveFolderInput.addEventListener("change",()=>saveLiveDrivePrefs({folderUrl:liveDriveFolderInput.value.trim()}));
   refreshDriveOAuthStatus();
   async function refreshDriveOAuthStatus(){
     const box=document.getElementById("driveOAuthStatus");if(!box)return;
@@ -499,15 +508,21 @@ async function renderSchedule(){
       const d=await r.json().catch(()=>({}));
       if(!r.ok||!d.ok)throw new Error(d.error||("Drive list failed (HTTP "+r.status+")"));
       loadedDriveFiles=Array.isArray(d.files)?d.files:[];
+      saveLiveDrivePrefs({folderUrl:url});
       if(!loadedDriveFiles.length){box.innerHTML='<div style="padding:10px;border:1px solid #f59e0b;border-radius:10px"><strong>Drive se 0 photos/videos mile.</strong><br><small>Confirm karo ki wahi Google account connect hai jisme files hain. Shared Drive/shortcut files bhi ab load hongi. Folder link ho to usko paste karke dobara Load karo. Agar phir bhi 0 hai, Google Drive ko Reconnect karo.</small></div>';return;}
       const videoCount=loadedDriveFiles.filter(x=>String(x.mimeType||"").startsWith("video/")).length;
       const photoCount=loadedDriveFiles.filter(x=>String(x.mimeType||"").startsWith("image/")).length;
-      box.innerHTML='<div style="margin-bottom:8px;font-weight:700">🎬 '+videoCount+' videos · 🖼️ '+photoCount+' photos · 🎵 '+loadedDriveFiles.filter(x=>String(x.mimeType||"").startsWith("audio/")).length+' audio files</div>'+loadedDriveFiles.map((item,i)=>{const mime=String(item.mimeType||""),isVideo=mime.startsWith("video/"),isAudio=mime.startsWith("audio/"),isPhoto=mime.startsWith("image/");const preview=item.thumbnailLink?'<img src="'+esc(item.thumbnailLink)+'" alt="" loading="lazy" style="width:72px;height:56px;object-fit:cover;border-radius:6px">':'<span style="font-size:24px">'+(isVideo?'🎬':isAudio?'🎵':'🖼️')+'</span>';const audioPreview=isAudio?'<audio controls preload="none" style="width:180px;max-width:100%" src="'+esc(item.downloadUrl)+'"></audio>':'';return '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:8px;border-bottom:1px solid rgba(148,163,184,.15)">'+(isVideo?'<input type="checkbox" data-drive-select="'+esc(item.id)+'" '+(videoCount&&loadedDriveFiles.filter(x=>String(x.mimeType||"").startsWith("video/")).indexOf(item)===0?'checked':'')+' style="margin-top:4px">':'<span title="'+(isAudio?'Audio preview':'Photo preview')+'">'+(isAudio?'🎵':'🖼️')+'</span>')+preview+'<span style="min-width:0;overflow-wrap:anywhere;flex:1"><b>'+esc(item.name)+'</b><br><small>'+(isVideo?'Video':isAudio?'Audio':'Photo')+' · '+((Number(item.size)||0)>0?(Number(item.size)/1024/1024).toFixed(1)+' MB':'Size unavailable')+'</small></span>'+audioPreview+'<a href="'+esc(item.webViewLink||'https://drive.google.com/file/d/'+item.id+'/view')+'" target="_blank" rel="noopener">Open ↗</a></div>';}).join("")+'<div class="queue-meta" style="margin-top:8px">Video files can be selected for Live. Audio files can be previewed here; photos are shown for browsing.</div>';
+      const savedIds=new Set(Array.isArray(liveDrivePrefs.selectedIds)?liveDrivePrefs.selectedIds:[]);
+      const videos=loadedDriveFiles.filter(x=>String(x.mimeType||"").startsWith("video/"));
+      if(!savedIds.size&&videos.length)savedIds.add(videos[0].id);
+      box.innerHTML='<div style="margin-bottom:8px;font-weight:700">🎬 '+videoCount+' videos · 🖼️ '+photoCount+' photos · 🎵 '+loadedDriveFiles.filter(x=>String(x.mimeType||"").startsWith("audio/")).length+' audio files</div>'+loadedDriveFiles.map((item,i)=>{const mime=String(item.mimeType||""),isVideo=mime.startsWith("video/"),isAudio=mime.startsWith("audio/"),isPhoto=mime.startsWith("image/");const preview=item.thumbnailLink?'<img src="'+esc(item.thumbnailLink)+'" alt="" loading="lazy" style="width:72px;height:56px;object-fit:cover;border-radius:6px">':'<span style="font-size:24px">'+(isVideo?'🎬':isAudio?'🎵':'🖼️')+'</span>';const audioPreview=isAudio?'<audio controls preload="none" style="width:180px;max-width:100%" src="'+esc(item.downloadUrl)+'"></audio>':'';return '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:8px;border-bottom:1px solid rgba(148,163,184,.15)">'+(isVideo?'<input type="checkbox" data-drive-select="'+esc(item.id)+'" '+(savedIds.has(item.id)?'checked':'')+' style="margin-top:4px">':'<span title="'+(isAudio?'Audio preview':'Photo preview')+'">'+(isAudio?'🎵':'🖼️')+'</span>')+preview+'<span style="min-width:0;overflow-wrap:anywhere;flex:1"><b>'+esc(item.name)+'</b><br><small>'+(isVideo?'Video':isAudio?'Audio': 'Photo')+' · '+((Number(item.size)||0)>0?(Number(item.size)/1024/1024).toFixed(1)+' MB':'Size unavailable')+'</small></span>'+audioPreview+'<a href="'+esc(item.webViewLink||'https://drive.google.com/file/d/'+item.id+'/view')+'" target="_blank" rel="noopener">Open ↗</a></div>';}).join("")+'<div class="queue-meta" style="margin-top:8px">📌 Folder aur selected videos is browser mein remember rahenge. Audio abhi preview ke liye hai; Live playlist currently video files use karti hai.</div>';
+      box.querySelectorAll("[data-drive-select]").forEach(el=>el.addEventListener("change",()=>saveLiveDrivePrefs({selectedIds:Array.from(box.querySelectorAll("[data-drive-select]:checked")).map(x=>x.getAttribute("data-drive-select"))})));
     }catch(e){loadedDriveFiles=[];box.textContent="Drive error: "+e.message;}
     finally{btn.disabled=false;}
   }
   function selectedDriveFiles(){
     const ids=new Set(Array.from(document.querySelectorAll("#liveDriveFiles [data-drive-select]:checked")).map(x=>x.getAttribute("data-drive-select")));
+    saveLiveDrivePrefs({selectedIds:Array.from(ids)});
     return loadedDriveFiles.filter(f=>ids.has(f.id));
   }
   async function saveDriveSelection(asPlaylist){
@@ -533,6 +548,7 @@ async function renderSchedule(){
   });
   document.getElementById("liveDriveSaveOne").addEventListener("click",()=>saveDriveSelection(false));
   document.getElementById("liveDriveSavePlaylist").addEventListener("click",()=>saveDriveSelection(true));
+  if(liveDrivePrefs.folderUrl)setTimeout(()=>loadDriveVideos(),450);
   document.getElementById("liveMediaUpload").addEventListener("click",async()=>{
     const btn=document.getElementById("liveMediaUpload"),vf=document.getElementById("liveVideoFile").files[0],tf=document.getElementById("liveThumbFile").files[0],preview=document.getElementById("liveMediaPreview");
     if(!vf){msg.textContent="Pehle video file select karo.";return;}

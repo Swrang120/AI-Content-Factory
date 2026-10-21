@@ -411,18 +411,17 @@ async function renderSchedule(){
     <h3>🎞️ Live video source</h3><p class="queue-meta">Google Drive se video seedha select karo. Folder ko “Anyone with the link” access dena zaroori hai.</p>
     <div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:12px;margin:10px 0;background:rgba(56,189,248,.05)">
       <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link<input id="liveDriveFolderUrl" class="input" type="url" placeholder="https://drive.google.com/drive/folders/FOLDER_ID"></label>
-      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Drive Videos</button><button class="small-btn" id="liveDriveSelectAll" type="button">☑ Select All</button></div>
-      <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Folder link paste karke Load Drive Videos dabao.</div>
-      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveSaveOne" type="button">▶ Save Selected Video</button><button class="small-btn" id="liveDriveSavePlaylist" type="button">🔁 Save Selected Playlist</button></div>
-      <div class="queue-meta" style="margin-top:6px">Playlist videos naam ke order mein chalengi, phir list repeat hogi. Zyada se zyada 100 videos.</div>
+      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Drive Videos</button></div>
+      <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Google Drive folder link paste karke videos load karo.</div>
+      <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveSaveOne" type="button">▶ Use Selected Video</button></div>
+      <div class="queue-meta" style="margin-top:6px">Bas Google Drive se video select karo, phir Start Live dabao.</div>
+      <div style="display:none">
+        <button id="liveDriveSelectAll" type="button">Select All</button><button id="liveDriveSavePlaylist" type="button">Save Playlist</button>
+        <input id="liveDriveUrl" type="url"><input id="liveVideoFile" type="file"><input id="liveThumbFile" type="file"><input id="liveMediaTitle" type="text">
+        <button id="liveMediaUpload" type="button">Upload</button><button id="liveMediaDelete" type="button" disabled>Delete</button>
+        <div id="liveMediaPreview"></div><div id="liveThumbPreview"></div>
+      </div>
     </div>
-    <p class="queue-meta">Optional: ek public Drive file link directly bhi de sakte ho.</p>
-    <label class="field-label" for="liveDriveUrl">Google Drive video link (optional)<input id="liveDriveUrl" class="input" type="url" placeholder="https://drive.google.com/file/d/FILE_ID/view"></label><div class="queue-meta" style="margin:5px 0 12px">Drive link use karoge toh large video ko phone se dobara upload nahi karna padega. Link public-accessible hona chahiye.</div>
-    <label class="field-label" for="liveVideoFile">Or upload video file (MP4 recommended)<input id="liveVideoFile" class="input" type="file" accept="video/mp4,video/*"></label>
-    <div style="margin-top:10px"><label class="field-label" for="liveThumbFile">Thumbnail image (optional)<input id="liveThumbFile" class="input" type="file" accept="image/jpeg,image/png,image/webp"></label></div>
-    <div style="margin-top:10px"><label class="field-label" for="liveMediaTitle">Video title<input id="liveMediaTitle" class="input" maxlength="100" placeholder="My live video"></label></div>
-    <div class="queue-row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveMediaUpload" type="button">⬆ Upload & Save</button><button class="small-btn" id="liveMediaDelete" type="button" disabled>🗑 Delete saved video</button></div>
-    <div id="liveMediaPreview" class="queue-meta" style="margin-top:10px">Loading saved video…</div><div id="liveThumbPreview" style="margin-top:8px"></div>
   </div>
   <div id="liveStatusPanel"><div class="empty">Live status check ho raha hai…</div></div>
   <div class="table-card" style="margin:12px 0"><h3>🔗 Live / Watch Link</h3><div id="liveWatchPanel" class="queue-meta">Live banne ke baad link yahan dikhega.</div></div>

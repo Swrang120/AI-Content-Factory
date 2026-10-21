@@ -90,7 +90,7 @@ jobs:
                   raise SystemExit("Google Drive did not return a video file for: "+str(item.get("name") or index)+". Check file sharing is Anyone with the link.")
               lines.append("file '"+str(target).replace("'","'\\''")+"'")
               print(f"Downloaded {index}/{len(items)}: {item.get('name') or target.name} ({target.stat().st_size} bytes)")
-          pathlib.Path("drive-playlist.txt").write_text("\\n".join(lines)+"\\n",encoding="utf-8")
+          pathlib.Path("drive-playlist.txt").write_text("\n".join(lines)+"\n",encoding="utf-8")
           PY
             ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -f concat -safe 0 -i drive-playlist.txt \\
               -t 7200 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \\

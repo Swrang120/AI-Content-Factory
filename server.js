@@ -3271,10 +3271,31 @@ app.get("/api/live/status",async(req,res)=>{
 
 app.post("/api/live/stop",requireAppKey,async(req,res)=>{
   try{
-    const jobs=await readLiveJobs(); const job=Object.values(jobs).filter(x=>x&&["scheduled","worker_claimed","starting","live","stopping"].includes(x.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
+    const jobs=await readLiveJobs();
+    const job=Object.values(jobs).filter(x=>x&&["scheduled","worker_claimed","starting","live","stopping"].includes(x.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
     if(!job)return res.status(404).json({ok:false,error:"No active live session to stop."});
-    job.status="stopping";job.stopRequested=true;job.updatedAt=new Date().toISOString();jobs[job.dateKey]=job;await writeLiveJobs(jobs);
-    res.json({ok:true,job:safeLiveJob(job),message:"Stop requested. The streaming worker will stop and finalize the YouTube live."});
+    job.stopRequested=true;job.updatedAt=new Date().toISOString();
+    // If FFmpeg has not started, cancel the queued broadcast now instead of waiting
+    // for a worker that may be sleeping until scheduledStartTime.
+    if(["scheduled","worker_claimed"].includes(job.status)&&job.workerStatus!=="streaming"){
+      let deleted=false,deleteWarning="";
+      try{
+        if(job.broadcastId){
+          const yt=await youtube(req);
+          await yt.liveBroadcasts.delete({id:job.broadcastId});
+        }
+        deleted=true;
+      }catch(e){deleteWarning="YouTube scheduled event deletion failed: "+safeErrorMessage(e);}
+      job.status=deleted?"completed":"error";
+      job.workerStatus="cancelled";
+      job.error=deleted?"Live cancelled before stream startup.":deleteWarning;
+      job.broadcastId=null;
+      job.updatedAt=new Date().toISOString();
+      jobs[job.dateKey]=job;await writeLiveJobs(jobs);
+      return res.json({ok:true,job:safeLiveJob(job),message:deleted?"Queued Live cancelled; old dashboard link cleared and Start is available again.":"Queued Live was blocked from starting and dashboard link cleared, but YouTube event deletion could not be confirmed.",warning:deleteWarning||null});
+    }
+    job.status="stopping";jobs[job.dateKey]=job;await writeLiveJobs(jobs);
+    return res.json({ok:true,job:safeLiveJob(job),message:"Stop requested. Streaming worker will stop FFmpeg and finalize YouTube Live."});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
 app.post("/api/live/recover",requireAppKey,async(req,res)=>{

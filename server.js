@@ -3236,8 +3236,20 @@ async function handleDriveOAuthCallback(req,res){
 }
 app.get("/auth/drive/callback",handleDriveOAuthCallback);
 app.get("/api/drive/oauth/status",requireAppKey,async(req,res)=>{
-  try{const tokens=await readDriveOAuthTokens();return res.json({ok:true,connected:!!(tokens?.refresh_token||tokens?.access_token),configured:!!(process.env.GOOGLE_DRIVE_CLIENT_ID&&process.env.GOOGLE_DRIVE_CLIENT_SECRET),redirectUri:driveOAuthRedirectUri()});}
-  catch(e){return res.status(500).json({ok:false,error:safeErrorMessage(e),configured:!!(process.env.GOOGLE_DRIVE_CLIENT_ID&&process.env.GOOGLE_DRIVE_CLIENT_SECRET)});}
+  const configured=!!(process.env.GOOGLE_DRIVE_CLIENT_ID&&process.env.GOOGLE_DRIVE_CLIENT_SECRET);
+  try{
+    const tokens=await readDriveOAuthTokens();
+    if(!tokens?.refresh_token&&!tokens?.access_token)return res.json({ok:true,connected:false,authorized:false,configured,needsReconnect:true,reason:"Google Drive sign-in and permission approval are required.",redirectUri:driveOAuthRedirectUri()});
+    const client=driveOAuthClient();client.setCredentials(tokens);
+    const tokenResult=await client.getAccessToken();const accessToken=tokenResult?.token||client.credentials?.access_token;
+    if(!accessToken)return res.json({ok:true,connected:false,authorized:false,configured,needsReconnect:true,reason:"Google Drive access token could not be refreshed.",redirectUri:driveOAuthRedirectUri()});
+    const check=await fetch("https://oauth2.googleapis.com/tokeninfo?access_token="+encodeURIComponent(accessToken),{headers:{Accept:"application/json"}});
+    const info=await check.json().catch(()=>({}));
+    if(!check.ok)return res.json({ok:true,connected:true,authorized:false,configured,needsReconnect:true,reason:"Google could not verify the Drive access token. Reconnect Google Drive.",redirectUri:driveOAuthRedirectUri()});
+    const scopes=String(info.scope||"").split(/\\s+/).filter(Boolean);
+    const authorized=scopes.includes("https://www.googleapis.com/auth/drive")||scopes.includes("https://www.googleapis.com/auth/drive.file");
+    return res.json({ok:true,connected:true,authorized,configured,needsReconnect:!authorized,reason:authorized?"Google Drive upload permission verified.":"Google account is connected, but Drive upload permission was not granted. Click Reconnect Google Drive and approve the Drive permission.",scopes:scopes.filter(x=>x.startsWith("https://www.googleapis.com/auth/drive")),redirectUri:driveOAuthRedirectUri()});
+  }catch(e){return res.status(500).json({ok:false,error:safeErrorMessage(e),configured,needsReconnect:true});}
 });
 async function driveApi(pathname,params={}){
   const u=new URL("https://www.googleapis.com/drive/v3/"+pathname);

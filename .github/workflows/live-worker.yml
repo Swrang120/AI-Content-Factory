@@ -1,7 +1,7 @@
 name: AI Content Factory - YouTube Live Worker
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
   schedule:
     # Poll only for a manually requested live session; this does not create scheduled broadcasts.
     - cron: "*/5 * * * *"

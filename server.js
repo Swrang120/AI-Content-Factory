@@ -3200,7 +3200,7 @@ app.get("/api/live/drive/list",requireAppKey,async(req,res)=>{
             if(rootFolderId&&f.id&&!seenFolders.has(f.id)&&foldersToScan.length<1000)foldersToScan.push(f.id);
             continue;
           }
-          if(!/^(video|image|audio)\\//i.test(mimeType)||!f.id||seenFiles.has(f.id))continue;
+          if(!/^(video|image|audio)\//i.test(mimeType)||!f.id||seenFiles.has(f.id))continue;
           seenFiles.add(f.id);
           const kind=mimeType.startsWith("video/")?"video":mimeType.startsWith("audio/")?"audio":"photo";
           files.push({id:f.id,name:f.name||raw.name,mimeType,size:Number(f.size)||0,kind,webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),thumbnailLink:f.thumbnailLink||null,modifiedTime:f.modifiedTime||null,downloadUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id)});

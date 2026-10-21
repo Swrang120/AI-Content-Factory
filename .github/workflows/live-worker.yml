@@ -52,6 +52,31 @@ jobs:
           time.sleep(wait)
           with open("live-job.json","w",encoding="utf-8") as f: json.dump(d,f)
           PY
+          # Stop may be pressed while this worker is sleeping until scheduledStartTime.
+          # Re-check the authoritative job state before opening FFmpeg/YouTube RTMP.
+          STATE_AFTER_WAIT="$(curl --silent --show-error --max-time 15 \
+            -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" \
+            "${BASE}/api/live/worker/status?id=${JOB_ID}" || true)"
+          python3 - <<'PY'
+          import json, os, sys
+          try:
+              d=json.loads(os.environ.get("STATE_AFTER_WAIT","{}"))
+              job=d.get("job") or {}
+              status=str(job.get("status",""))
+              stopped=bool(d.get("stopRequested") or job.get("stopRequested"))
+              if status in ("completed","error","stopping") or stopped:
+                  print(f"Live job {os.environ.get('JOB_ID')} was cancelled before streaming (status={status}, stopRequested={stopped}); exiting without starting FFmpeg.")
+                  sys.exit(42)
+          except Exception as exc:
+              print("Could not verify live state after scheduled wait: "+str(exc), file=sys.stderr)
+              sys.exit(1)
+          PY
+          CHECK_EXIT=$?
+          if [ "$CHECK_EXIT" -eq 42 ]; then exit 0; fi
+          if [ "$CHECK_EXIT" -ne 0 ]; then
+            echo "::error::Could not verify the live job state after waiting; refusing to start the stream."
+            exit 1
+          fi
           MEDIA_URL="$(python3 -c 'import json; print(json.load(open("live-job.json"))["mediaUrl"])')"
           MEDIA_TYPE="$(python3 -c 'import json; print(json.load(open("live-job.json")).get("mediaType","video"))')"
           RTMP_URL="$(python3 -c 'import json; j=json.load(open("live-job.json")); print(j["rtmpUrl"])')"

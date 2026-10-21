@@ -3074,7 +3074,7 @@ function extractDriveId(value){
   if(/^[a-zA-Z0-9_-]{10,}$/.test(raw))return raw;
   try{
     const u=new URL(raw);
-    if(!/(^|\\.)drive\\.google\\.com$/i.test(u.hostname)&&!/(^|\\.)docs\\.google\\.com$/i.test(u.hostname))return "";
+    if(!/(^|\.)drive\.google\.com$/i.test(u.hostname)&&!/(^|\.)docs\.google\.com$/i.test(u.hostname))return "";
     const parts=u.pathname.split("/").filter(Boolean);
     // Standard Google Drive folder links use /drive/folders/<ID>.
     const folderIndex=parts.findIndex((part,i)=>part==="folders"&&i>0&&parts[i-1]==="drive");

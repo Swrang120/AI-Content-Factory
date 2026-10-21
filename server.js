@@ -3215,7 +3215,7 @@ app.get("/auth/drive",async(req,res)=>{
     const client=driveOAuthClient();
     const state=crypto.randomBytes(24).toString("hex");
     setCookie(res,"acf_drive_oauth_state",state,900);
-    const url=client.generateAuthUrl({access_type:"offline",prompt:"consent",include_granted_scopes:true,state,scope:["https://www.googleapis.com/auth/drive.file"]});
+    const url=client.generateAuthUrl({access_type:"offline",prompt:"consent",include_granted_scopes:true,state,scope:["https://www.googleapis.com/auth/drive"]});
     res.redirect(url);
   }catch(e){res.status(500).type("text").send("Google Drive OAuth configuration error: "+safeErrorMessage(e));}
 });

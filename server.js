@@ -3174,29 +3174,43 @@ async function writeLiveMediaSelection(media){
 app.get("/api/live/drive/list",requireAppKey,async(req,res)=>{
   try{
     const folderInput=String(req.query.folderId||req.query.folderUrl||"").trim();
-    const folderId=folderInput?extractDriveId(folderInput):"";
-    if(folderInput&&!folderId)return res.status(400).json({ok:false,error:"Google Drive folder link/ID valid nahi hai."});
-    const files=[];let pageToken="";
-    do{
-      const q=folderId
-        ? "'"+folderId.replace(/'/g,"\\'")+"' in parents and trashed = false"
-        : "trashed = false";
-      const page=await driveApi("files",{q,corpora:"allDrives",includeItemsFromAllDrives:true,supportsAllDrives:true,pageSize:1000,orderBy:"modifiedTime desc",fields:"nextPageToken,files(id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime,shortcutDetails)",pageToken});
-      for(const raw of page.files||[]){
-        let f=raw;
-        let mimeType=String(f.mimeType||"");
-        // Resolve Drive shortcuts, which are often used in shared folders.
-        if(mimeType==="application/vnd.google-apps.shortcut"&&f.shortcutDetails?.targetId){
-          try{f=await driveApi("files/"+encodeURIComponent(f.shortcutDetails.targetId),{supportsAllDrives:true,fields:"id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime"});mimeType=String(f.mimeType||"");}
-          catch(_){continue;}
+    const rootFolderId=folderInput?extractDriveId(folderInput):"";
+    if(folderInput&&!rootFolderId)return res.status(400).json({ok:false,error:"Google Drive folder link/ID valid nahi hai."});
+    const files=[],seenFiles=new Set(),seenFolders=new Set();
+    const foldersToScan=rootFolderId?[rootFolderId]:[""];
+    let scanned=0;
+    while(foldersToScan.length&&files.length<500&&scanned<1000){
+      const currentFolder=foldersToScan.shift();
+      if(currentFolder&&seenFolders.has(currentFolder))continue;
+      if(currentFolder)seenFolders.add(currentFolder);
+      let pageToken="";
+      do{
+        const q=currentFolder
+          ? "'"+currentFolder.replace(/\\/g,"\\\\").replace(/'/g,"\\'")+"' in parents and trashed = false"
+          : "trashed = false";
+        const page=await driveApi("files",{q,corpora:"allDrives",includeItemsFromAllDrives:true,supportsAllDrives:true,pageSize:1000,orderBy:"modifiedTime desc",fields:"nextPageToken,files(id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime,shortcutDetails,parents)",pageToken});
+        scanned++;
+        for(const raw of page.files||[]){
+          let f=raw,mimeType=String(raw.mimeType||"");
+          if(mimeType==="application/vnd.google-apps.shortcut"&&raw.shortcutDetails?.targetId){
+            try{f=await driveApi("files/"+encodeURIComponent(raw.shortcutDetails.targetId),{supportsAllDrives:true,fields:"id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime,shortcutDetails,parents"});mimeType=String(f.mimeType||"");}
+            catch(_){continue;}
+          }
+          if(mimeType==="application/vnd.google-apps.folder"){
+            if(rootFolderId&&f.id&&!seenFolders.has(f.id)&&foldersToScan.length<1000)foldersToScan.push(f.id);
+            continue;
+          }
+          if(!/^(video|image|audio)\\//i.test(mimeType)||!f.id||seenFiles.has(f.id))continue;
+          seenFiles.add(f.id);
+          const kind=mimeType.startsWith("video/")?"video":mimeType.startsWith("audio/")?"audio":"photo";
+          files.push({id:f.id,name:f.name||raw.name,mimeType,size:Number(f.size)||0,kind,webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),thumbnailLink:f.thumbnailLink||null,modifiedTime:f.modifiedTime||null,downloadUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id)});
+          if(files.length>=500)break;
         }
-        if(!mimeType.startsWith("video/")&&!mimeType.startsWith("image/"))continue;
-        files.push({id:f.id,name:f.name||raw.name,mimeType,size:Number(f.size)||0,kind:mimeType.startsWith("image/")?"photo":"video",webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),thumbnailLink:f.thumbnailLink||null,modifiedTime:f.modifiedTime||null,downloadUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id)});
-        if(files.length>=500)break;
-      }
-      pageToken=files.length>=500?"":(page.nextPageToken||"");
-    }while(pageToken);
-    return res.json({ok:true,folderId:folderId||null,count:files.length,files,note:"OAuth gallery lists image and video files accessible to the connected Google account."});
+        pageToken=files.length>=500?"":(page.nextPageToken||"");
+      }while(pageToken&&scanned<1000);
+    }
+    const counts={video:files.filter(x=>x.kind==="video").length,photo:files.filter(x=>x.kind==="photo").length,audio:files.filter(x=>x.kind==="audio").length};
+    return res.json({ok:true,folderId:rootFolderId||null,count:files.length,counts,files,note:"Drive gallery includes accessible video, photo and audio files; folder contents are scanned recursively."});
   }catch(error){return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
 });
 app.get("/api/live/media",requireAppKey,async(req,res)=>{

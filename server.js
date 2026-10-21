@@ -3081,13 +3081,76 @@ function extractDriveId(value){
     return u.searchParams.get("id")||"";
   }catch{return "";}
 }
+function driveOAuthRedirectUri(){return String(process.env.GOOGLE_DRIVE_REDIRECT_URI||"https://ai-content-factory-zeta-ruby.vercel.app/auth/drive/callback").trim();}
+function driveOAuthClient(){
+  const id=String(process.env.GOOGLE_DRIVE_CLIENT_ID||"").trim();
+  const secret=String(process.env.GOOGLE_DRIVE_CLIENT_SECRET||"").trim();
+  if(!id||!secret)throw new Error("Google Drive OAuth is not configured. Add GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET in Vercel.");
+  return new google.auth.OAuth2(id,secret,driveOAuthRedirectUri());
+}
+async function readDriveOAuthTokens(){
+  if(!supabaseAdmin)throw new Error("Supabase server key is missing; Drive OAuth tokens cannot be stored securely.");
+  const {data,error}=await supabaseAdmin.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+  if(error)throw error;
+  const tokens=data?.tokens?.__acf_drive_oauth;
+  return tokens&&typeof tokens==="object"?tokens:null;
+}
+async function saveDriveOAuthTokens(tokens){
+  if(!supabaseAdmin)throw new Error("Supabase server key is missing; Drive OAuth tokens cannot be stored securely.");
+  const {data,error}=await supabaseAdmin.from("youtube_connections").select("tokens").eq("id","default").maybeSingle();
+  if(error)throw error;
+  const existing=data?.tokens&&typeof data.tokens==="object"?data.tokens:{};
+  const previous=existing.__acf_drive_oauth&&typeof existing.__acf_drive_oauth==="object"?existing.__acf_drive_oauth:{};
+  const merged={...previous,...tokens};
+  const saved=await supabaseAdmin.from("youtube_connections").upsert({id:"default",tokens:{...existing,__acf_drive_oauth:merged},updated_at:new Date().toISOString()},{onConflict:"id"});
+  if(saved.error)throw saved.error;
+  return merged;
+}
+async function getDriveOAuthClient(){
+  const tokens=await readDriveOAuthTokens();
+  if(!tokens?.refresh_token&&!tokens?.access_token)return null;
+  const client=driveOAuthClient();
+  client.setCredentials(tokens);
+  client.on("tokens",updated=>{saveDriveOAuthTokens(updated).catch(err=>console.error("Drive OAuth token refresh save failed:",safeErrorMessage(err)));});
+  return client;
+}
+app.get("/auth/drive",async(req,res)=>{
+  try{
+    const client=driveOAuthClient();
+    const state=crypto.randomBytes(24).toString("hex");
+    setCookie(res,"acf_drive_oauth_state",state,900);
+    const url=client.generateAuthUrl({access_type:"offline",prompt:"consent",include_granted_scopes:true,state,scope:["https://www.googleapis.com/auth/drive.readonly"]});
+    res.redirect(url);
+  }catch(e){res.status(500).type("text").send("Google Drive OAuth configuration error: "+safeErrorMessage(e));}
+});
+async function handleDriveOAuthCallback(req,res){
+  try{
+    if(req.query.error)return res.status(400).type("text").send("Google Drive authorization denied: "+String(req.query.error));
+    const code=String(req.query.code||""),state=String(req.query.state||"");
+    if(!code||!state)return res.status(400).type("text").send("Missing Google Drive OAuth code/state. Start Connect Google Drive again.");
+    const cookieState=getCookie(req,"acf_drive_oauth_state");
+    if(!cookieState||!crypto.timingSafeEqual(Buffer.from(cookieState),Buffer.from(state)))return res.status(400).type("text").send("Google Drive OAuth state validation failed. Return to Live Stream and connect again.");
+    const client=driveOAuthClient();
+    const {tokens}=await client.getToken(code);
+    const previous=await readDriveOAuthTokens().catch(()=>null);
+    await saveDriveOAuthTokens({...previous,...tokens});
+    res.setHeader("Set-Cookie","acf_drive_oauth_state=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax");
+    return res.redirect("/?drive=connected");
+  }catch(e){return res.status(500).type("text").send("Google Drive OAuth callback failed: "+safeErrorMessage(e));}
+}
+app.get("/auth/drive/callback",handleDriveOAuthCallback);
+app.get("/api/drive/oauth/status",requireAppKey,async(req,res)=>{
+  try{const tokens=await readDriveOAuthTokens();return res.json({ok:true,connected:!!(tokens?.refresh_token||tokens?.access_token),configured:!!(process.env.GOOGLE_DRIVE_CLIENT_ID&&process.env.GOOGLE_DRIVE_CLIENT_SECRET),redirectUri:driveOAuthRedirectUri()});}
+  catch(e){return res.status(500).json({ok:false,error:safeErrorMessage(e),configured:!!(process.env.GOOGLE_DRIVE_CLIENT_ID&&process.env.GOOGLE_DRIVE_CLIENT_SECRET)});}
+});
 async function driveApi(pathname,params={}){
-  const key=driveApiKey();
-  if(!key)throw new Error("Google Drive API key missing. Vercel Environment Variables mein GOOGLE_DRIVE_API_KEY add karke redeploy karo.");
   const u=new URL("https://www.googleapis.com/drive/v3/"+pathname);
   for(const [k,v] of Object.entries(params))if(v!==undefined&&v!==null&&v!=="")u.searchParams.set(k,String(v));
-  u.searchParams.set("key",key);
-  const r=await fetch(u.toString(),{headers:{Accept:"application/json"}});
+  const oauth=await getDriveOAuthClient().catch(err=>{if(process.env.GOOGLE_DRIVE_CLIENT_ID&&process.env.GOOGLE_DRIVE_CLIENT_SECRET)throw err;return null;});
+  const headers={Accept:"application/json"};
+  if(oauth){const token=await oauth.getAccessToken();const access=typeof token==="string"?token:token?.token;if(!access)throw new Error("Google Drive OAuth access token missing. Reconnect Google Drive.");headers.Authorization="Bearer "+access;}
+  else{const key=driveApiKey();if(!key)throw new Error("Connect Google Drive first, or configure GOOGLE_DRIVE_API_KEY for public folders.");u.searchParams.set("key",key);}
+  const r=await fetch(u.toString(),{headers});
   const data=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(data?.error?.message||("Google Drive API returned HTTP "+r.status));
   return data;

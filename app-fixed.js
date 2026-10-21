@@ -425,11 +425,15 @@ async function renderSchedule(){
     </div>
   </div>
    <div class="table-card" id="liveDetailsStep" style="display:none;margin:12px 0;padding:14px"><h3>STEP 2 · 📝 YouTube Live details</h3>
-     <button class="small-btn" id="liveWizardBack" type="button">← Back to video selection</button>
-     <label class="field-label" for="liveWizardTitle">Title <input id="liveWizardTitle" class="input" maxlength="100" required placeholder="Live stream title"></label>
-     <label class="field-label" for="liveWizardDescription">Description <textarea id="liveWizardDescription" class="input" rows="4" maxlength="4500" placeholder="Live stream description"></textarea></label>
-     <label class="field-label" for="liveWizardHashtags">Hashtags <input id="liveWizardHashtags" class="input" placeholder="#Live #Gaming #Hindi"></label>
-     <div class="queue-meta">Start Live se pehle selected video/playlist aur details check kar lo. Live public hoga.</div>
+     <div class="live-wizard-head"><div><span class="live-step-kicker">STEP 02 / GO LIVE</span><h3>✨ YouTube Live details</h3><p>Stream ko apne brand ke hisaab se customize karo.</p></div><span class="live-gold-pill">PREMIUM LIVE</span></div>
+     <button class="small-btn live-back-btn" id="liveWizardBack" type="button">← Back to video selection</button>
+     <div class="live-details-grid">
+       <label class="field-label" for="liveWizardTitle">🎬 Live title <input id="liveWizardTitle" class="input" maxlength="100" required placeholder="Enter an engaging live title"></label>
+       <label class="field-label" for="liveWizardHashtags">#️⃣ Hashtags <input id="liveWizardHashtags" class="input" placeholder="#Live #Gaming #Hindi"></label>
+       <label class="field-label live-description-field" for="liveWizardDescription">📝 Description <textarea id="liveWizardDescription" class="input" rows="4" maxlength="4500" placeholder="Tell viewers what this live is about…"></textarea></label>
+       <div class="live-thumb-card"><div><span class="live-step-kicker">CHANNEL BRANDING</span><h4>🖼️ Live thumbnail</h4><p>JPG, PNG ya WebP · maximum 2 MB recommended</p></div><label class="live-thumb-picker" for="liveWizardThumbnail"><span>＋</span><strong>Choose thumbnail</strong><small>Tap to select image</small><input id="liveWizardThumbnail" type="file" accept="image/jpeg,image/png,image/webp"></label><div id="liveWizardThumbPreview" class="live-thumb-preview"><span>Preview will appear here</span></div><p class="live-thumb-note">Thumbnail preview yahan set hoga. Live par thumbnail apply karne ke liye YouTube API upload integration alag se verify karna zaroori hai.</p></div>
+     </div>
+     <div class="live-public-note">🔒 <strong>Final check:</strong> Start Live dabane par aapke connected YouTube channel par public live event create ho sakta hai.</div>
    </div>
   <div id="liveStatusPanel"><div class="empty">Live status check ho raha hai…</div></div>
   <div class="table-card" style="margin:12px 0"><h3>🔗 Live / Watch Link</h3><div id="liveWatchPanel" class="queue-meta">Live banne ke baad link yahan dikhega.</div></div>
@@ -437,6 +441,15 @@ async function renderSchedule(){
   <p id="liveActionMessage" class="queue-meta" aria-live="polite">Video source select karo, phir Start Live dabao. Stop request worker online hone par stream finalize karegi.</p>
   <div class="queue-meta">Elapsed time: <strong id="liveElapsed">00:00:00</strong></div></div>`;
   let elapsedTimer=null,refreshTimer=null,liveStartedAt=null,lastJob=null,liveRecoveryInProgress=false;
+  const liveThumbInput=document.getElementById("liveWizardThumbnail");
+  if(liveThumbInput)liveThumbInput.addEventListener("change",()=>{
+    const file=liveThumbInput.files&&liveThumbInput.files[0],box=document.getElementById("liveWizardThumbPreview");
+    if(!box)return;
+    if(!file){box.innerHTML="<span>Preview will appear here</span>";return;}
+    if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>10*1024*1024){liveThumbInput.value="";box.innerHTML="<span>Choose JPG, PNG or WebP under 10 MB.</span>";return;}
+    const url=URL.createObjectURL(file);box.innerHTML='<img alt="Selected live thumbnail preview" src="'+url+'"><button type="button" class="small-btn" id="liveWizardThumbRemove">✕ Remove</button>';
+    const rm=document.getElementById("liveWizardThumbRemove");if(rm)rm.addEventListener("click",()=>{URL.revokeObjectURL(url);liveThumbInput.value="";box.innerHTML="<span>Preview will appear here</span>";});
+  });
   const msg=document.getElementById("liveActionMessage");
   const elapsed=document.getElementById("liveElapsed");
   function fmt(ms){const sec=Math.max(0,Math.floor(ms/1000));return [Math.floor(sec/3600),Math.floor(sec%3600/60),sec%60].map(n=>String(n).padStart(2,"0")).join(":");}

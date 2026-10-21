@@ -3252,6 +3252,30 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
     res.json({ok:true,job:safeLiveJob(job),message:"Stop requested. The streaming worker will stop and finalize the YouTube live."});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
+app.post("/api/live/recover",requireAppKey,async(req,res)=>{
+  try{
+    const jobs=await readLiveJobs();
+    const job=Object.values(jobs).filter(x=>x&&x.status==="stopping").sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt))[0];
+    if(!job)return res.status(404).json({ok:false,error:"Koi stuck Stop session nahi mili."});
+    const age=Date.now()-new Date(job.updatedAt||job.createdAt||Date.now()).getTime();
+    if(age<120000)return res.status(409).json({ok:false,error:"Stop request ko 2 minute poore hone do, phir reset karo."});
+    let finalizeWarning="";
+    if(job.broadcastId){
+      try{await transitionLiveBroadcast(job,"complete");}
+      catch(e){finalizeWarning="YouTube broadcast ko automatically finalize nahi kar paya: "+safeErrorMessage(e);}
+    }
+    job.status="error";
+    job.workerStatus="recovered";
+    job.error="Stuck live session dashboard se reset ki gayi. "+finalizeWarning;
+    job.stopRequested=true;
+    job.broadcastId=null;
+    job.updatedAt=new Date().toISOString();
+    jobs[job.dateKey]=job;
+    await writeLiveJobs(jobs);
+    return res.json({ok:true,job:safeLiveJob(job),message:"Purana stuck session reset ho gaya. Dashboard ka purana Live link clear hai; ab Start dobara try kar sakte ho.",warning:finalizeWarning||null});
+  }catch(e){return res.status(500).json({ok:false,error:safeErrorMessage(e)});}
+});
+
 app.get("/api/live/worker/status",async(req,res)=>{
   const auth=liveWorkerAuthorized(req); if(!auth.ok)return res.status(auth.status).json({ok:false,error:auth.error});
   try{const id=String(req.query.id||"");const jobs=await readLiveJobs();const job=Object.values(jobs).find(x=>x?.id===id);if(!job)return res.status(404).json({ok:false,error:"Live job not found."});res.json({ok:true,status:job.status,stopRequested:!!job.stopRequested,job:safeLiveJob(job)});}catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}

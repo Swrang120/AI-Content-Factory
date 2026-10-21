@@ -3181,11 +3181,17 @@ app.get("/api/live/drive/list",requireAppKey,async(req,res)=>{
       const q=folderId
         ? "'"+folderId.replace(/'/g,"\\'")+"' in parents and trashed = false"
         : "trashed = false";
-      const page=await driveApi("files",{q,pageSize:1000,orderBy:"modifiedTime desc",fields:"nextPageToken,files(id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime)",pageToken});
-      for(const f of page.files||[]){
-        const mimeType=String(f.mimeType||"");
+      const page=await driveApi("files",{q,corpora:"allDrives",includeItemsFromAllDrives:true,supportsAllDrives:true,pageSize:1000,orderBy:"modifiedTime desc",fields:"nextPageToken,files(id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime,shortcutDetails)",pageToken});
+      for(const raw of page.files||[]){
+        let f=raw;
+        let mimeType=String(f.mimeType||"");
+        // Resolve Drive shortcuts, which are often used in shared folders.
+        if(mimeType==="application/vnd.google-apps.shortcut"&&f.shortcutDetails?.targetId){
+          try{f=await driveApi("files/"+encodeURIComponent(f.shortcutDetails.targetId),{supportsAllDrives:true,fields:"id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime"});mimeType=String(f.mimeType||"");}
+          catch(_){continue;}
+        }
         if(!mimeType.startsWith("video/")&&!mimeType.startsWith("image/"))continue;
-        files.push({id:f.id,name:f.name,mimeType,size:Number(f.size)||0,kind:mimeType.startsWith("image/")?"photo":"video",webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),thumbnailLink:f.thumbnailLink||null,modifiedTime:f.modifiedTime||null,downloadUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id)});
+        files.push({id:f.id,name:f.name||raw.name,mimeType,size:Number(f.size)||0,kind:mimeType.startsWith("image/")?"photo":"video",webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),thumbnailLink:f.thumbnailLink||null,modifiedTime:f.modifiedTime||null,downloadUrl:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id)});
         if(files.length>=500)break;
       }
       pageToken=files.length>=500?"":(page.nextPageToken||"");
@@ -3255,10 +3261,10 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
 app.post("/api/live/recover",requireAppKey,async(req,res)=>{
   try{
     const jobs=await readLiveJobs();
-    const job=Object.values(jobs).filter(x=>x&&x.status==="stopping").sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt))[0];
+    const job=Object.values(jobs).filter(x=>x&&["stopping","scheduled","worker_claimed","starting","live"].includes(x.status)).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt))[0];
     if(!job)return res.status(404).json({ok:false,error:"Koi stuck Stop session nahi mili."});
     const age=Date.now()-new Date(job.updatedAt||job.createdAt||Date.now()).getTime();
-    if(age<120000)return res.status(409).json({ok:false,error:"Stop request ko 2 minute poore hone do, phir reset karo."});
+    if(age<120000&&job.status==="stopping")return res.status(409).json({ok:false,error:"Stop request ko 2 minute poore hone do, phir reset karo."});
     let finalizeWarning="";
     if(job.broadcastId){
       try{await transitionLiveBroadcast(job,"complete");}
@@ -3266,7 +3272,7 @@ app.post("/api/live/recover",requireAppKey,async(req,res)=>{
     }
     job.status="error";
     job.workerStatus="recovered";
-    job.error="Stuck live session dashboard se reset ki gayi. "+finalizeWarning;
+    job.error="Stale live session dashboard se reset ki gayi. Worker abhi bhi active ho sakta hai; GitHub Actions Live Worker run ko bhi verify/cancel karo. "+finalizeWarning;
     job.stopRequested=true;
     job.broadcastId=null;
     job.updatedAt=new Date().toISOString();

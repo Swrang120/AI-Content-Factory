@@ -3029,8 +3029,8 @@ async function createYouTubeLiveJob({dateKey,privacyStatus,req}={}){
   const media=await selectLiveMedia(targetDate,req?.body?.mediaSource,req?.body?.mediaUrl);
   if(!media)throw new Error("Could not prepare a live media source.");
   const schedule=liveScheduleForDate(targetDate);
-  // Manual start: schedule the broadcast a few minutes ahead so the free GitHub worker can pick it up.
-  const start=new Date(now+8*60000);
+  // Manual start: dispatch the worker immediately and allow a short startup buffer.
+  const start=new Date(now+2*60000);
   const end=new Date(now+310*60000);
   const yt=await youtube(req||{headers:{}});
   const privacy=String(privacyStatus||process.env.YOUTUBE_LIVE_PRIVACY||"public");

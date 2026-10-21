@@ -3140,7 +3140,8 @@ app.post("/api/live/media",requireAppKey,async(req,res)=>{
       if(!folderId)throw new Error("Google Drive folder link/ID valid nahi hai.");
       const page=await driveApi("files",{q:"'"+folderId.replace(/'/g,"\\'")+"' in parents and trashed = false",pageSize:1000,orderBy:"name",fields:"files(id,name,mimeType,size,webViewLink,thumbnailLink)"});
       const allVideos=(page.files||[]).filter(f=>String(f.mimeType||"").startsWith("video/"));
-      const requestedIds=Array.isArray(body.fileIds)?body.fileIds.map(x=>String(x)).filter(x=>/^[a-zA-Z0-9_-]{10,}$/.test(x)):[];\n      const files=(requestedIds.length?requestedIds.map(id=>allVideos.find(f=>f.id===id)).filter(Boolean):allVideos).slice(0,100);
+      const requestedIds=Array.isArray(body.fileIds)?body.fileIds.map(x=>String(x)).filter(x=>/^[a-zA-Z0-9_-]{10,}$/.test(x)):[];
+      const files=(requestedIds.length?requestedIds.map(id=>allVideos.find(f=>f.id===id)).filter(Boolean):allVideos).slice(0,100);
       if(!files.length)throw new Error("Is folder mein koi video nahi mili. Folder ko Anyone with the link access do aur video files directly folder ke andar rakho.");
       const playlist=files.map(f=>({id:f.id,name:f.name,url:"https://drive.google.com/uc?export=download&id="+encodeURIComponent(f.id),webViewLink:f.webViewLink||("https://drive.google.com/file/d/"+f.id+"/view"),size:Number(f.size)||0}));
       media={sourceType:"drive_playlist",mediaType:"playlist",folderId,title:String(body.title||"Google Drive Live Playlist").slice(0,100),playlist,count:playlist.length,videoUrl:playlist[0].url,mediaUrl:playlist[0].url,createdAt:now};

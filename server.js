@@ -883,6 +883,35 @@ async function autoJobExists(id){
 }
 async function generateAutomaticJob(item,req){
   const id=autoSlotId(item);
+  // Recover a previously rendered slot by retrying Buffer delivery instead of
+  // rendering the same video again every scheduler tick.
+  const persisted=await loadPersistentJobs();
+  const local=loadJobs();
+  const existing=persisted[id]||local[id]||null;
+  if(existing && existing.renderedVideoUrl && ["rendered","error","voice_waiting"].includes(String(existing.status||"").toLowerCase())){
+    const settings=await hydrateSettings();
+    if(!enabledCategory(settings,item.category))return {ok:true,skipped:true,jobId:id,reason:"category_disabled"};
+    if(settings.automationOnline!==false && settings.autoGenerate!==false && settings.autoPublish){
+      try{
+        await setAgentState("publisher","WORKING",55,"Retrying Buffer delivery for previously rendered video",id);
+        const result=await publishVideoToBuffer({videoUrl:existing.renderedVideoUrl,title:existing.topic||existing.title||item.category,description:"AI Content Factory — Hindi video. Category: "+item.category});
+        existing.buffer=result;
+        existing.status=Number(result?.successfulChannels||0)===3?"published":"sent_to_buffer";
+        existing.publishError=null;
+        existing.updatedAt=new Date().toISOString();
+        local[id]=existing;saveJobs(local);await persistJob(existing);
+        await setAgentState("publisher","SLEEPING",100,"Buffer accepted retry on "+Number(result?.successfulChannels||0)+" channel(s)",id);
+        return {ok:true,jobId:id,status:existing.status,retriedPublish:true,buffer:result};
+      }catch(error){
+        existing.publishError=safeErrorMessage(error);
+        existing.status="rendered";
+        existing.updatedAt=new Date().toISOString();
+        local[id]=existing;saveJobs(local);await persistJob(existing).catch(()=>{});
+        await setAgentState("publisher","ERROR",0,"Buffer retry failed: "+safeErrorMessage(error),id).catch(()=>{});
+        return {ok:false,jobId:id,status:"rendered",error:safeErrorMessage(error),retryStage:"buffer_publish"};
+      }
+    }
+  }
   if(await autoJobExists(id))return {ok:true,skipped:true,jobId:id,reason:"slot_already_created"};
   if(item.category==="Music Promotion"){
     try{
@@ -1105,7 +1134,7 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
     const command=String(req.body?.command||"").trim();
     if(!command)return res.status(400).json({ok:false,error:"command is required"});
     const settings=await hydrateSettings();
-    if(settings.autoGenerate===false)return res.status(409).json({ok:false,error:"Auto Generate is OFF. Turn Automation/Auto Generate ON first."});
+    // Manual Boss Room / Video Generator requests work independently of scheduled Auto Generate.
 
     const allowedCategories=["Music Promotion","News & Updates","Product Promotion","Sports Information","Editing Knowledge","AI & Technology"];
     const requestedCategory=String(req.body?.category||"").trim();
@@ -1179,7 +1208,7 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
 app.post("/api/boss/publish-latest",requireAppKey,async(req,res)=>{
   try{
     const settings=await hydrateSettings();
-    if(!settings.autoPublish)return res.status(409).json({ok:false,error:"Auto Publish is OFF."});
+    // Manual publish is an explicit user action; Auto Publish only controls scheduled jobs.
     const jobs=await loadPersistentJobs();
     const requestedId=String(req.body?.jobId||"").trim();
     const requestedUrl=String(req.body?.renderedVideoUrl||"").trim();

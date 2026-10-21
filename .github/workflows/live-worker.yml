@@ -159,8 +159,8 @@ jobs:
               -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" \
               "${BASE}/api/live/worker/status?id=${JOB_ID}" || true)"
             STOP_REQUESTED="$(printf '%s' "$STATE" | python3 -c 'import json,sys; 
-try: print("true" if json.load(sys.stdin).get("stopRequested") else "false")
-except Exception: print("false")')"
+          try: print("true" if json.load(sys.stdin).get("stopRequested") else "false")
+          except Exception: print("false")')"
             if [ "$STOP_REQUESTED" = "true" ]; then
               echo "Manual stop requested; stopping FFmpeg."
               # Try graceful shutdown, then force termination if FFmpeg hangs.

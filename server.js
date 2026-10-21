@@ -375,7 +375,7 @@ async function youtube(req){
  async function askGeminiToDiagnose(incident){
    if(!process.env.GEMINI_API_KEY)return "Gemini not configured.";
    const prompt=["You are the reliability engineer for a private AI Content Factory.","Diagnose this runtime incident and suggest only safe runtime remediation: retry, fallback provider, queue/skip the failed job, reconnect a dependency, or configuration check.","Never expose secrets, disable security, bypass authentication, or blindly rewrite source code.","Incident:",JSON.stringify(incident)].join("\\n");
-   const model=process.env.GEMINI_MODEL||"gemini-2.5-flash";
+   const model=process.env.GEMINI_MODEL||"gemini-3.8-flash";
    const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":process.env.GEMINI_API_KEY},body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{temperature:0.1,maxOutputTokens:500}})});
    const body=await response.json();
    if(!response.ok)throw new Error(body?.error?.message||"Gemini diagnosis failed");
@@ -456,8 +456,9 @@ async function fallbackTextGeneration(task,fields={}){
     throw new Error("AI text generation is not configured. Add a valid GEMINI_API_KEY_1–GEMINI_API_KEY_8 or OPENAI_API_KEY in Vercel.");
   }
   const configured=String(process.env.GEMINI_MODEL||"").trim();
-  const models=[configured,"gemini-2.5-flash","gemini-2.0-flash"]
-    .filter((x,i,a)=>x&&a.indexOf(x)===i);
+  const retiredModels=new Set(["gemini-2.0-flash","gemini-2.5-flash","models/gemini-2.0-flash","models/gemini-2.5-flash"]);
+  // Prioritize the currently recommended model and ignore retired model overrides.
+  const models=["gemini-3.8-flash",configured].map(x=>String(x||"").replace(/^models\//,"").trim()).filter((x,i,a)=>x&&!retiredModels.has(x)&&a.indexOf(x)===i);
   const brainContext=acfCreativeContext(task,fields||{});
   const prompt=[
     "You are the creative brain of AI Content Factory. Produce original, factual and practical creator content.",
@@ -1608,14 +1609,14 @@ app.get("/api/google/status",requireAppKey,async(req,res)=>{
   const bucketName=String(process.env.GCS_BUCKET_NAME||process.env.GOOGLE_CLOUD_STORAGE_BUCKET||"").trim();
   const out={
     ok:true,
-    gemini:{configured:!!apiKey,connected:false,model:process.env.GEMINI_MODEL||"gemini-2.5-flash"},
+    gemini:{configured:!!apiKey,connected:false,model:process.env.GEMINI_MODEL||"gemini-3.8-flash"},
     youtubeAnalytics:{configured:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET),usesExistingYouTubeOAuth:true,endpoint:"/api/youtube/analytics"},
     cloudStorage:{configured:!!(bucketName&&process.env.GOOGLE_SERVICE_ACCOUNT_JSON),bucketConfigured:!!bucketName,credentialsConfigured:!!process.env.GOOGLE_SERVICE_ACCOUNT_JSON,connected:false},
     note:"Secrets are never returned by this endpoint."
   };
   if(apiKey){
     try{
-      const model=String(process.env.GEMINI_MODEL||"gemini-2.5-flash").trim();
+      const model=String(process.env.GEMINI_MODEL||"gemini-3.8-flash").trim();
       const response=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
         method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":apiKey},
         body:JSON.stringify({contents:[{role:"user",parts:[{text:"Reply with exactly: GOOGLE_API_OK"}]}],generationConfig:{temperature:0,maxOutputTokens:12}})

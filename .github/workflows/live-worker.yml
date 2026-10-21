@@ -253,48 +253,6 @@ jobs:
               "${BASE}/api/live/worker/error" || true
             exit "$STREAM_EXIT"
           fi
-          # Poll the dashboard stop request while FFmpeg is streaming.
-          STOP_REQUESTED="false"
-          while kill -0 "$FFMPEG_PID" 2>/dev/null; do
-            STATE="$(curl --silent --show-error --max-time 15 \
-              -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" \
-              "${BASE}/api/live/worker/status?id=${JOB_ID}" || true)"
-            STOP_REQUESTED="$(printf '%s' "$STATE" | python3 -c 'import json,sys; 
-          try: print("true" if json.load(sys.stdin).get("stopRequested") else "false")
-          except Exception: print("false")')"
-            if [ "$STOP_REQUESTED" = "true" ]; then
-              echo "Manual stop requested; stopping FFmpeg."
-              # Try graceful shutdown, then force termination if FFmpeg hangs.
-              kill -INT "$FFMPEG_PID" 2>/dev/null || true
-              for attempt in $(seq 1 10); do
-                kill -0 "$FFMPEG_PID" 2>/dev/null || break
-                sleep 1
-              done
-              if kill -0 "$FFMPEG_PID" 2>/dev/null; then
-                echo "FFmpeg did not exit after SIGINT; sending SIGTERM."
-                kill -TERM "$FFMPEG_PID" 2>/dev/null || true
-                sleep 3
-              fi
-              if kill -0 "$FFMPEG_PID" 2>/dev/null; then
-                echo "FFmpeg still running; sending SIGKILL."
-                kill -KILL "$FFMPEG_PID" 2>/dev/null || true
-              fi
-              break
-            fi
-            sleep 10
-          done
-          set +e
-          wait "$FFMPEG_PID"
-          STREAM_EXIT=$?
-          set -e
-          if [ "$STOP_REQUESTED" = "true" ]; then STREAM_EXIT=0; fi
-          if [ "$STREAM_EXIT" -ne 0 ]; then
-            curl --silent --show-error --max-time 30 -X POST \
-              -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" -H "Content-Type: application/json" \
-              -d "{\"id\":\"$JOB_ID\",\"error\":\"FFmpeg stream exited with code $STREAM_EXIT\"}" \
-              "${BASE}/api/live/worker/error" || true
-            exit "$STREAM_EXIT"
-          fi
           curl --fail-with-body --silent --show-error --max-time 30 -X POST \
             -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" -H "Content-Type: application/json" \
             -d "{\"id\":\"$JOB_ID\"}" "${BASE}/api/live/worker/finish"

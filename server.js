@@ -3610,6 +3610,20 @@ app.post("/api/live/create",requireAppKey,async(req,res)=>{
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
 
+/* Worker-only Drive download credential. The access token is returned only to the
+   authenticated GitHub Actions worker, never to dashboard/browser routes. */
+app.get("/api/live/worker/drive-token",async(req,res)=>{
+  const auth=liveWorkerAuthorized(req); if(!auth.ok)return res.status(auth.status).json({ok:false,error:auth.error});
+  try{
+    const client=await getDriveOAuthClient();
+    if(!client) return res.status(409).json({ok:false,error:"Google Drive is not connected. Reconnect Google Drive before streaming a private Drive file."});
+    const tokenResult=await client.getAccessToken();
+    const accessToken=typeof tokenResult==="string"?tokenResult:tokenResult?.token||client.credentials?.access_token;
+    if(!accessToken) return res.status(409).json({ok:false,error:"Google Drive access token could not be refreshed. Reconnect Google Drive."});
+    return res.json({ok:true,accessToken});
+  }catch(e){return res.status(502).json({ok:false,error:safeErrorMessage(e)});}
+});
+
 /* Worker-only endpoints. These never return the raw YouTube stream key to dashboard clients. */
 app.get("/api/live/worker/claim",async(req,res)=>{
   const auth=liveWorkerAuthorized(req); if(!auth.ok)return res.status(auth.status).json({ok:false,error:auth.error});

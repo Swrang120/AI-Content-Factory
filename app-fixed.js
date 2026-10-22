@@ -413,7 +413,7 @@ async function renderSchedule(){
       <div class="queue-row" style="gap:8px;align-items:center;flex-wrap:wrap"><strong>🔐 Google Drive</strong><span id="driveOAuthStatus" class="queue-meta">Connection status checking…</span><button class="small-btn" id="driveOAuthConnect" type="button">Connect Google Drive</button></div>
       <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link (optional — blank = all Drive)<input id="liveDriveFolderUrl" class="input" type="url" value="" placeholder="Blank chhodo = poori Drive; ya folder link paste karo"></label>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Photos & Videos</button></div>
-      <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
+      <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px;max-height:220px;overflow:auto">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="small-btn" id="liveDriveSelectAll" type="button">☑ Select / Deselect All</button><button class="primary-btn" id="liveDriveSavePlaylist" type="button">💾 Save Selected Playlist</button><button class="small-btn" id="liveDriveSaveOne" type="button">▶ Use First Selected Video</button></div>
       <div class="queue-meta" style="margin-top:6px">Playlist ek baar save karo; agli baar bas saved playlist choose karke direct Live start kar sakte ho.</div>
       <div class="live-saved-playlists" style="margin-top:14px;padding:12px;border:1px solid rgba(212,175,55,.38);border-radius:14px;background:linear-gradient(135deg,rgba(212,175,55,.09),rgba(15,23,42,.35))">
@@ -423,7 +423,7 @@ async function renderSchedule(){
         <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="small-btn" id="livePlaylistDelete" type="button" disabled>🗑 Delete selected playlist</button></div>
       </div>
       <div class="queue-row" style="margin-top:12px"><button class="primary-btn" id="liveWizardNext" type="button">Next: Live Details →</button></div>
-      <div class="live-direct-upload" style="display:block;margin-top:14px;padding:14px;border:1px solid var(--border,#334155);border-radius:14px;background:rgba(15,23,42,.45)">
+      <div class="live-direct-upload" style="margin-top:10px;padding:10px;border:1px solid var(--border,#334155);border-radius:14px;background:rgba(15,23,42,.45)">
         <h4 style="margin:0 0 6px">⬆️ Upload video directly to AI Content Factory</h4><p class="queue-meta" style="margin:0 0 10px">Phone/computer se seedha system storage par upload hoga — Google Drive ki zaroorat nahi. Upload speed aapke internet connection par depend karegi. Large video ke liye page khula rakhein.</p>
         <label class="field-label" for="liveVideoFile">🎬 Choose video file (up to 5 GB)<input id="liveVideoFile" type="file" accept="video/*" style="display:block;width:100%;margin-top:6px"></label>
         <label class="field-label" for="liveMediaTitle" style="display:block;margin-top:10px">Video name <input id="liveMediaTitle" type="text" class="input" placeholder="Optional video title" style="width:100%;margin-top:6px"></label>
@@ -609,11 +609,11 @@ async function renderSchedule(){
       const d=await r.json().catch(()=>({}));
       if(!r.ok||!d.ok)throw new Error(d.error||("Could not prepare upload (HTTP "+r.status+")"));
       await new Promise((resolve,reject)=>{
-        const xhr=new XMLHttpRequest();xhr.open("PUT",d.uploadUrl);xhr.setRequestHeader("Content-Type",file.type||"application/octet-stream");
+        const xhr=new XMLHttpRequest();xhr.open("PUT",d.uploadUrl);xhr.timeout=1800000;xhr.setRequestHeader("Content-Type",file.type||"application/octet-stream");
         xhr.upload.onprogress=e=>{if(e.lengthComputable){const p=e.loaded/e.total;progress(label,base+p*weight,fmtSize(e.loaded)+" / "+fmtSize(e.total)+" uploaded");}};
         xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300){progress(label,base+weight,"Upload bytes sent; verifying storage response…");resolve();}else reject(new Error("Storage upload failed (HTTP "+xhr.status+")."));};
-        xhr.onerror=()=>reject(new Error("Network error during upload. Check connection and try again."));
-        xhr.onabort=()=>reject(new Error("Upload cancelled."));
+        xhr.onerror=()=>reject(new Error("Storage upload network/CORS failure: browser could not reach the upload endpoint. Check connection, VPN/ad-blocker, and retry. Saved video remains unchanged."));
+        xhr.ontimeout=()=>reject(new Error("Upload timed out after 30 minutes. Keep this page open and retry on a stable connection."));xhr.onabort=()=>reject(new Error("Upload cancelled."));
         xhr.send(file);
       });
       return {url:d.uploadUrl.split("?")[0],pathname:d.pathname,filename:file.name,size:file.size,contentType:file.type};

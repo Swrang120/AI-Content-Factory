@@ -633,14 +633,30 @@ async function renderSchedule(){
   document.getElementById("liveMediaDelete").addEventListener("click",async()=>{if(!confirm("Saved video aur thumbnail delete karein?"))return;try{const r=await fetch(apiUrl("/api/live/media"),{method:"DELETE",credentials:"include"}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Delete failed");msg.textContent="Saved video deleted.";await loadSavedLiveMedia();}catch(e){msg.textContent="Delete failed: "+e.message;}});
   document.getElementById("liveRefresh").addEventListener("click",refresh);
   document.getElementById("liveWizardNext").addEventListener("click",async()=>{
-    const next=document.getElementById("liveWizardNext");next.disabled=true;msg.textContent="Saved video/playlist verify ho rahi hai…";
+    const next=document.getElementById("liveWizardNext");next.disabled=true;msg.textContent="Selected video/playlist verify aur save ho rahi hai…";
     try{
+      // Persist the currently checked Drive selection before entering the wizard.
+      // Otherwise the UI can show a newly selected file while /api/live/create
+      // still reads the previous saved source ("saved"), causing the old video to stream.
+      const driveUrl=document.getElementById("liveDriveUrl").value.trim();
+      const chosen=driveUrl?[]:selectedDriveFiles();
+      if(chosen.length){
+        const payload=chosen.length===1
+          ?{sourceType:"drive_file",fileId:chosen[0].id,title:chosen[0].name}
+          :{sourceType:"drive_playlist",folderUrl:document.getElementById("liveDriveFolderUrl").value.trim(),fileIds:chosen.map(f=>f.id),title:"Selected Live Playlist"};
+        const sr=await fetch(apiUrl("/api/live/media"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(payload)});
+        const sd=await sr.json().catch(()=>({}));
+        if(!sr.ok||!sd.ok||!sd.media)throw new Error(sd.error||("Selected video save failed (HTTP "+sr.status+")"));
+        await loadSavedLiveMedia();
+      }
       const r=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"});const d=await r.json().catch(()=>({}));
-      if(!r.ok||!d.ok||!d.media)throw new Error(d.error||"Pehle Google Drive se video select karke Save Selected Playlist dabao.");
+      if(!driveUrl&&(!r.ok||!d.ok||!d.media))throw new Error(d.error||"Pehle Google Drive se video select karke Save Selected Playlist dabao.");
       document.getElementById("liveMediaStep").style.display="none";
       document.getElementById("liveDetailsStep").style.display="block";
       document.getElementById("liveStart").style.display="inline-flex";
-      msg.textContent="Step 2/2: Title, description aur hashtags check karo. Phir Start Live dabao.";
+      msg.textContent=chosen.length
+        ?"✅ Selected source saved: "+(chosen.length===1?chosen[0].name:chosen.length+" videos")+" · Step 2/2: Title check karke Start Live dabao."
+        :"Step 2/2: Title, description aur hashtags check karo. Phir Start Live dabao.";
       document.getElementById("liveWizardTitle").focus();
     }catch(e){msg.textContent="Next nahi ho saka: "+e.message;}
     finally{next.disabled=false;}

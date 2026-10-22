@@ -1,4 +1,4 @@
-name: Backend Syntax Check
+name: Frontend and Backend Syntax Check
 
 on:
   push:
@@ -13,7 +13,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Check server syntax
-        run: node --check server.js
-      - name: Check Vercel entry syntax
-        run: node --check api/index.js
+      - name: Check all root JavaScript files
+        shell: bash
+        run: |
+          set -e
+          for file in ./*.js; do
+            [ -f "$file" ] || continue
+            echo "Checking $file"
+            node --check "$file"
+          done
+      - name: Check server and Vercel entry syntax
+        run: |
+          node --check server.js
+          node --check api/index.js

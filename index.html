@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#07111f">
   <meta name="description" content="Private AI Content Factory — content planning, production and publishing control center.">
   <title>AI Content Factory — Boss Room</title>
-  <link rel="stylesheet" href="styles.css?v=20261021-live-gold-premium-v1">
+  <link rel="stylesheet" href="styles.css?v=20261022-dashboard-recovery-v3">
 </head>
 <body>
   <div class="app-shell">
@@ -73,11 +73,28 @@
     </div>
   </div>
 
-  <script src="app-fixed.js?v=20261022-live-compact-picker-v2"></script>
+  <script src="app-fixed.js?v=20261022-dashboard-recovery-v3"></script>
   <script src="youtube-skills.js?v=20261009b"></script>
   <script src="music-library-fixed.js?v=20261013-backend-fix1"></script>
-  <script src="live-status.js?v=20261022-manual-live-only-v1"></script>
+  <script src="live-status.js?v=20261022-dashboard-recovery-v3"></script>
   <script src="notifications.js?v=20261013a"></script>
+  <script>
+    // Dashboard recovery watchdog: never leave the main workspace visually empty.
+    (function(){
+      var view=document.getElementById("view");
+      if(!view)return;
+      function recover(){
+        if(!view.isConnected)return;
+        var hasContent=(view.textContent||"").trim().length>0 || view.children.length>0;
+        if(!hasContent){
+          view.innerHTML='<div class="hero"><p class="eyebrow">AI CONTENT FACTORY</p><h2>Dashboard is recovering</h2><p>The main app script did not render the dashboard. Your saved content is not being deleted. Tap Retry to reload the latest version.</p></div><div class="table-card"><button class="primary" onclick="location.href=location.pathname+\'?refresh=\'+Date.now()">↻ Retry Dashboard</button> <button class="small-btn" onclick="location.href=\'/api/live/status\'">Check Live API</button></div>';
+        }
+      }
+      setTimeout(recover,2500);
+      window.addEventListener("error",function(){setTimeout(recover,100);});
+    })();
+  </script>
+
   <script>
     // Hard fallback: keep Music Library available even if the optional module
     // is stale/cached or fails to initialize.

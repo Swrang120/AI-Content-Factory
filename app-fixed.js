@@ -423,10 +423,13 @@ async function renderSchedule(){
         <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="small-btn" id="livePlaylistDelete" type="button" disabled>🗑 Delete selected playlist</button></div>
       </div>
       <div class="queue-row" style="margin-top:12px"><button class="primary-btn" id="liveWizardNext" type="button">Next: Live Details →</button></div>
-      <div style="display:none">
-        <input id="liveDriveUrl" type="url"><input id="liveVideoFile" type="file"><input id="liveThumbFile" type="file"><input id="liveMediaTitle" type="text">
-        <button id="liveMediaUpload" type="button">Upload</button><button id="liveMediaDelete" type="button" disabled>Delete</button>
-        <div id="liveMediaPreview"></div><div id="liveThumbPreview"></div>
+      <div class="live-direct-upload" style="display:block;margin-top:14px;padding:14px;border:1px solid var(--border,#334155);border-radius:14px;background:rgba(15,23,42,.45)">
+        <h4 style="margin:0 0 6px">⬆️ Upload video directly to AI Content Factory</h4><p class="queue-meta" style="margin:0 0 10px">Phone/computer se seedha system storage par upload hoga — Google Drive ki zaroorat nahi. Upload speed aapke internet connection par depend karegi. Large video ke liye page khula rakhein.</p>
+        <label class="field-label" for="liveVideoFile">🎬 Choose video file (up to 5 GB)<input id="liveVideoFile" type="file" accept="video/*" style="display:block;width:100%;margin-top:6px"></label>
+        <label class="field-label" for="liveMediaTitle" style="display:block;margin-top:10px">Video name <input id="liveMediaTitle" type="text" class="input" placeholder="Optional video title" style="width:100%;margin-top:6px"></label>
+        <label class="field-label" for="liveThumbFile" style="display:block;margin-top:10px">🖼️ Optional thumbnail<input id="liveThumbFile" type="file" accept="image/jpeg,image/png,image/webp" style="display:block;width:100%;margin-top:6px"></label>
+        <div class="queue-row" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="primary-btn" id="liveMediaUpload" type="button">⬆ Upload &amp; Save for Live</button><button class="small-btn" id="liveMediaDelete" type="button" disabled>🗑 Remove saved video</button></div>
+        <div id="liveMediaPreview" style="margin-top:10px"></div><div id="liveThumbPreview"></div>
       </div>
     </div>
   </div>
@@ -482,7 +485,7 @@ async function renderSchedule(){
       if(job?.status==="live"){if(!liveStartedAt)startElapsed(job.updatedAt||job.createdAt);}
       if(!liveRecoveryInProgress&&job?.status==="stopping"){const age=Date.now()-new Date(job.updatedAt||job.createdAt||Date.now()).getTime();msg.textContent=age>120000?"⚠️ Stop pending for over 2 minutes. Worker has not confirmed stream finalization yet; check the GitHub Live Worker run.":"⏳ Stop request sent. Waiting for worker to stop FFmpeg and finalize YouTube."; }
       else if(!liveRecoveryInProgress&&job&&active){msg.textContent="Live status: "+job.status+" · Worker: "+(job.workerStatus||"waiting");}
-      else if(job?.status==="complete"||job?.status==="completed"){msg.textContent="✅ Live session complete/stop ho gaya.";}
+      else if(job?.status==="complete"||job?.status==="completed"){msg.textContent="✅ Live session complete/stop ho gaya. Start Live ab naya session shuru karne ke liye available hai.";liveStartedAt=null;if(elapsed)elapsed.textContent="00:00:00";}
       box.innerHTML=job?'<div class="queue-row"><div><div class="queue-title">'+esc(job.title||"YouTube Live")+'</div><div class="queue-meta">Status: '+esc(job.status)+' · Worker: '+esc(job.workerStatus||"waiting")+'</div><div class="queue-meta">Start time: '+esc(job.scheduledStartTime||"—")+'</div>'+(job.error?'<div class="queue-meta">Error: '+esc(job.error)+'</div>':'')+'</div><span class="badge '+(job.status==="live"?"ready":"")+'">'+esc(job.status)+'</span></div>':'<div class="empty">Abhi koi active live session nahi hai.</div>';
     }catch(e){box.innerHTML='<div class="empty">Live status error: '+esc(e.message)+'</div>';}
   }
@@ -596,7 +599,7 @@ async function renderSchedule(){
   document.getElementById("liveMediaUpload").addEventListener("click",async()=>{
     const btn=document.getElementById("liveMediaUpload"),vf=document.getElementById("liveVideoFile").files[0],tf=document.getElementById("liveThumbFile").files[0],preview=document.getElementById("liveMediaPreview");
     if(!vf){msg.textContent="Pehle video file select karo.";return;}
-    if(vf.size>500*1024*1024||tf&&tf.size>10*1024*1024){msg.textContent="Video max 500 MB aur thumbnail max 10 MB hona chahiye.";return;}
+    if(vf.size>5*1024*1024*1024||tf&&tf.size>10*1024*1024){msg.textContent="Video max 5 GB aur thumbnail max 10 MB hona chahiye.";return;}
     btn.disabled=true;btn.textContent="⏳ Uploading…";document.getElementById("liveMediaDelete").disabled=true;
     const fmtSize=n=>n<1024*1024?(n/1024).toFixed(0)+" KB":(n/1024/1024).toFixed(1)+" MB";
     const progress=(label,pct,detail)=>{const safePct=Math.max(0,Math.min(100,Math.round(pct)));preview.innerHTML='<div style="font-weight:700;margin-bottom:6px">'+esc(label)+' · '+safePct+'%</div><div style="height:10px;background:#203044;border-radius:8px;overflow:hidden"><div style="height:100%;width:'+safePct+'%;background:#38bdf8;transition:width .2s"></div></div><div style="margin-top:6px;font-size:12px">'+esc(detail||"Please keep this page open.")+'</div>';};

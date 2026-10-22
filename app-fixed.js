@@ -409,7 +409,7 @@ async function renderSchedule(){
   <div class="table-card" style="margin:12px 0"><h3>📺 Target YouTube Channel</h3><div id="liveChannelPanel" class="queue-meta">Connected channel check ho raha hai…</div></div>
   <div class="table-card" id="liveMediaStep" style="margin:14px 0;padding:14px">
     <h3>🎞️ Live video source</h3><p class="queue-meta">Google Drive se video seedha select karo. Folder ko “Anyone with the link” access dena zaroori hai.</p>
-    <div style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:12px;margin:10px 0;background:rgba(56,189,248,.05)">
+    <details style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:10px;margin:10px 0;background:rgba(56,189,248,.04)"><summary style="cursor:pointer;font-weight:700">📂 Choose video from Google Drive</summary><div style="padding-top:10px">
       <div class="queue-row" style="gap:8px;align-items:center;flex-wrap:wrap"><strong>🔐 Google Drive</strong><span id="driveOAuthStatus" class="queue-meta">Connection status checking…</span><button class="small-btn" id="driveOAuthConnect" type="button">Connect Google Drive</button></div>
       <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link (optional — blank = all Drive)<input id="liveDriveFolderUrl" class="input" type="url" value="" placeholder="Blank chhodo = poori Drive; ya folder link paste karo"></label>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Photos & Videos</button></div>
@@ -423,15 +423,15 @@ async function renderSchedule(){
         <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="small-btn" id="livePlaylistDelete" type="button" disabled>🗑 Delete selected playlist</button></div>
       </div>
       <div class="queue-row" style="margin-top:12px"><button class="primary-btn" id="liveWizardNext" type="button">Next: Live Details →</button></div>
-      <div class="live-direct-upload" style="margin-top:10px;padding:10px;border:1px solid var(--border,#334155);border-radius:14px;background:rgba(15,23,42,.45)">
-        <h4 style="margin:0 0 6px">⬆️ Upload video directly to AI Content Factory</h4><p class="queue-meta" style="margin:0 0 10px">Phone/computer se seedha system storage par upload hoga — Google Drive ki zaroorat nahi. Upload speed aapke internet connection par depend karegi. Large video ke liye page khula rakhein.</p>
+      <details class="live-direct-upload" style="margin-top:10px;padding:10px;border:1px solid var(--border,#334155);border-radius:12px;background:rgba(15,23,42,.2)">
+        <summary style="cursor:pointer;font-weight:700">⬆️ Upload a new video from this device</summary><p class="queue-meta" style="margin:8px 0">Google Drive ke bina direct upload. Large video ke liye page khula rakhein.</p>
         <label class="field-label" for="liveVideoFile">🎬 Choose video file (up to 5 GB)<input id="liveVideoFile" type="file" accept="video/*" style="display:block;width:100%;margin-top:6px"></label>
         <label class="field-label" for="liveMediaTitle" style="display:block;margin-top:10px">Video name <input id="liveMediaTitle" type="text" class="input" placeholder="Optional video title" style="width:100%;margin-top:6px"></label>
         <label class="field-label" for="liveThumbFile" style="display:block;margin-top:10px">🖼️ Optional thumbnail<input id="liveThumbFile" type="file" accept="image/jpeg,image/png,image/webp" style="display:block;width:100%;margin-top:6px"></label>
         <div class="queue-row" style="gap:8px;flex-wrap:wrap;margin-top:10px"><button class="primary-btn" id="liveMediaUpload" type="button">⬆ Upload &amp; Save for Live</button><button class="small-btn" id="liveMediaDelete" type="button" disabled>🗑 Remove saved video</button></div>
         <div id="liveMediaPreview" style="margin-top:10px"></div><div id="liveThumbPreview"></div>
-      </div>
-    </div>
+      </details>
+    </div></details>
   </div>
    <div class="table-card" id="liveDetailsStep" style="display:none;margin:12px 0;padding:14px"><h3>STEP 2 · 📝 YouTube Live details</h3>
      <div class="live-wizard-head"><div><span class="live-step-kicker">STEP 02 / GO LIVE</span><h3>✨ YouTube Live details</h3><p>Stream ko apne brand ke hisaab se customize karo.</p></div><span class="live-gold-pill">PREMIUM LIVE</span></div>

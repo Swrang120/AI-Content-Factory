@@ -1,7 +1,7 @@
 (function(){
   "use strict";
   function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
-  const API_BASE=(window.ACF_BACKEND_URL||"https://ai-content-factory-zeta-ruby.vercel.app").replace(/\\/+$/,"");
+  const API_BASE=(window.ACF_BACKEND_URL||"https://ai-content-factory-zeta-ruby.vercel.app").replace(/\/+$/,"");
   async function readJson(response){
     const raw=await response.text();
     try{return raw?JSON.parse(raw):{};}catch(_){throw new Error("Backend returned a non-JSON response (HTTP "+response.status+"). Check the Vercel API deployment.");}

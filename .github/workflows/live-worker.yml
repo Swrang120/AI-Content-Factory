@@ -147,71 +147,55 @@ jobs:
           elif [ "$MEDIA_TYPE" = "playlist" ]; then
             # Download the selected public Drive videos and play them in filename order, then repeat the full playlist.
             python3 - <<'PY'
-          import json, pathlib, shutil, urllib.request, urllib.parse, urllib.error, http.cookiejar, re
+          import json, pathlib, urllib.request, urllib.parse, urllib.error, os, re, shutil
           job=json.load(open("live-job.json",encoding="utf-8"))
           items=job.get("mediaPlaylist") or []
           if not items:
               raise SystemExit("Playlist job contains no videos.")
+          token_req=urllib.request.Request(os.environ["BASE"]+"/api/live/worker/drive-token",headers={"x-live-worker-token":os.environ["LIVE_WORKER_TOKEN"]})
+          with urllib.request.urlopen(token_req,timeout=30) as response:
+              token_data=json.load(response)
+          access_token=token_data.get("accessToken","")
+          if not token_data.get("ok") or not access_token:
+              raise SystemExit("Google Drive OAuth token unavailable. Reconnect Drive in the dashboard.")
           folder=pathlib.Path("drive-playlist")
           folder.mkdir(exist_ok=True)
           lines=[]
-          def drive_download_url(raw):
+          def get_file_id(raw):
               parsed=urllib.parse.urlparse(raw)
               query=urllib.parse.parse_qs(parsed.query)
-              file_id=(query.get("id") or [""])[0]
-              if not file_id:
+              fid=(query.get("id") or [""])[0]
+              if not fid:
                   match=re.search(r"/file/d/([^/]+)",parsed.path)
-                  if match: file_id=match.group(1)
-              if file_id:
-                  params={"export":"download","id":file_id}
-                  resource_key=(query.get("resourcekey") or query.get("resourceKey") or [""])[0]
-                  if resource_key: params["resourcekey"]=resource_key
-                  return "https://drive.google.com/uc?"+urllib.parse.urlencode(params)
-              return raw
+                  if match: fid=match.group(1)
+              return fid if re.fullmatch(r"[A-Za-z0-9_-]{10,}",fid or "") else ""
           def download_drive(raw,target):
-              cookies=http.cookiejar.CookieJar()
-              opener=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
-              headers={"User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"}
-              url=drive_download_url(raw)
-              req=urllib.request.Request(url,headers=headers)
-              with opener.open(req,timeout=180) as response:
-                  data=response.read()
-                  content_type=response.headers.get("Content-Type","")
-                  final_url=response.geturl()
-              if "text/html" in content_type.lower() or data.lstrip().lower().startswith((b"<!doctype html",b"<html")):
-                  html=data.decode("utf-8","ignore")
-                  confirm=re.search(r'name="confirm"\s+value="([^"]+)"',html) or re.search(r'[?&]confirm=([0-9A-Za-z_-]+)',html)
-                  if confirm:
-                      token=confirm.group(1)
-                      parsed=urllib.parse.urlparse(final_url)
-                      params=urllib.parse.parse_qs(parsed.query)
-                      params["confirm"]=[token]
-                      confirm_url=urllib.parse.urlunparse(parsed._replace(query=urllib.parse.urlencode(params,doseq=True)))
-                      req=urllib.request.Request(confirm_url,headers=headers)
-                      with opener.open(req,timeout=180) as response:
-                          data=response.read()
-                          content_type=response.headers.get("Content-Type","")
-                  else:
-                      raise ValueError("Google Drive returned a sharing/permission HTML page, not the video file")
-              if len(data)<1024 or "text/html" in content_type.lower():
-                  raise ValueError("Google Drive did not return video bytes; check Anyone with the link and resource access")
-              with target.open("wb") as output: output.write(data)
+              fid=get_file_id(raw)
+              if not fid:
+                  raise ValueError("Invalid Google Drive file URL")
+              url="https://www.googleapis.com/drive/v3/files/"+urllib.parse.quote(fid,safe="")+"?alt=media"
+              req=urllib.request.Request(url,headers={"Authorization":"Bearer "+access_token,"Accept":"*/*"})
+              with urllib.request.urlopen(req,timeout=240) as response:
+                  content_type=response.headers.get("Content-Type","").lower()
+                  if "text/html" in content_type or "application/json" in content_type:
+                      raise ValueError("Drive API returned a permission/error document, not video bytes")
+                  with target.open("wb") as output:
+                      shutil.copyfileobj(response,output,1024*1024)
+              if target.stat().st_size<1024:
+                  raise ValueError("Drive download was empty or too small to be a video")
           for index,item in enumerate(items,1):
               name=str(item.get("name") or f"video {index}")
               url=item.get("url") or ""
-              if not url.startswith("https://drive.google.com/"):
-                  print(f"Skipping {name}: invalid Google Drive URL.")
-                  continue
-              target=(folder/f"{index:03d}.mp4").resolve()
+              target=(folder/f"{index:03d}.video").resolve()
               try:
                   download_drive(url,target)
                   lines.append("file '"+str(target).replace("'","'\\''")+"'")
-                  print(f"Downloaded {index}/{len(items)}: {name} ({target.stat().st_size} bytes)")
+                  print(f"Downloaded and validated bytes {index}/{len(items)}: {name} ({target.stat().st_size} bytes)")
               except Exception as exc:
                   target.unlink(missing_ok=True)
-                  print(f"Skipping {name}: download failed ({type(exc).__name__}: {exc})")
+                  print(f"Skipping {name}: authenticated Drive download failed ({type(exc).__name__}: {exc})")
           if not lines:
-              raise SystemExit("No playlist videos were downloadable. Check Google Drive link sharing.")
+              raise SystemExit("No selected playlist videos could be downloaded from Google Drive. Reconnect Drive and verify access.")
           pathlib.Path("drive-playlist.txt").write_text("\n".join(lines)+"\n",encoding="utf-8")
           PY
             ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -f concat -safe 0 -i drive-playlist.txt \

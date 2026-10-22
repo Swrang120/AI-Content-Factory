@@ -230,7 +230,7 @@ jobs:
             wait "$FFMPEG_PID" 2>/dev/null || true
             curl --fail-with-body --silent --show-error --max-time 30 -X POST \
               -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" -H "Content-Type: application/json" \
-              -d "{\\"id\\":\\"$JOB_ID\\"}" "${BASE}/api/live/worker/finish" || true
+              -d "{\"id\":\"$JOB_ID\"}" "${BASE}/api/live/worker/finish" || true
             exit 0
           fi
           if ! kill -0 "$FFMPEG_PID" 2>/dev/null; then

@@ -555,7 +555,8 @@ async function renderSchedule(){
           const select=document.getElementById("liveSavedPlaylistSelect");if(select)select.value=pd.playlist.id;
           msg.textContent="✅ "+pd.message+" · "+(d.media?.count||chosen.length)+" videos saved. Next time just choose this playlist.";
         }else{msg.textContent="Videos current selection mein save hain. Named playlist banane ke liye Save Selected Playlist phir dabao.";}
-      }else{msg.textContent="✅ Selected Drive video saved: "+(d.media?.title||chosen[0].name);}\n      const driveDetails=document.querySelector("#liveMediaStep details");if(driveDetails)driveDetails.open=false;
+      }else{msg.textContent="✅ Selected Drive video saved: "+(d.media?.title||chosen[0].name);}
+      const driveDetails=document.querySelector("#liveMediaStep details");if(driveDetails)driveDetails.open=false;
 
     }catch(e){msg.textContent="❌ Google Drive save failed: "+e.message;}
     finally{btn.disabled=false;}

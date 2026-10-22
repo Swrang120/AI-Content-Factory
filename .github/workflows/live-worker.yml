@@ -139,7 +139,7 @@ jobs:
 
           if [ "$MEDIA_TYPE" = "car_animation" ]; then
             # Built-in free cartoon-driving scene. This is an animated scene, not an interactive game capture.
-            ffmpeg -hide_banner -loglevel warning -re \
+            setsid ffmpeg -hide_banner -loglevel warning -re \
               -f lavfi -i "color=c=0x8bd3ff:s=1280x720:r=30" \
               -f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=44100" \
               -filter_complex "[0:v]drawbox=x=0:y=300:w=1280:h=230:color=0x68b85b:t=fill,drawbox=x=0:y=520:w=1280:h=200:color=0x454b55:t=fill,drawbox=x=0:y=620:w=1280:h=8:color=white:t=fill,drawbox=x=mod(t*180\\,1500)-240:y=555:w=210:h=62:color=0xffc928:t=fill,drawbox=x=mod(t*180\\,1500)-190:y=520:w=120:h=42:color=0x2878d0:t=fill,drawbox=x=mod(t*180\\,1500)-205:y=610:w=42:h=42:color=0x202020:t=fill,drawbox=x=mod(t*180\\,1500)-105:y=610:w=42:h=42:color=0x202020:t=fill,drawbox=x=0:y=0:w=1280:h=105:color=0x101827@0.82:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='CARTOON CAR DRIVE LIVE':fontcolor=white:fontsize=42:x=(w-text_w)/2:y=28,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='AI Content Factory':fontcolor=0xffd76b:fontsize=24:x=(w-text_w)/2:y=76,format=yuv420p[v]" \
@@ -198,23 +198,41 @@ jobs:
               raise SystemExit("No selected playlist videos could be downloaded from Google Drive. Reconnect Drive and verify access.")
           pathlib.Path("drive-playlist.txt").write_text("\n".join(lines)+"\n",encoding="utf-8")
           PY
-            ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -f concat -safe 0 -i drive-playlist.txt \
+            setsid ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -f concat -safe 0 -i drive-playlist.txt \
               -t 18000 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \
               -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
           elif [ "$MEDIA_TYPE" = "audio" ]; then
-            ffmpeg -hide_banner -loglevel warning \
+            setsid ffmpeg -hide_banner -loglevel warning \
               -re -f lavfi -i "color=c=0x101827:s=1920x1080:r=30" \
               -stream_loop -1 -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -i "$MEDIA_URL" \
               -t 18000 -vf "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='AI CONTENT FACTORY LIVE':fontcolor=white:fontsize=54:x=(w-text_w)/2:y=h*0.40,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='Original / authorized music':fontcolor=0xD8B45A:fontsize=34:x=(w-text_w)/2:y=h*0.50" \
               -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \
               -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
           else
-            ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -i "$MEDIA_URL" \
+            setsid ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -i "$MEDIA_URL" \
               -t 18000 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \
               -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
           fi
           FFMPEG_PID=$!
           sleep 20
+          # A Stop click during encoder warm-up must cancel before we mark YouTube Live.
+          BOOT_STATE="$(curl --silent --show-error --max-time 15 \
+            -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" \
+            "${BASE}/api/live/worker/status?id=${JOB_ID}" || true)"
+          BOOT_STOP="$(printf '%s' "$BOOT_STATE" | python3 -c 'import json,sys; d=json.load(sys.stdin); j=d.get("job") or {}; print("true" if d.get("stopRequested") or j.get("stopRequested") or j.get("status")=="stopping" else "false")' 2>/dev/null || echo false)"
+          if [ "$BOOT_STOP" = "true" ]; then
+            echo "Stop requested during startup; terminating encoder before YouTube start."
+            kill -INT -- "-$FFMPEG_PID" 2>/dev/null || kill -INT "$FFMPEG_PID" 2>/dev/null || true
+            sleep 2
+            kill -TERM -- "-$FFMPEG_PID" 2>/dev/null || kill -TERM "$FFMPEG_PID" 2>/dev/null || true
+            sleep 2
+            kill -KILL -- "-$FFMPEG_PID" 2>/dev/null || kill -KILL "$FFMPEG_PID" 2>/dev/null || true
+            wait "$FFMPEG_PID" 2>/dev/null || true
+            curl --fail-with-body --silent --show-error --max-time 30 -X POST \
+              -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" -H "Content-Type: application/json" \
+              -d "{\\"id\\":\\"$JOB_ID\\"}" "${BASE}/api/live/worker/finish" || true
+            exit 0
+          fi
           if ! kill -0 "$FFMPEG_PID" 2>/dev/null; then
             wait "$FFMPEG_PID" || true
             curl --silent --show-error --max-time 30 -X POST \
@@ -253,19 +271,19 @@ jobs:
             if [ "$STOP_REQUESTED" = "true" ]; then
               echo "Manual stop requested; stopping FFmpeg."
               # Try graceful shutdown, then force termination if FFmpeg hangs.
-              kill -INT "$FFMPEG_PID" 2>/dev/null || true
+              kill -INT -- "-$FFMPEG_PID" 2>/dev/null || kill -INT "$FFMPEG_PID" 2>/dev/null || true
               for attempt in $(seq 1 10); do
                 kill -0 "$FFMPEG_PID" 2>/dev/null || break
                 sleep 1
               done
               if kill -0 "$FFMPEG_PID" 2>/dev/null; then
                 echo "FFmpeg did not exit after SIGINT; sending SIGTERM."
-                kill -TERM "$FFMPEG_PID" 2>/dev/null || true
+                kill -TERM -- "-$FFMPEG_PID" 2>/dev/null || kill -TERM "$FFMPEG_PID" 2>/dev/null || true
                 sleep 3
               fi
               if kill -0 "$FFMPEG_PID" 2>/dev/null; then
                 echo "FFmpeg still running; sending SIGKILL."
-                kill -KILL "$FFMPEG_PID" 2>/dev/null || true
+                kill -KILL -- "-$FFMPEG_PID" 2>/dev/null || kill -KILL "$FFMPEG_PID" 2>/dev/null || true
               fi
               break
             fi

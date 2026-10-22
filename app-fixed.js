@@ -407,16 +407,16 @@ async function renderSchedule(){
   view.innerHTML=`<div class="hero"><p class="eyebrow">MANUAL YOUTUBE LIVE</p><h2>🔴 Live Stream</h2><p>Live ko tum khud start aur stop karoge. Koi daily schedule nahi chalega.</p></div>
   <div class="table-card"><div class="section-head"><div><h3>📡 Live control</h3><span class="muted">YouTube · Manual session</span></div><button class="small-btn" id="liveRefresh">↻ Refresh</button></div>
   <div class="table-card" style="margin:12px 0"><h3>📺 Target YouTube Channel</h3><div id="liveChannelPanel" class="queue-meta">Connected channel check ho raha hai…</div></div>
-  <div class="table-card" id="liveMediaStep" style="margin:14px 0;padding:14px">
+  <div class="table-card" id="liveMediaStep" style="margin:10px 0;padding:10px">
     <h3>🎞️ Live video source</h3><p class="queue-meta">Google Drive se video seedha select karo. Folder ko “Anyone with the link” access dena zaroori hai.</p>
     <details style="border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:10px;margin:10px 0;background:rgba(56,189,248,.04)"><summary style="cursor:pointer;font-weight:700">📂 Choose video from Google Drive</summary><div style="padding-top:10px">
       <div class="queue-row" style="gap:8px;align-items:center;flex-wrap:wrap"><strong>🔐 Google Drive</strong><span id="driveOAuthStatus" class="queue-meta">Connection status checking…</span><button class="small-btn" id="driveOAuthConnect" type="button">Connect Google Drive</button></div>
       <label class="field-label" for="liveDriveFolderUrl">📂 Google Drive folder link (optional — blank = all Drive)<input id="liveDriveFolderUrl" class="input" type="url" value="" placeholder="Blank chhodo = poori Drive; ya folder link paste karo"></label>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="primary-btn" id="liveDriveLoad" type="button">🔎 Load Photos & Videos</button></div>
-      <div id="liveDriveFiles" class="queue-meta" style="margin-top:10px;max-height:220px;overflow:auto">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
+      <div id="liveDriveFiles" class="queue-meta" style="margin-top:8px;max-height:160px;overflow:auto">Folder link optional hai; blank chhodo to poori Drive gallery load hogi.</div>
       <div class="queue-row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><button class="small-btn" id="liveDriveSelectAll" type="button">☑ Select / Deselect All</button><button class="primary-btn" id="liveDriveSavePlaylist" type="button">💾 Save Selected Playlist</button><button class="small-btn" id="liveDriveSaveOne" type="button">▶ Use First Selected Video</button></div>
       <div class="queue-meta" style="margin-top:6px">Playlist ek baar save karo; agli baar bas saved playlist choose karke direct Live start kar sakte ho.</div>
-      <div class="live-saved-playlists" style="margin-top:8px;padding:8px;border:1px solid rgba(212,175,55,.38);border-radius:12px;background:linear-gradient(135deg,rgba(212,175,55,.09),rgba(15,23,42,.35))">
+      <div class="live-saved-playlists" style="margin-top:6px;padding:6px;border:1px solid rgba(212,175,55,.38);border-radius:12px;background:linear-gradient(135deg,rgba(212,175,55,.09),rgba(15,23,42,.35))">
         <div class="queue-row" style="align-items:center;gap:8px;flex-wrap:wrap"><strong>✨ My Saved Playlists</strong><span class="live-gold-pill">GOLD LIBRARY</span><button class="small-btn" id="livePlaylistRefresh" type="button">↻ Refresh</button></div>
         <div class="queue-row" style="margin-top:10px;gap:8px;flex-wrap:wrap"><select id="liveSavedPlaylistSelect" class="input" style="flex:1;min-width:180px"><option value="">Choose saved playlist…</option></select><button class="primary-btn" id="livePlaylistUse" type="button">Use Playlist</button></div>
         <div id="liveSavedPlaylistInfo" class="queue-meta" style="margin-top:8px">Save 2–10+ videos as separate named playlists. Select one here whenever you want to go Live.</div>
@@ -555,7 +555,7 @@ async function renderSchedule(){
           const select=document.getElementById("liveSavedPlaylistSelect");if(select)select.value=pd.playlist.id;
           msg.textContent="✅ "+pd.message+" · "+(d.media?.count||chosen.length)+" videos saved. Next time just choose this playlist.";
         }else{msg.textContent="Videos current selection mein save hain. Named playlist banane ke liye Save Selected Playlist phir dabao.";}
-      }else{msg.textContent="✅ Selected Drive video saved: "+(d.media?.title||chosen[0].name);}
+      }else{msg.textContent="✅ Selected Drive video saved: "+(d.media?.title||chosen[0].name);}\n      const driveDetails=document.querySelector("#liveMediaStep details");if(driveDetails)driveDetails.open=false;
 
     }catch(e){msg.textContent="❌ Google Drive save failed: "+e.message;}
     finally{btn.disabled=false;}

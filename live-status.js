@@ -43,6 +43,8 @@
     const title=document.getElementById("page-title");
     const view=document.getElementById("view");
     if(!title||!view)return;
+    // The main Live Stream page is manual-only. Do not inject the legacy daily scheduler card into it.
+    if(view.querySelector("#liveStart")||view.querySelector("#liveStatusPanel"))return;
     if(title.textContent.trim()==="Schedule" && !document.getElementById("acfLiveStatusBox")){
       const card=document.createElement("div");
       card.className="table-card";

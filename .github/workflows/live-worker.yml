@@ -20,9 +20,15 @@ jobs:
           # GitHub-hosted Ubuntu images commonly include FFmpeg already.
           # Avoid a slow apt index refresh when the binary is available.
           if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
+            # Bound package-manager waits so a slow mirror cannot leave the live
+            # worker stuck forever before it even claims the queued broadcast.
+            sudo timeout 90s apt-get update -qq \
+              -o Acquire::Retries=0 \
+              -o Acquire::http::Timeout=15 \
+              -o Acquire::https::Timeout=15 || true
+            sudo timeout 120s apt-get install -y --no-install-recommends ffmpeg
           fi
+          command -v ffmpeg
           ffmpeg -version | head -n 1
 
       - name: Claim live job and stream for up to five hours

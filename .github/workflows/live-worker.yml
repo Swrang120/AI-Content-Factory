@@ -97,6 +97,46 @@ jobs:
             test -n "$MEDIA_URL" || { echo "::error::Live job has no media URL."; exit 1; }
           fi
           test -n "$RTMP_URL" || { echo "::error::YouTube RTMP URL is missing."; exit 1; }
+
+          # Google Drive's public-looking uc?export=download URL can return an HTML
+          # consent/permission page to FFmpeg. For a Drive file, download the real
+          # bytes through the Drive API using a short-lived server-side OAuth token.
+          if [ "$MEDIA_TYPE" = "video" ] && [[ "$MEDIA_URL" == *"drive.google.com/"* ]]; then
+            DRIVE_FILE_ID="$(python3 - "$MEDIA_URL" <<'PY'
+          import sys, urllib.parse, re
+          u=urllib.parse.urlparse(sys.argv[1])
+          q=urllib.parse.parse_qs(u.query)
+          fid=(q.get("id") or [""])[0]
+          if not fid:
+              m=re.search(r"/file/d/([^/]+)",u.path)
+              fid=m.group(1) if m else ""
+          if not re.fullmatch(r"[A-Za-z0-9_-]{10,}",fid):
+              raise SystemExit("Could not extract Google Drive file ID from selected video URL.")
+          print(fid)
+          PY
+          )"
+            TOKEN_RESPONSE="$(curl --fail-with-body --silent --show-error --max-time 30 \
+              -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" \
+              "${BASE}/api/live/worker/drive-token")"
+            DRIVE_ACCESS_TOKEN="$(printf '%s' "$TOKEN_RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("accessToken",""))')"
+            test -n "$DRIVE_ACCESS_TOKEN" || { echo "::error::Google Drive OAuth token unavailable; reconnect Drive in the dashboard."; exit 1; }
+            echo "Downloading selected Google Drive video through authenticated Drive API (file ID hidden)."
+            curl --fail-with-body --silent --show-error --location --max-time 240 \
+              -H "Authorization: Bearer ${DRIVE_ACCESS_TOKEN}" \
+              "https://www.googleapis.com/drive/v3/files/${DRIVE_FILE_ID}?alt=media" \
+              -o live-source-video
+            unset DRIVE_ACCESS_TOKEN TOKEN_RESPONSE
+            test -s live-source-video || { echo "::error::Google Drive download returned an empty file."; exit 1; }
+            VIDEO_DURATION="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 live-source-video 2>/dev/null || true)"
+            if [ -z "$VIDEO_DURATION" ]; then
+              echo "::error::Google Drive response is not a playable video file. Check Drive access and the selected file format."
+              file live-source-video || true
+              exit 1
+            fi
+            echo "Selected Drive video downloaded and validated (duration ${VIDEO_DURATION}s)."
+            MEDIA_URL="live-source-video"
+          fi
+
           if [ "$MEDIA_TYPE" = "car_animation" ]; then
             # Built-in free cartoon-driving scene. This is an animated scene, not an interactive game capture.
             ffmpeg -hide_banner -loglevel warning -re \

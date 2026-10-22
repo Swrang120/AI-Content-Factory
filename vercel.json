@@ -41,5 +41,5 @@
       "schedule": "30 15 * * *"
     }
   ],
-  "buildCommand": "node --check server.js && node --check app.js && npm run build"
+  "buildCommand": "node --check server.js && node --check app.js && node --check app-fixed.js && node --check live-status.js && node --check music-library-fixed.js && node --check youtube-skills.js && npm run build"
 }

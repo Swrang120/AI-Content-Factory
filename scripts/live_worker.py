@@ -5,14 +5,14 @@ Required environment:
   ACF_BASE_URL       e.g. https://ai-content-factory-zeta-ruby.vercel.app
   LIVE_WORKER_TOKEN  same secret configured in Vercel
 Optional:
-  LIVE_MAX_MINUTES   default 120
+  LIVE_MAX_MINUTES   default 220
 """
 import json, math, os, subprocess, sys, time, urllib.error, urllib.request
 from pathlib import Path
 
 BASE = os.environ.get("ACF_BASE_URL", "").rstrip("/")
 TOKEN = os.environ.get("LIVE_WORKER_TOKEN", "")
-MAX_MINUTES = max(1, min(360, int(os.environ.get("LIVE_MAX_MINUTES", "120"))))
+MAX_MINUTES = max(1, min(220, int(os.environ.get("LIVE_MAX_MINUTES", "220"))))
 WORK = Path(os.environ.get("RUNNER_TEMP", "/tmp")) / "acf-live"
 WORK.mkdir(parents=True, exist_ok=True)
 

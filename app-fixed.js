@@ -544,7 +544,7 @@ async function renderSchedule(){
       const r=await fetch(apiUrl("/api/live/media"),{method:"POST",headers:{"Content-Type":"application/json"},credentials:"include",body:JSON.stringify(payload)});
       const d=await r.json().catch(()=>({}));
       if(!r.ok||!d.ok)throw new Error(d.error||("Could not save Drive source (HTTP "+r.status+")"));
-      document.getElementById("liveDriveUrl").value="";
+      
       await loadSavedLiveMedia();
       if(asPlaylist){
         const name=window.prompt("Is playlist ka naam rakho (jaise Gaming Mix 1, Music Live 2):","Live Playlist "+new Date().toLocaleDateString("en-IN"));
@@ -642,7 +642,7 @@ async function renderSchedule(){
       // Persist the currently checked Drive selection before entering the wizard.
       // Otherwise the UI can show a newly selected file while /api/live/create
       // still reads the previous saved source ("saved"), causing the old video to stream.
-      const driveUrl=document.getElementById("liveDriveUrl").value.trim();
+      const driveUrl=(document.getElementById("liveDriveFolderUrl")?.value||"").trim();
       const chosen=driveUrl?[]:selectedDriveFiles();
       if(chosen.length){
         const payload=chosen.length===1
@@ -680,7 +680,7 @@ async function renderSchedule(){
     if(title.length>100){msg.textContent="Title 100 characters se chhota rakho.";return;}
     b.disabled=true;msg.textContent="YouTube live event create ho raha hai…";
     try{
-      const driveUrl=document.getElementById("liveDriveUrl").value.trim();
+      const driveUrl=(document.getElementById("liveDriveFolderUrl")?.value||"").trim();
       let payload={privacyStatus:"public",mediaSource:"saved",title,description,hashtags};
       if(driveUrl){
         if(!/^https:\/\/(drive\.google\.com|docs\.google\.com)\//i.test(driveUrl))throw new Error("Google Drive ka valid sharing link paste karo.");

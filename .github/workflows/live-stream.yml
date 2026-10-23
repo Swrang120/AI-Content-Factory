@@ -37,5 +37,5 @@ jobs:
         env:
           ACF_BASE_URL: ${{ secrets.ACF_BASE_URL }}
           LIVE_WORKER_TOKEN: ${{ secrets.LIVE_WORKER_TOKEN }}
-          LIVE_MAX_MINUTES: "120"
+          LIVE_MAX_MINUTES: "220"
         run: python scripts/live_worker.py

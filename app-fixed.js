@@ -438,6 +438,8 @@ async function renderSchedule(){
      <button class="small-btn live-back-btn" id="liveWizardBack" type="button">← Back to video selection</button>
      <div class="live-details-grid">
        <label class="field-label" for="liveWizardTitle">🎬 Live title <input id="liveWizardTitle" class="input" maxlength="100" required placeholder="Enter an engaging live title"></label>
+       <label class="field-label" for="liveWizardCategory">📂 YouTube category <select id="liveWizardCategory" class="input"><option value="20">Gaming</option><option value="10">Music</option><option value="24">Entertainment</option><option value="22">People &amp; Blogs</option><option value="17">Sports</option><option value="27">Education</option><option value="25">News &amp; Politics</option></select></label>
+       <label class="field-label" for="liveWizardAspect">📐 Video frame <select id="liveWizardAspect" class="input"><option value="16:9">Landscape · 16:9</option><option value="9:16">Portrait · 9:16</option></select></label>
        <label class="field-label" for="liveWizardHashtags">#️⃣ Hashtags <input id="liveWizardHashtags" class="input" placeholder="#Live #Gaming #Hindi"></label>
        <label class="field-label live-description-field" for="liveWizardDescription">📝 Description <textarea id="liveWizardDescription" class="input" rows="4" maxlength="4500" placeholder="Tell viewers what this live is about…"></textarea></label>
        <div class="live-thumb-card"><div><span class="live-step-kicker">CHANNEL BRANDING</span><h4>🖼️ Live thumbnail</h4><p>JPG, PNG ya WebP · maximum 2 MB recommended</p></div><label class="live-thumb-picker" for="liveWizardThumbnail"><span>＋</span><strong>Choose thumbnail</strong><small>Tap to select image</small><input id="liveWizardThumbnail" type="file" accept="image/jpeg,image/png,image/webp"></label><div id="liveWizardThumbPreview" class="live-thumb-preview"><span>Preview will appear here</span></div><p class="live-thumb-note">Thumbnail preview yahan set hoga. Live par thumbnail apply karne ke liye YouTube API upload integration alag se verify karna zaroori hai.</p></div>
@@ -681,10 +683,10 @@ async function renderSchedule(){
     b.disabled=true;msg.textContent="YouTube live event create ho raha hai…";
     try{
       const driveUrl=(document.getElementById("liveDriveFolderUrl")?.value||"").trim();
-      let payload={privacyStatus:"public",mediaSource:"saved",title,description,hashtags};
+      let payload={privacyStatus:"public",mediaSource:"saved",title,description,hashtags,categoryId:document.getElementById("liveWizardCategory")?.value||"20",aspectRatio:document.getElementById("liveWizardAspect")?.value||"16:9"};
       if(driveUrl){
         if(!/^https:\/\/(drive\.google\.com|docs\.google\.com)\//i.test(driveUrl))throw new Error("Google Drive ka valid sharing link paste karo.");
-        payload={privacyStatus:"public",mediaSource:"link",mediaUrl:driveUrl,title,description,hashtags};
+        payload={privacyStatus:"public",mediaSource:"link",mediaUrl:driveUrl,title,description,hashtags,categoryId:document.getElementById("liveWizardCategory")?.value||"20",aspectRatio:document.getElementById("liveWizardAspect")?.value||"16:9"};
         msg.textContent="Google Drive link validate karke Live source prepare kar rahe hain…";
       }else{
         const saved=await fetch(apiUrl("/api/live/media"),{credentials:"include",cache:"no-store"});const sm=await saved.json();

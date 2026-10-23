@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#07111f">
   <meta name="description" content="Private AI Content Factory — content planning, production and publishing control center.">
   <title>AI Content Factory — Boss Room</title>
-  <link rel="stylesheet" href="styles.css?v=20261022-dashboard-recovery-v3">
+  <link rel="stylesheet" href="styles.css?v=20261023-premium-gold-ui-v4">
 </head>
 <body>
   <div class="app-shell">
@@ -73,11 +73,11 @@
     </div>
   </div>
 
-  <script src="app-fixed.js?v=20261022-dashboard-recovery-v3"></script>
-  <script src="youtube-skills.js?v=20261022-dashboard-recovery-v3"></script>
-  <script src="music-library-fixed.js?v=20261022-dashboard-recovery-v3"></script>
-  <script src="live-status.js?v=20261022-dashboard-recovery-v3"></script>
-  <script src="notifications.js?v=20261022-dashboard-recovery-v3"></script>
+  <script src="app-fixed.js?v=20261023-premium-gold-ui-v4"></script>
+  <script src="youtube-skills.js?v=20261023-premium-gold-ui-v4"></script>
+  <script src="music-library-fixed.js?v=20261023-premium-gold-ui-v4"></script>
+  <script src="live-status.js?v=20261023-premium-gold-ui-v4"></script>
+  <script src="notifications.js?v=20261023-premium-gold-ui-v4"></script>
   <script>
     // Dashboard recovery watchdog: never leave the main workspace visually empty.
     (function(){
@@ -85,9 +85,9 @@
       if(!view)return;
       function recover(){
         if(!view.isConnected)return;
-        var hasContent=(view.textContent||"").trim().length>0 || view.children.length>0;
+        var visibleText=(view.textContent||"").trim();\n        var stuckOnBoot=visibleText.indexOf("Dashboard is loading")!==-1;\n        var hasContent=(!stuckOnBoot && visibleText.length>0) || (view.children.length>0 && !stuckOnBoot);
         if(!hasContent){
-          view.innerHTML='<div class="hero"><p class="eyebrow">AI CONTENT FACTORY</p><h2>Dashboard is recovering</h2><p>The main app script did not render the dashboard. Your saved content is not being deleted. Tap Retry to reload the latest version.</p></div><div class="table-card"><button class="primary" onclick="location.href=location.pathname+\'?refresh=\'+Date.now()">↻ Retry Dashboard</button> <button class="small-btn" onclick="location.href=\'/api/live/status\'">Check Live API</button></div>';
+          view.innerHTML='<div class="hero"><p class="eyebrow">AI CONTENT FACTORY</p><h2>Dashboard is recovering</h2><p>The main app script did not render the dashboard. Your saved content is not being deleted. Check the connection and tap Retry to reload the latest version.</p></div><div class="table-card"><button class="primary" onclick="location.href=location.pathname+\'?refresh=\'+Date.now()">↻ Retry Dashboard</button> <button class="small-btn" onclick="location.href=\'/api/live/status\'">Check Live API</button></div>';
         }
       }
       setTimeout(recover,2500);

@@ -114,7 +114,26 @@ def main():
         raise RuntimeError("The live API returned a job without an id or RTMP destination.")
     ffmpeg = None
     try:
-        if job.get("mediaType") == "video" and job.get("mediaUrl"):
+        if job.get("mediaType") == "playlist" and isinstance(job.get("mediaPlaylist"), list) and job["mediaPlaylist"]:
+            # Download selected videos and normalize them before concatenating for seamless looping.
+            normalized = []
+            for index, item in enumerate(job["mediaPlaylist"]):
+                url = str(item.get("url") or "").strip()
+                if not url:
+                    continue
+                raw = WORK / f"playlist-raw-{index:03d}"
+                urllib.request.urlretrieve(url, raw)
+                cooked = WORK / f"playlist-{index:03d}.mp4"
+                subprocess.run(["ffmpeg", "-y", "-i", str(raw), "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "44100", "-ac", "2", "-movflags", "+faststart", str(cooked)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                raw.unlink(missing_ok=True)
+                normalized.append(cooked)
+            if not normalized:
+                raise RuntimeError("The selected playlist has no downloadable video files.")
+            concat_file = WORK / "playlist.txt"
+            concat_file.write_text("".join("file " + chr(39) + str(p) + chr(39) + "\n" for p in normalized), encoding="utf-8")
+            source = WORK / "playlist-loop.mp4"
+            subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat_file), "-c", "copy", "-movflags", "+faststart", str(source)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        elif job.get("mediaType") == "video" and job.get("mediaUrl"):
             source = WORK / "source-video.mp4"
             urllib.request.urlretrieve(job["mediaUrl"], source)
         elif job.get("mediaType") == "audio" and job.get("mediaUrl"):

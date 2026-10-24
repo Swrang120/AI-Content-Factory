@@ -1,10 +1,8 @@
 name: AI Content Factory Live Worker
 
 on:
+  # Live streaming is controlled manually from the dashboard only.
   workflow_dispatch:
-  schedule:
-    # Check for a manually requested live session every five minutes.
-    - cron: "*/5 * * * *"
 
 permissions:
   contents: read

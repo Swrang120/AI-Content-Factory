@@ -3299,6 +3299,56 @@ function validateDriveUploadSession(value){
   }
   return u.toString();
 }
+// Apify YouTube URL -> Google Drive. Only use for videos the user owns or has permission to download.
+app.post("/api/live/drive/youtube-import",requireAppKey,async(req,res)=>{
+  try{
+    const sourceUrl=String(req.body?.url||"").trim();
+    const requestedName=String(req.body?.name||"").trim().slice(0,180);
+    let parsed;
+    try{parsed=new URL(sourceUrl)}catch{throw new Error("Valid YouTube video link daalo.");}
+    if(!["youtube.com","www.youtube.com","m.youtube.com","youtu.be","www.youtube-nocookie.com"].includes(parsed.hostname))throw new Error("Sirf YouTube video URL supported hai.");
+    if(parsed.protocol!=="https:")throw new Error("YouTube link HTTPS hona chahiye.");
+    if(!process.env.APIFY_API_TOKEN)throw new Error("APIFY_API_TOKEN Vercel Production environment mein missing hai.");
+    const drive=await getDriveOAuthClient();
+    if(!drive)throw new Error("Google Drive connected nahi hai. Pehle Connect Google Drive karo.");
+    const tokenResult=await drive.getAccessToken();
+    const accessToken=tokenResult?.token||drive.credentials?.access_token;
+    if(!accessToken)throw new Error("Google Drive access token nahi mila. Reconnect Google Drive.");
+    const actorInput={videos:[{url:sourceUrl}],preferredQuality:"720p",preferredFormat:"mp4",filenameTemplateParts:["title"]};
+    const runResponse=await fetch("https://api.apify.com/v2/acts/UUhJDfKJT2SsXdclR/runs?waitForFinish=300",{
+      method:"POST",headers:{Authorization:"Bearer "+process.env.APIFY_API_TOKEN,"Content-Type":"application/json"},body:JSON.stringify(actorInput)
+    });
+    const run=await runResponse.json().catch(()=>({}));
+    if(!runResponse.ok)throw new Error("Apify Actor start failed (HTTP "+runResponse.status+"): "+String(run.error?.message||run.message||"Check Apify token and Actor access").slice(0,220));
+    let runInfo=run.data||run;
+    if(!runInfo.defaultDatasetId||!["SUCCEEDED","READY"].includes(String(runInfo.status||"").toUpperCase()))throw new Error("Apify download abhi complete nahi hua (status: "+String(runInfo.status||"RUNNING")+"). Long videos ko complete karne ke liye background job/polling support chahiye; retry after the Actor finishes.");
+    const dataResponse=await fetch("https://api.apify.com/v2/datasets/"+encodeURIComponent(runInfo.defaultDatasetId)+"/items?clean=true&format=json",{
+      headers:{Authorization:"Bearer "+process.env.APIFY_API_TOKEN,Accept:"application/json"}
+    });
+    if(!dataResponse.ok)throw new Error("Apify result fetch failed (HTTP "+dataResponse.status+").");
+    const items=await dataResponse.json();
+    const item=Array.isArray(items)?items.find(x=>x&&x.download_url&&String(x.download_status||"success").toLowerCase()==="success"):null;
+    if(!item)throw new Error("Apify result mein downloadable video nahi mila. Actor run aur dataset check karo.");
+    const downloadUrl=new URL(String(item.download_url));
+    if(downloadUrl.protocol!=="https:"||!["api.apify.com","api.apify.ai"].includes(downloadUrl.hostname))throw new Error("Apify returned an unexpected download host; stopped for safety.");
+    const media=await fetch(downloadUrl.toString(),{headers:{Authorization:"Bearer "+process.env.APIFY_API_TOKEN}});
+    if(!media.ok||!media.body)throw new Error("Apify video file fetch failed (HTTP "+media.status+").");
+    const contentLength=Number(media.headers.get("content-length")||item.filesize_bytes||0);
+    if(!Number.isSafeInteger(contentLength)||contentLength<1||contentLength>5*1024*1024*1024){try{await media.body.cancel()}catch{}throw new Error("Video size unknown ya 5 GB se zyada hai. Is upload path ki limit 5 GB hai.");}
+    const filename=(requestedName||String(item.title||"YouTube video").replace(/[\\/:*?"<>|\u0000-\u001f]/g," ").trim().slice(0,150)||"YouTube video")+".mp4";
+    const init=await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,size,webViewLink,thumbnailLink,modifiedTime",{
+      method:"POST",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"application/json","X-Upload-Content-Type":"video/mp4","X-Upload-Content-Length":String(contentLength)},body:JSON.stringify({name:filename,mimeType:"video/mp4"})
+    });
+    if(!init.ok){try{await media.body.cancel()}catch{}throw new Error("Google Drive upload start failed (HTTP "+init.status+"): "+(await init.text().catch(()=> "")).slice(0,180));}
+    const uploadUrl=init.headers.get("location");
+    if(!uploadUrl){try{await media.body.cancel()}catch{}throw new Error("Google Drive upload session URL missing.");}
+    const safeUploadUrl=validateDriveUploadSession(uploadUrl);
+    const upload=await fetch(safeUploadUrl,{method:"PUT",headers:{Authorization:"Bearer "+accessToken,"Content-Type":"video/mp4","Content-Length":String(contentLength),"Content-Range":"bytes 0-"+(contentLength-1)+"/"+contentLength},body:media.body,duplex:"half"});
+    const uploaded=await upload.json().catch(()=>({}));
+    if(!upload.ok||!uploaded.id)throw new Error("Google Drive upload failed (HTTP "+upload.status+"): "+String(uploaded.error?.message||"File upload was not confirmed").slice(0,180));
+    return res.json({ok:true,sourceUrl,title:item.title||filename,size:Number(uploaded.size)||contentLength,file:{id:uploaded.id,name:uploaded.name||filename,mimeType:uploaded.mimeType||"video/mp4",size:Number(uploaded.size)||contentLength,webViewLink:uploaded.webViewLink||("https://drive.google.com/file/d/"+uploaded.id+"/view")},message:"Download aur Google Drive upload successful. Live Stream ke liye file ab Drive mein available hai."});
+  }catch(error){console.error("YouTube-to-Drive import failed:",safeErrorMessage(error));return res.status(400).json({ok:false,error:safeErrorMessage(error)});}
+});
 app.post("/api/live/drive/upload/start",requireAppKey,async(req,res)=>{
   try{
     const name=String(req.body?.name||"").trim().slice(0,180);

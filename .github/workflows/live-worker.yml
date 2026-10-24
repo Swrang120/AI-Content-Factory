@@ -1,10 +1,8 @@
 name: AI Content Factory - YouTube Live Worker
 
 on:
+  # Manual dashboard Start/Stop only; automatic live polling is disabled.
   workflow_dispatch:
-  schedule:
-    # Poll only for a manually requested live session; this does not create scheduled broadcasts.
-    - cron: "*/5 * * * *"
 
 concurrency:
   group: acf-youtube-live-worker

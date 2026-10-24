@@ -3327,15 +3327,16 @@ app.post("/api/live/drive/youtube-import",requireAppKey,async(req,res)=>{
     });
     if(!dataResponse.ok)throw new Error("Apify result fetch failed (HTTP "+dataResponse.status+").");
     const items=await dataResponse.json();
-    const item=Array.isArray(items)?items.find(x=>x&&typeof x.download_url==="string"&&x.download_url.trim()&&(x.succeeded===true||String(x.download_status||x.status||"success").toLowerCase()==="success")):null;
+    const item=Array.isArray(items)?items.find(x=>x&&typeof (x.downloadedFileUrl||x.download_url)==="string"&&String(x.downloadedFileUrl||x.download_url).trim()):null;
     if(!item){
       const first=Array.isArray(items)&&items.length?items[0]:null;
-      const reason=first?(first.error||first.errorMessage||first.message||first.statusMessage||first.status||first.download_status||"No direct download URL in Actor output"):"Actor dataset empty";
-      const fields=first&&typeof first==="object"?Object.keys(first).slice(0,24).join(", "):"no output fields";
-      throw new Error("Apify Actor ne downloadable file return nahi ki. Reason: "+String(reason).slice(0,240)+". Output fields: "+fields+". Actor input mein storeInKVStore=true set kiya hai; Apify Console mein run/output aur credits check karo.");
+      const fields=first&&typeof first==="object"?Object.keys(first).slice(0,30).join(", "):"no output fields";
+      const note=first?.note||first?.error||first?.message||"Actor returned no stored-file URL";
+      throw new Error("Apify output mein stored video URL nahi mila. Actor ka documented output 'downloadedFileUrl' hota hai; current output fields: "+fields+". Note: "+String(note).slice(0,180)+". Apify Console mein is run ka Log aur Output check karo; agar dataset empty hai to Actor ne video produce/store nahi kiya.");
     }
-    const downloadUrl=new URL(String(item.download_url));
-    if(downloadUrl.protocol!=="https:"||!["api.apify.com","api.apify.ai"].includes(downloadUrl.hostname))throw new Error("Apify returned an unexpected download host; stopped for safety.");
+    const storedUrl=String(item.downloadedFileUrl||item.download_url).trim();
+    const downloadUrl=new URL(storedUrl);
+    if(downloadUrl.protocol!=="https:"||!["api.apify.com","api.apify.ai","storage.googleapis.com"].includes(downloadUrl.hostname))throw new Error("Actor ka stored-file URL expected trusted storage host par nahi hai; upload safety ke liye rok diya.");
     const media=await fetch(downloadUrl.toString(),{headers:{Authorization:"Bearer "+process.env.APIFY_API_TOKEN}});
     if(!media.ok||!media.body)throw new Error("Apify video file fetch failed (HTTP "+media.status+").");
     const contentLength=Number(media.headers.get("content-length")||item.filesize_bytes||0);

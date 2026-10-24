@@ -42,7 +42,7 @@ jobs:
           test -n "${LIVE_WORKER_TOKEN:-}" || { echo "::error::Add repository secret ACF_CRON_SECRET in GitHub Actions and Vercel."; exit 1; }
           BASE="${ACF_FACTORY_URL%/}"
           CLAIM=""
-          # Each scheduled run checks once. A manual job is picked up within about five minutes.
+          # This workflow runs only when manually dispatched by the dashboard.
           CLAIM="$(curl --fail-with-body --silent --show-error --max-time 30 \
             -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" \
             "${BASE}/api/live/worker/claim")"

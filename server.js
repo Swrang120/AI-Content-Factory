@@ -3314,8 +3314,8 @@ app.post("/api/live/drive/youtube-import",requireAppKey,async(req,res)=>{
     const tokenResult=await drive.getAccessToken();
     const accessToken=tokenResult?.token||drive.credentials?.access_token;
     if(!accessToken)throw new Error("Google Drive access token nahi mila. Reconnect Google Drive.");
-    const actorInput={videos:[{url:sourceUrl}],preferredQuality:"720p",preferredFormat:"mp4",filenameTemplateParts:["title"]};
-    const runResponse=await fetch("https://api.apify.com/v2/acts/UUhJDfKJT2SsXdclR/runs?waitForFinish=300",{
+    const actorInput={videos:[{url:sourceUrl}],preferredQuality:"720p",preferredFormat:"mp4",filenameTemplateParts:["title"],storeInKVStore:true};
+    const runResponse=await fetch("https://api.apify.com/v2/acts/UUhJDfKJT2SsXdclR/runs?waitForFinish=60",{
       method:"POST",headers:{Authorization:"Bearer "+process.env.APIFY_API_TOKEN,"Content-Type":"application/json"},body:JSON.stringify(actorInput)
     });
     const run=await runResponse.json().catch(()=>({}));
@@ -3327,8 +3327,13 @@ app.post("/api/live/drive/youtube-import",requireAppKey,async(req,res)=>{
     });
     if(!dataResponse.ok)throw new Error("Apify result fetch failed (HTTP "+dataResponse.status+").");
     const items=await dataResponse.json();
-    const item=Array.isArray(items)?items.find(x=>x&&x.download_url&&String(x.download_status||"success").toLowerCase()==="success"):null;
-    if(!item)throw new Error("Apify result mein downloadable video nahi mila. Actor run aur dataset check karo.");
+    const item=Array.isArray(items)?items.find(x=>x&&typeof x.download_url==="string"&&x.download_url.trim()&&(x.succeeded===true||String(x.download_status||x.status||"success").toLowerCase()==="success")):null;
+    if(!item){
+      const first=Array.isArray(items)&&items.length?items[0]:null;
+      const reason=first?(first.error||first.errorMessage||first.message||first.statusMessage||first.status||first.download_status||"No direct download URL in Actor output"):"Actor dataset empty";
+      const fields=first&&typeof first==="object"?Object.keys(first).slice(0,24).join(", "):"no output fields";
+      throw new Error("Apify Actor ne downloadable file return nahi ki. Reason: "+String(reason).slice(0,240)+". Output fields: "+fields+". Actor input mein storeInKVStore=true set kiya hai; Apify Console mein run/output aur credits check karo.");
+    }
     const downloadUrl=new URL(String(item.download_url));
     if(downloadUrl.protocol!=="https:"||!["api.apify.com","api.apify.ai"].includes(downloadUrl.hostname))throw new Error("Apify returned an unexpected download host; stopped for safety.");
     const media=await fetch(downloadUrl.toString(),{headers:{Authorization:"Bearer "+process.env.APIFY_API_TOKEN}});

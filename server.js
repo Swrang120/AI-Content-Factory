@@ -130,7 +130,7 @@ async function saveTokens(tokens){
     fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
   }catch{}
 }
-const DEFAULT_FACTORY_SETTINGS={automationOnline:true,autoGenerate:true,approval:false,autoPublish:true,publishingRoute:"buffer",language:"Hindi",bufferChannels:["youtube","instagram","facebook"],liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true,animal_stories:true}};
+const DEFAULT_FACTORY_SETTINGS={automationOnline:true,autoGenerate:true,approval:false,autoPublish:true,publishingRoute:"buffer",language:"Hindi",bufferChannels:["youtube","instagram","facebook"],liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true,animal_stories:true,dental_asmr:true,funny_frog:true,hugo_comedy:true,loop_animation:true,fruit_time:true}};
 const MUSIC_SOURCE_CHANNEL_IDS=["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"];
 const MUSIC_ARTIST_NAMES=["Swrang Swargiary","Santiram Swargiary"];
 let settingsCache=null;
@@ -894,7 +894,7 @@ async function renderFactoryVideo(job,req){
   const frame=String(job.aspectRatio||job.frame||"16:9");
   const dimensions=frame==="9:16"?{width:720,height:1280}:frame==="1:1"?{width:720,height:720}:{width:1280,height:720};
   const requestedFormat=String(job.format||"").toLowerCase();
-  const durationSeconds=job.music?30:/long/.test(requestedFormat)?180:/youtube short/.test(requestedFormat)?55:/short reel/.test(requestedFormat)?25:/reel/.test(requestedFormat)?45:/promo/.test(requestedFormat)?30:45;
+  const durationSeconds=Number(job.durationSeconds)||(/30[- ]second/.test(requestedFormat)?30:job.music?30:/long/.test(requestedFormat)?180:/youtube short/.test(requestedFormat)?55:/short reel/.test(requestedFormat)?25:/reel/.test(requestedFormat)?45:/promo/.test(requestedFormat)?30:45);
   console.info("[ACF_RENDER] bundle ready",JSON.stringify({jobId:job.id,elapsedMs:Date.now()-renderStartedAt}));
   const renderConcurrency=Math.max(1,Math.min(10,Number(process.env.ACF_RENDER_CONCURRENCY||8)));
   const {sandboxFilePath}=await renderMediaOnVercel({
@@ -922,16 +922,27 @@ async function renderFactoryVideo(job,req){
   return uploaded.url;
 }
 
-const AUTO_SCHEDULES=[
-  {id:"editing_morning",category:"Editing Knowledge",icon:"🎬",time:"09:00",format:"Short Video",language:"Hindi",prompt:"Trending video editing tutorial, creator editing tip, CapCut/VN/Alight Motion/Premiere Pro workflow. Make it practical and original."},
-  {id:"music_promo",category:"Music Promotion",icon:"🎵",time:"12:00",format:"Promo",language:"Hindi",prompt:"Promote an original romantic/sad music release or artist story. Do not reproduce copyrighted lyrics. Focus on original promotional storytelling."},
-  {id:"product_promo",category:"Product Promotion",icon:"🛍️",time:"15:00",format:"Promo",language:"Hindi",prompt:"Useful product information or promotion. Clearly distinguish facts from opinions and do not invent specifications, prices or claims."},
-  {id:"news_evening",category:"News & Updates",icon:"📰",time:"17:00",format:"Short Video",language:"Hindi",prompt:"Current news explainer. ONLY use verified source material supplied to the job; never invent current events or statistics."},
-  {id:"sports_evening",category:"Sports Information",icon:"⚽",time:"19:00",format:"Short Video",language:"Hindi",prompt:"Current sports information/explainer. ONLY use verified source material supplied to the job; never invent scores, schedules or player facts."},
-  {id:"ai_tech_night",category:"AI & Technology",icon:"🤖",time:"21:00",format:"Short Video",language:"Hindi",prompt:"Practical AI and technology explainer, creator workflow, useful tool or automation idea. Use current verified facts when needed; never invent product capabilities."},
-  {id:"animal_stories_night",category:"Sheru Bhai Animal-Man Stories",icon:"🦁",time:"23:00",format:"YouTube Short",language:"Hindi",prompt:"Original Hindi cinematic animal-man story with suspense, emotional drama and a twist. Use the active Music Library master only; no generated voice."}
+const PROMPT_ROTATION_CATEGORIES=[
+  {id:"dental_asmr_daily",category:"AI Dental ASMR",icon:"🦷",format:"30-second Short Video",language:"English",prompt:"AI DENTAL ASMR VIDEO PROMPT ENGINE: vertical 9:16, macro fixed cross-section of a recognizable tooth showing enamel, dentin, pulp canal and soft pink gums; glossy 3D claymation/stop-motion, smooth plastic-like materials, soft subsurface scattering, consistent anatomy and lighting. Include a cute expressive anthropomorphic nerve and consistent mischievous bacteria. Tell a complete infection/problem → preparation → treatment/restoration → final polish/resolution story. PURE ASMR ONLY: no music, no voiceover, no narration, no dialogue, no spoken words, no singing. Use synchronized tactile dental sounds if available. Automated mode: select a fresh procedure concept automatically and make a 30-second vertical visual sequence; do not pause for user selection."},
+  {id:"funny_frog_daily",category:"Viral Funny Frog Style",icon:"🐸",format:"30-second Short Video",language:"English",prompt:"Viral Funny Frog Style Prompt: original high-energy 3D cartoon comedy in a magical tropical swamp. Keep the same cute chubby green frog with huge bulging eyes and short limbs across every scene. Choose a fresh visual gag such as a neon electric bee, spicy berry, giant flytrap, sticky bubblegum fruit, pufferfish surprise, glowing firefly, honeycomb mishap or mud geyser. Build a clear hook, escalating physical comedy, exaggerated but playful cartoon physics, transformation/reaction, and a funny looping ending. Vertical 9:16. Create a 30-second story with scene-by-scene visual directions. No real people."},
+  {id:"hugo_comedy_daily",category:"3D Animated Comedy",icon:"🦎",format:"30-second Short Video",language:"English",prompt:"3D Animated Comedy Prompt: keep the fixed hero Hugo, a small youthful cobalt-blue gecko/lizard with oversized rounded head, turquoise freckles, pale aqua belly, enormous golden-amber eyes, rounded digits and blue tail; antique brass aviator goggles with green-gray lenses on forehead, brown leather strap, shoulder harness and hip satchel; no shirt, shoes or human features. Supporting cast may include a heavy-set teal-blue reptile chef with cream belly, dark blue spines, white chef toque and red-checked neckerchief; expressive white seagull; round tan/brown owl with cream chest, aviator cap and goggles. Whimsical heartwarming coastal-village adventure, gadget mishap, warm golden-hour Mediterranean light, hand-painted clay/gouache textures, cinematic depth of field, vertical 9:16. Follow source prompt's English output requirement. Create a 30-second story with consistent character design."},
+  {id:"loop_animation_daily",category:"3D Loop Animation",icon:"🌀",format:"30-second Short Video",language:"English",prompt:"3D LOOP ANIMATION PROMPT: seamless surreal 3D loop. A glossy bright-blue pill-shaped cartoon face with anxious wide eyes, prominent nose and gritted teeth is partially submerged in vibrant neon-green viscous slime with large porous Swiss-cheese-like holes. Camera rapidly zooms into the blue nose; surreal fluid transition detaches the nose and flies through a porous green slime tunnel, then loops seamlessly back to the blue face emerging from slime. High-quality 3D render, quirky surreal cartoon style, glossy textures, bright neon colors and fluid simulation. Vertical 9:16. Design a 30-second seamless loop; ending must visually connect to opening."},
+  {id:"fruit_time_daily",category:"Fruit Time",icon:"🍓",format:"30-second Short Video",language:"Hindi",prompt:"FRUIT TIME AI PROMPT: create an original fast-paced animated Fruit City story using anthropomorphic fruit characters only; no real humans or human-faced background characters. Preserve each character's design, clothing, jersey number and forehead money value consistently throughout the story. Use a clear challenge, humiliation or conflict, rising stakes, and a dramatic final reveal. Use story premises such as Strawberry #07's last chance, Coach Carrot's $10 million challenge, Apple Man's $100 million pride, a $500 million value suddenly becoming $0, heavy-shoes race, a supposedly poor Banana revealed as a billionaire, or a $1 million-to-$1 billion challenge. Never randomly change values or character design. Vertical 9:16, 30 seconds, concise scene-by-scene visual script."},
+  {id:"animal_stories_daily",category:"Sheru Bhai Animal-Man Stories",icon:"🦁",format:"30-second Short Video",language:"Hindi",prompt:"Sheru Bhai Animal-Man Stories: original cinematic Hindi short with humanoid bodies and naturally integrated animal heads such as Lion Man, Tiger Man, Lion Cub Man or Tiger Cub Man; not four-legged animals and not humans wearing masks. Strong opening hook, suspense, emotional conflict, expressive reactions, twist/cliffhanger. Keep character face/species/fur/markings/outfit/proportions consistent between scenes. Use only an active owned/authorized master audio track from Music Library as soundtrack. No voiceover, narration or TTS. Vertical 9:16, exactly 30 seconds."}
 ];
-function categoryKeyFromName(name){const n=String(name||"").toLowerCase();if(n==="music promotion")return "music";if(n==="news & updates"||n==="news")return "news";if(n==="product promotion"||n==="product")return "product";if(n==="sports information"||n==="sports")return "sports";if(n==="editing knowledge"||n==="editing")return "editing";if(n==="ai & technology"||n==="ai technology"||n==="technology")return "tech";if(n==="sheru bhai animal-man stories"||n==="animal stories")return "animal_stories";return null;}
+function autoScheduleForToday(now=new Date(),settings=loadSettings()){
+  const day=now.toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
+  // Exactly one automated short per day at 09:00 IST. Rotate deterministically
+  // through every user-supplied prompt category, skipping disabled categories.
+  const epochDay=Math.floor(Date.parse(day+"T00:00:00Z")/86400000);
+  for(let offset=0;offset<PROMPT_ROTATION_CATEGORIES.length;offset++){
+    const item=PROMPT_ROTATION_CATEGORIES[(epochDay+offset)%PROMPT_ROTATION_CATEGORIES.length];
+    if(!enabledCategory(settings,item.category))continue;
+    return [{...item,date:day,time:"09:00",slot:day+"T09:00:00+05:30"}];
+  }
+  return [];
+}
+function categoryKeyFromName(name){const n=String(name||"").toLowerCase();if(n==="music promotion")return "music";if(n==="news & updates"||n==="news")return "news";if(n==="product promotion"||n==="product")return "product";if(n==="sports information"||n==="sports")return "sports";if(n==="editing knowledge"||n==="editing")return "editing";if(n==="ai & technology"||n==="ai technology"||n==="technology")return "tech";if(n==="sheru bhai animal-man stories"||n==="animal stories")return "animal_stories";if(n==="ai dental asmr"||n==="dental asmr")return "dental_asmr";if(n==="viral funny frog"||n==="viral funny frog style"||n==="funny frog")return "funny_frog";if(n==="3d animated comedy"||n==="hugo 3d comedy"||n==="hugo comedy")return "hugo_comedy";if(n==="3d loop animation"||n==="loop animation")return "loop_animation";if(n==="fruit time"||n==="fruit time stories")return "fruit_time";return null;}
 function enabledCategory(settings,name){const key=categoryKeyFromName(name);return key?settings?.enabledCategories?.[key]!==false:true;}
 function autoScheduleForToday(now=new Date(),settings=loadSettings()){
   const day=now.toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
@@ -1243,7 +1254,7 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
     const settings=await hydrateSettings();
     // Manual Boss Room / Video Generator requests work independently of scheduled Auto Generate.
 
-    const allowedCategories=["Music Promotion","News & Updates","Product Promotion","Sports Information","Editing Knowledge","AI & Technology","Sheru Bhai Animal-Man Stories"];
+    const allowedCategories=["Music Promotion","News & Updates","Product Promotion","Sports Information","Editing Knowledge","AI & Technology","Sheru Bhai Animal-Man Stories","AI Dental ASMR","Viral Funny Frog Style","3D Animated Comedy","3D Loop Animation","Fruit Time"];
     const requestedCategory=String(req.body?.category||"").trim();
     const lower=command.toLowerCase();
     const category=allowedCategories.includes(requestedCategory)?requestedCategory:

@@ -130,7 +130,7 @@ async function saveTokens(tokens){
     fs.writeFileSync(TOKEN_FILE,JSON.stringify(tokens,null,2));
   }catch{}
 }
-const DEFAULT_FACTORY_SETTINGS={automationOnline:true,autoGenerate:true,approval:false,autoPublish:true,publishingRoute:"buffer",language:"Hindi",bufferChannels:["youtube","instagram","facebook"],liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true}};
+const DEFAULT_FACTORY_SETTINGS={automationOnline:true,autoGenerate:true,approval:false,autoPublish:true,publishingRoute:"buffer",language:"Hindi",bufferChannels:["youtube","instagram","facebook"],liveAutomation:false,liveApproval:true,liveDurationMinutes:120,musicSourceChannels:["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"],enabledCategories:{music:true,news:true,product:true,sports:true,editing:true,tech:true,animal_stories:true}};
 const MUSIC_SOURCE_CHANNEL_IDS=["UC_7oWDyqUuF8FtCm3XWkMvQ","UC45qxqZuEpQvYs14c1pLf7Q"];
 const MUSIC_ARTIST_NAMES=["Swrang Swargiary","Santiram Swargiary"];
 let settingsCache=null;
@@ -930,7 +930,7 @@ const AUTO_SCHEDULES=[
   {id:"sports_evening",category:"Sports Information",icon:"⚽",time:"19:00",format:"Short Video",language:"Hindi",prompt:"Current sports information/explainer. ONLY use verified source material supplied to the job; never invent scores, schedules or player facts."},
   {id:"ai_tech_night",category:"AI & Technology",icon:"🤖",time:"21:00",format:"Short Video",language:"Hindi",prompt:"Practical AI and technology explainer, creator workflow, useful tool or automation idea. Use current verified facts when needed; never invent product capabilities."}
 ];
-function categoryKeyFromName(name){const n=String(name||"").toLowerCase();if(n==="music promotion")return "music";if(n==="news & updates"||n==="news")return "news";if(n==="product promotion"||n==="product")return "product";if(n==="sports information"||n==="sports")return "sports";if(n==="editing knowledge"||n==="editing")return "editing";if(n==="ai & technology"||n==="ai technology"||n==="technology")return "tech";return null;}
+function categoryKeyFromName(name){const n=String(name||"").toLowerCase();if(n==="music promotion")return "music";if(n==="news & updates"||n==="news")return "news";if(n==="product promotion"||n==="product")return "product";if(n==="sports information"||n==="sports")return "sports";if(n==="editing knowledge"||n==="editing")return "editing";if(n==="ai & technology"||n==="ai technology"||n==="technology")return "tech";if(n==="sheru bhai animal-man stories"||n==="animal stories")return "animal_stories";return null;}
 function enabledCategory(settings,name){const key=categoryKeyFromName(name);return key?settings?.enabledCategories?.[key]!==false:true;}
 function autoScheduleForToday(now=new Date(),settings=loadSettings()){
   const day=now.toLocaleDateString("en-CA",{timeZone:"Asia/Kolkata"});
@@ -1225,7 +1225,7 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
     const settings=await hydrateSettings();
     // Manual Boss Room / Video Generator requests work independently of scheduled Auto Generate.
 
-    const allowedCategories=["Music Promotion","News & Updates","Product Promotion","Sports Information","Editing Knowledge","AI & Technology"];
+    const allowedCategories=["Music Promotion","News & Updates","Product Promotion","Sports Information","Editing Knowledge","AI & Technology","Sheru Bhai Animal-Man Stories"];
     const requestedCategory=String(req.body?.category||"").trim();
     const lower=command.toLowerCase();
     const category=allowedCategories.includes(requestedCategory)?requestedCategory:

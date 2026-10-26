@@ -2262,7 +2262,7 @@ app.get("/api/cron/factory",async(req,res)=>{
     res.json(result);
   }catch(e){res.status(500).json({ok:false,error:e.message});}
 });
-app.get("/api/factory/automation-schedule",async(req,res)=>{const settings=await hydrateSettings();res.json({ok:true,timeZone:"Asia/Kolkata",schedules:AUTO_SCHEDULES.filter(x=>enabledCategory(settings,x.category)),allSchedules:AUTO_SCHEDULES,settings});});
+app.get("/api/factory/automation-schedule",async(req,res)=>{const settings=await hydrateSettings();res.json({ok:true,timeZone:"Asia/Kolkata",schedules:autoScheduleForToday(new Date(),settings),allSchedules:PROMPT_ROTATION_CATEGORIES,settings});});
 app.get("/api/live/weekly-schedule",async(req,res)=>{const settings=await hydrateSettings();res.json({ok:true,timeZone:"Asia/Kolkata",startTime:"14:00",endTime:"16:00",durationMinutes:120,schedules:weeklyLiveSchedule(),musicSourceChannels:settings.musicSourceChannels,settings});});
 
 app.post("/api/factory/settings",requireAppKey,async(req,res)=>{

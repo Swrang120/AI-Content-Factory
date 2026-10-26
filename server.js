@@ -1114,7 +1114,7 @@ async function processQueuedContentJob(job,req){
     const track=await selectDailyMusicTrack(req);
     const notes="Original Hindi animal-man short story; suspense, emotional conflict and twist; scene-by-scene visual direction; no narration, no voiceover, no TTS; use active Music Library master as the only audio. Idea: "+String(job.topic||job.notes||"Create a new story");
     if(!job.script)job.script=await generateWithChatGPT("script",{topic:job.topic,category:job.category,language:"Hindi",format:job.format,notes,sourceText:"",research:"",sources:[]});
-    job.language="Hindi";job.voice=null;job.music={audioUrl:track.audio_url,artist:track.artist||"Swrang Swargiary",title:track.title||"Original Music",hookStartSeconds:0,hookDurationSeconds:60};
+    job.language="Hindi";job.aspectRatio="9:16";job.voice=null;job.music={audioUrl:track.audio_url,artist:track.artist||"Swrang Swargiary",title:track.title||"Original Music",hookStartSeconds:0,hookDurationSeconds:60};
     job.status="rendering";job.updatedAt=new Date().toISOString();await persistJob(job);
     await setAgentState("editor","WORKING",45,"Rendering music-only story; voice skipped",id);
     job.renderedVideoUrl=await renderFactoryVideo(job,req);

@@ -19,26 +19,6 @@
     {
       "path": "/api/cron/factory",
       "schedule": "30 3 * * *"
-    },
-    {
-      "path": "/api/cron/factory",
-      "schedule": "30 6 * * *"
-    },
-    {
-      "path": "/api/cron/factory",
-      "schedule": "30 9 * * *"
-    },
-    {
-      "path": "/api/cron/factory",
-      "schedule": "30 11 * * *"
-    },
-    {
-      "path": "/api/cron/factory",
-      "schedule": "30 13 * * *"
-    },
-    {
-      "path": "/api/cron/factory",
-      "schedule": "30 15 * * *"
     }
   ],
   "buildCommand": "node --check server.js && node --check app.js && node --check app-fixed.js && node --check live-status.js && node --check music-library-fixed.js && node --check youtube-skills.js && npm run build"

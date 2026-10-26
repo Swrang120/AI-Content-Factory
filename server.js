@@ -3585,8 +3585,29 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
       jobs[job.dateKey]=job;await writeLiveJobs(jobs);
       return res.json({ok:true,job:safeLiveJob(job),message:deleted?"Queued Live cancelled; old dashboard link cleared and Start is available again.":"Queued Live was blocked from starting and dashboard link cleared, but YouTube event deletion could not be confirmed.",warning:deleteWarning||null});
     }
-    job.status="stopping";jobs[job.dateKey]=job;await writeLiveJobs(jobs);
-    return res.json({ok:true,job:safeLiveJob(job),message:"Stop requested. Streaming worker will stop FFmpeg and finalize YouTube Live."});
+    job.status="stopping";job.stopRequested=true;job.updatedAt=new Date().toISOString();jobs[job.dateKey]=job;await writeLiveJobs(jobs);
+    // Finalize the YouTube broadcast immediately so the public stream stops even
+    // if the GitHub Actions worker is delayed or unavailable. The worker can then
+    // observe stopRequested and clean up FFmpeg without keeping the UI stuck.
+    let finalizeWarning="";
+    if(job.broadcastId){
+      try{
+        await transitionLiveBroadcast(job,"complete");
+        job.lastYouTubeStatus="complete";
+      }catch(e){
+        const message=safeErrorMessage(e);
+        if(!/redundantTransition|invalidTransition|already complete|completed/i.test(message))finalizeWarning=message;
+      }
+    }
+    if(!finalizeWarning){
+      job.status="completed";job.workerStatus="stop_requested";job.completedAt=new Date().toISOString();
+      job.error=null;job.broadcastId=null;job.updatedAt=new Date().toISOString();
+      jobs[job.dateKey]=job;await writeLiveJobs(jobs);
+      return res.json({ok:true,job:safeLiveJob(job),message:"YouTube Live ko finalize kar diya gaya. Dashboard ab stopped dikhayega; worker cleanup background mein ho sakta hai."});
+    }
+    job.status="stopping";job.error="YouTube finalization pending: "+finalizeWarning;job.updatedAt=new Date().toISOString();
+    jobs[job.dateKey]=job;await writeLiveJobs(jobs);
+    return res.json({ok:true,job:safeLiveJob(job),message:"Stop request saved, lekin YouTube ne finalization confirm nahi kiya.",warning:finalizeWarning});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
 app.post("/api/live/recover",requireAppKey,async(req,res)=>{

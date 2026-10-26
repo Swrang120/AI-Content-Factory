@@ -982,6 +982,49 @@ async function autoJobExists(id){
   if(retryable.has(String(existing.status||"").toLowerCase())) return false;
   return true;
 }
+
+async function buildAutomaticYouTubeMetadata(job){
+  const category=String(job.category||"AI Content Factory").trim();
+  const topic=String(job.topic||job.title||category).trim();
+  const language=String(job.language||"Hindi");
+  const script=String(typeof job.script==="string"?job.script:(job.script?.output||job.script?.text||"")).slice(0,3500);
+  const raw=await generateWithChatGPT("youtube_metadata",{
+    topic,category,language,script,prompt:String(job.notes||"").slice(0,2500),
+    requirement:"Create upload-ready YouTube metadata for this exact original short video. Return ONLY valid JSON with keys title, description, hashtags (array of 3-5 strings, each with #), tags (array of 8-15 plain keyword strings without #). Title must be natural, compelling, specific, search-friendly, no misleading claims, no fake trending/viral claims, maximum 95 characters. Description should be concise, accurately describe the video, include a useful CTA only if appropriate, and finish with 3-5 relevant hashtags. Tags must be relevant to the actual category/topic and total under 450 characters. Do not add facts not present in the supplied topic/script. No markdown fences."
+  });
+  let parsed=null;
+  try{
+    const textValue=String(raw||"").trim().replace(/^\`\`\`(?:json)?\s*/i,"").replace(/\s*\`\`\`$/,"");
+    const start=textValue.indexOf("{"),end=textValue.lastIndexOf("}");
+    parsed=JSON.parse(start>=0&&end>start?textValue.slice(start,end+1):textValue);
+  }catch{}
+  const cleanTag=value=>String(value||"").replace(/^#+/,"").replace(/[^\p{L}\p{N}_ -]/gu,"").trim().replace(/\s+/g," ").slice(0,60);
+  let title=String(parsed?.title||topic).replace(/[\r\n]+/g," ").trim().slice(0,95);
+  if(!title)title=category.slice(0,95);
+  const defaultTags={
+    "AI Dental ASMR":["DentalASMR","3DAnimation","ToothTreatment","SatisfyingAnimation","ASMRShorts"],
+    "Viral Funny Frog Style":["FunnyFrog","3DCartoon","FunnyAnimation","ComedyShorts","AnimatedShorts"],
+    "3D Animated Comedy":["3DAnimation","AnimatedComedy","CartoonShorts","FunnyAnimation","Shorts"],
+    "3D Loop Animation":["3DLoop","SeamlessLoop","3DAnimation","SatisfyingVideo","Shorts"],
+    "Fruit Time":["FruitAnimation","3DCartoon","AnimatedShorts","FruitCity","ComedyShorts"],
+    "Sheru Bhai Animal-Man Stories":["AnimalStory","HindiStory","3DAnimation","AnimatedShorts","Shorts"]
+  };
+  let tags=Array.isArray(parsed?.tags)?parsed.tags.map(cleanTag).filter(Boolean):[];
+  if(!tags.length)tags=[...(defaultTags[category]||["AIContent","3DAnimation","Shorts"]),...topic.split(/[^\p{L}\p{N}]+/u).filter(x=>x.length>2).slice(0,5)];
+  tags=[...new Set(tags)].slice(0,15);
+  while(tags.join(",").length>450)tags.pop();
+  let hashtags=Array.isArray(parsed?.hashtags)?parsed.hashtags.map(x=>"#"+cleanTag(x)).filter(x=>x.length>1):[];
+  if(!hashtags.length)hashtags=(defaultTags[category]||["AIContent","3DAnimation","Shorts"]).slice(0,4).map(x=>"#"+x);
+  hashtags=[...new Set(hashtags)].slice(0,5);
+  let description=String(parsed?.description||"").trim();
+  description=description.replace(/(?:\s*#[\p{L}\p{N}_]+){3,}$/u,"").trim();
+  const hashtagLine=hashtags.join(" ");
+  if(!description)description=topic+"\n\nCategory: "+category+"\n\n"+hashtagLine;
+  else if(!description.includes(hashtags[0]||"###"))description+="\n\n"+hashtagLine;
+  description=description.slice(0,4500);
+  return {title,description,tags,categoryId:"22",privacyStatus:"public"};
+}
+
 async function generateAutomaticJob(item,req){
   const id=autoSlotId(item);
   // Recover a previously rendered slot by retrying Buffer delivery instead of
@@ -994,6 +1037,17 @@ async function generateAutomaticJob(item,req){
     if(!enabledCategory(settings,item.category))return {ok:true,skipped:true,jobId:id,reason:"category_disabled"};
     if(settings.automationOnline!==false && settings.autoGenerate!==false && settings.autoPublish){
       try{
+        const promptVideo=(PROMPT_ROTATION_CATEGORIES||[]).some(x=>x.category===existing.category);
+        if(promptVideo){
+          await setAgentState("publisher","WORKING",65,"Retrying direct YouTube API upload for rendered prompt video",id);
+          const metadata=await buildAutomaticYouTubeMetadata(existing);
+          const result=await publishRenderedYouTubeVideo({videoUrl:existing.renderedVideoUrl,...metadata,automated:true,approved:true,req});
+          existing.title=metadata.title;existing.description=metadata.description;existing.tags=metadata.tags;existing.categoryId=metadata.categoryId;existing.privacyStatus=metadata.privacyStatus;
+          existing.youtube=result;existing.publishError=null;existing.status="published";existing.updatedAt=new Date().toISOString();
+          local[id]=existing;saveJobs(local);await persistJob(existing);
+          await setAgentState("publisher","SLEEPING",100,"Prompt video uploaded directly to YouTube",id);
+          return {ok:true,jobId:id,status:existing.status,retriedPublish:true,youtube:result};
+        }
         await setAgentState("publisher","WORKING",55,"Retrying Buffer delivery for previously rendered video",id);
         const result=await publishVideoToBuffer({videoUrl:existing.renderedVideoUrl,title:existing.topic||existing.title||item.category,description:"AI Content Factory — Hindi video. Category: "+item.category});
         existing.buffer=result;
@@ -1052,13 +1106,12 @@ async function generateAutomaticJob(item,req){
     job.status="rendered";job.updatedAt=new Date().toISOString();jobs[id]=job;saveJobs(jobs);await persistJob(job);
     await setAgentState("qa","WORKING",85,"Checking video output and category audio rules",id);
     if(settings.automationOnline!==false&&settings.autoGenerate!==false&&settings.autoPublish&&enabledCategory(settings,item.category)){
-      await setAgentState("publisher","WORKING",90,"Sending daily video to connected Buffer channels",id);
+      await setAgentState("publisher","WORKING",90,"Generating SEO title/hashtags and uploading directly to YouTube API",id);
       try{
-        job.buffer=await publishVideoToBuffer({
-          videoUrl:job.renderedVideoUrl,title:job.topic,
-          description:"AI Content Factory — "+item.category+"\n30-second vertical animated short.\n"+String(job.script||"").slice(0,1500)
-        });
-        job.status=Number(job.buffer?.successfulChannels||0)===3?"published":"sent_to_buffer";
+        const metadata=await buildAutomaticYouTubeMetadata(job);
+        job.title=metadata.title;job.description=metadata.description;job.tags=metadata.tags;job.categoryId=metadata.categoryId;job.privacyStatus=metadata.privacyStatus;
+        job.youtube=await publishRenderedYouTubeVideo({videoUrl:job.renderedVideoUrl,...metadata,automated:true,approved:true,req});
+        job.status="published";job.publishError=null;
       }catch(error){
         job.status="rendered";job.publishError=safeErrorMessage(error);
       }
@@ -1066,9 +1119,9 @@ async function generateAutomaticJob(item,req){
     job.updatedAt=new Date().toISOString();jobs[id]=job;saveJobs(jobs);await persistJob(job);
     await setAgentState("editor","SLEEPING",100,"Daily 30-second video rendered",id);
     await setAgentState("qa","SLEEPING",100,"Prompt and audio-rule checks complete",id);
-    await setAgentState("publisher",job.publishError?"ERROR":"SLEEPING",100,job.publishError||"Daily video sent to Buffer workflow",id);
+    await setAgentState("publisher",job.publishError?"ERROR":"SLEEPING",100,job.publishError||"Daily prompt video uploaded directly to YouTube",id);
     await setAgentState("manager",job.publishError?"ERROR":"SLEEPING",100,job.publishError||"Daily prompt-rotation job complete",id);
-    return {ok:!job.publishError,jobId:id,status:job.status,category:item.category,topic:job.topic,videoUrl:job.renderedVideoUrl,buffer:job.buffer||null,...(job.publishError?{error:job.publishError}:{})};
+    return {ok:!job.publishError,jobId:id,status:job.status,category:item.category,topic:job.topic,title:job.title,videoUrl:job.renderedVideoUrl,youtube:job.youtube||null,...(job.publishError?{error:job.publishError}:{})};
   }
   if(item.category==="Music Promotion"){
     try{

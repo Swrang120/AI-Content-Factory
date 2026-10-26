@@ -983,24 +983,46 @@ async function autoJobExists(id){
   return true;
 }
 
+async function generateWithOpenAIForFactory(task,fields={}){
+  if(!process.env.OPENAI_API_KEY)throw new Error("OpenAI is required for prompt research and fresh creative ideas. Add a valid OPENAI_API_KEY in Vercel.");
+  const prompt=[
+    "You are the dedicated OpenAI/ChatGPT creative director and research planner for AI Content Factory.",
+    "Follow the supplied source prompt as a fixed creative reference. Make each daily concept genuinely distinct; do not merely paraphrase the previous day's idea.",
+    "Never claim web research or external references were checked unless source URLs are supplied. 'Reference' means the user's original prompt rules plus the specific creative inspiration/variation described in the output.",
+    "Follow the requested task and exact output format. Be original, practical, internally consistent, and do not copy copyrighted characters or another creator's exact video.",
+    "Task: "+String(task||"creative_planning"),
+    "Inputs: "+JSON.stringify(fields||{},null,2)
+  ].join("\n\n");
+  const response=await fetch("https://api.openai.com/v1/responses",{
+    method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+process.env.OPENAI_API_KEY},
+    body:JSON.stringify({model:process.env.OPENAI_MODEL||"gpt-4o",input:prompt,store:false})
+  });
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(body?.error?.message||"OpenAI creative generation failed (HTTP "+response.status+").");
+  const output=String(body.output_text||"").trim();
+  if(!output)throw new Error("OpenAI returned an empty creative response.");
+  return output;
+}
+function parseFactoryJson(raw){
+  const value=String(raw||"").trim();
+  const start=value.indexOf("{"),end=value.lastIndexOf("}");
+  if(start<0||end<=start)throw new Error("OpenAI returned invalid JSON for the creative brief.");
+  return JSON.parse(value.slice(start,end+1));
+}
+
 async function buildAutomaticYouTubeMetadata(job){
   const category=String(job.category||"AI Content Factory").trim();
   const topic=String(job.topic||job.title||category).trim();
   const language=String(job.language||"Hindi");
   const script=String(typeof job.script==="string"?job.script:(job.script?.output||job.script?.text||"")).slice(0,3500);
-  let raw="";
-  try{
-    raw=await generateWithChatGPT("youtube_metadata",{
-      topic,category,language,script,prompt:String(job.notes||"").slice(0,2500),
-      requirement:"Create upload-ready YouTube metadata for this exact original short video. Return ONLY valid JSON with keys title, description, hashtags (array of 3-5 strings, each with #), tags (array of 8-15 plain keyword strings without #). Title must be natural, compelling, specific, search-friendly, no misleading claims, no fake trending/viral claims, maximum 95 characters. Description should be concise, accurately describe the video, include a useful CTA only if appropriate, and finish with 3-5 relevant hashtags. Tags must be relevant to the actual category/topic and total under 450 characters. Do not add facts not present in the supplied topic/script. No markdown fences."
-    });
-  }catch(error){console.warn("[ACF_YOUTUBE_METADATA] AI metadata fallback:",safeErrorMessage(error));}
   let parsed=null;
   try{
-    const textValue=String(raw||"").trim();
-    const start=textValue.indexOf("{"),end=textValue.lastIndexOf("}");
-    parsed=JSON.parse(start>=0&&end>start?textValue.slice(start,end+1):textValue);
-  }catch{}
+    const raw=await generateWithOpenAIForFactory("youtube_metadata",{
+      topic,category,language,script,prompt:String(job.notes||"").slice(0,2500),
+      requirement:"Return ONLY JSON with keys title, description, hashtags (3-5 strings each starting #), tags (8-15 plain keyword strings without #). Create an accurate, specific, search-friendly title max 95 characters, a concise description, 3-5 relevant hashtags, and relevant tags under 450 characters. No misleading or fake trending claims. No markdown."
+    });
+    parsed=parseFactoryJson(raw);
+  }catch(error){console.warn("[ACF_YOUTUBE_METADATA] OpenAI metadata fallback:",safeErrorMessage(error));}
   const cleanTag=value=>String(value||"").replace(/^#+/,"").replace(/[^\p{L}\p{N}_ -]/gu,"").trim().replace(/\s+/g," ").slice(0,60);
   let title=String(parsed?.title||topic).replace(/[\r\n]+/g," ").trim().slice(0,95);
   if(!title)title=category.slice(0,95);
@@ -1077,24 +1099,30 @@ async function generateAutomaticJob(item,req){
     const promptNotes=String(item.prompt||"").trim();
     await setAgentState("manager","WORKING",8,"Starting daily prompt-rotation video",id);
     await setAgentState("research","WORKING",20,"Selecting a fresh story concept from the selected prompt",id);
-    const topicRaw=await generateWithChatGPT("automatic_topic",{
+    const recentJobs=Object.values(await loadPersistentJobs()).filter(x=>x&&x.category===item.category&&x.topic&&x.id!==id).sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))).slice(0,14).map(x=>({topic:x.topic,title:x.title,concept:x.concept,createdAt:x.createdAt}));
+    const ideaRaw=await generateWithOpenAIForFactory("daily_original_concept_and_reference",{
       category:item.category,language:item.language,format:"exactly 30-second vertical 9:16 animated short",
-      direction:promptNotes,
-      requirement:"Return one fresh, specific video title/topic only. Follow the supplied prompt exactly, preserve fixed character designs and story rules, avoid repeating recent concepts if recent job context is supplied. The automated system must choose the concept itself; do not ask the user to select an idea."
+      sourcePrompt:promptNotes,recentConceptsToAvoid:recentJobs,
+      requirement:"Return ONLY JSON: {"titleIdea":"...","concept":"...","reference":"...","variation":"...","visualStyle":"...","storyBeats":["..."],"continuityRules":["..."],"freshnessNote":"..."}. Use the user's sourcePrompt as the fixed reference/constraints, but invent a fresh specific situation, plot, gag, transformation, challenge, camera idea or visual sequence each run. Do not reuse the same premise, props, sequence or ending from recentConceptsToAvoid. Preserve all mandatory characters, anatomy, style, aspect ratio and audio rules from sourcePrompt. reference must explicitly state which source-prompt rules are being followed and what new creative inspiration/variation is being added; do not claim external web research. Make the title idea specific and compelling, not just the category name. The system chooses everything automatically."
     });
-    const topic=String(topicRaw||item.category).replace(/^["']|["']$/g,"").trim().split("\n")[0].slice(0,180);
+    const idea=parseFactoryJson(ideaRaw);
+    const topic=String(idea.titleIdea||idea.concept||item.category).replace(/[\\r\\n]+/g," ").trim().slice(0,180);
+    if(!idea.concept||!idea.reference||!Array.isArray(idea.storyBeats))throw new Error("OpenAI daily creative brief is incomplete; refusing to reuse a generic prompt.");
+
     const jobs=loadJobs();
-    const job={id,status:"researching",topic,title:topic,category:item.category,language:item.language,format:"30-second Short Video",durationSeconds:30,aspectRatio:"9:16",notes:promptNotes,sourceText:"",sources:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,autoPublish:true,scheduledSlot:item.slot,voice:null};
+    const job={id,status:"researching",topic,title:topic,titleIdea:idea.titleIdea||topic,concept:idea.concept,reference:idea.reference,creativeVariation:idea.variation||"",visualStyle:idea.visualStyle||"",storyBeats:idea.storyBeats,continuityRules:idea.continuityRules||[],freshnessNote:idea.freshnessNote||"",recentConceptsConsidered:recentJobs.map(x=>x.topic),category:item.category,language:item.language,format:"30-second Short Video",durationSeconds:30,aspectRatio:"9:16",notes:promptNotes,sourceText:"",sources:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,autoPublish:true,scheduledSlot:item.slot,voice:null};
     jobs[id]=job;saveJobs(jobs);await persistJob(job);
     await setAgentState("script","WORKING",30,"Writing complete 30-second scene-by-scene script",id);
-    const scriptResult=await generateWithChatGPT("script",{
+    const scriptResult=await generateWithOpenAIForFactory("write_fresh_scene_by_scene_video_script",{
       topic,category:item.category,language:item.language,format:"30-second vertical 9:16 animated short",
-      notes:promptNotes,sourceText:"",research:"",sources:[],
-      requirement:"Write the entire original script automatically. Exactly 30 seconds total, broken into concise timed scenes covering 0–30 seconds. Include title, visual actions, character continuity, camera/motion notes, on-screen text only where appropriate, and a satisfying ending or seamless loop. Follow the provided category prompt and its audio rules. Do not ask the user to choose an idea. Do not invent facts. No voiceover, narration, dialogue or TTS; visuals and soundtrack/ASMR only. Return useful scene-by-scene visual instructions, not a list of ideas."
+      sourcePrompt:promptNotes,creativeBrief:{titleIdea:job.titleIdea,concept:job.concept,reference:job.reference,variation:job.creativeVariation,visualStyle:job.visualStyle,storyBeats:job.storyBeats,continuityRules:job.continuityRules},
+      recentConceptsToAvoid:recentJobs.map(x=>x.topic),
+      requirement:"Write a production-ready original 30-second script in timed scenes (0-5, 5-10, 10-15, 15-20, 20-25, 25-30 seconds). Use the supplied creativeBrief as the idea and reference; expand it into concrete scene visuals, action, camera/motion, transitions, and a satisfying ending/seamless loop. Follow sourcePrompt exactly for character continuity and audio rules. This must be visibly different from recentConceptsToAvoid. No narration, dialogue or TTS; preserve the source prompt's audio instructions. Return only the scene-by-scene script, not a list of alternative ideas."
     });
     job.script=typeof scriptResult==="string"?scriptResult:String(scriptResult?.output||scriptResult?.text||JSON.stringify(scriptResult||""));
     job.status="script_ready";job.updatedAt=new Date().toISOString();jobs[id]=job;saveJobs(jobs);await persistJob(job);
-    await setAgentState("script","SLEEPING",100,"30-second script ready; voice generation intentionally skipped",id);
+    job.research={titleIdea:job.titleIdea,concept:job.concept,reference:job.reference,variation:job.creativeVariation,visualStyle:job.visualStyle,storyBeats:job.storyBeats,continuityRules:job.continuityRules,freshnessNote:job.freshnessNote,recentConceptsConsidered:job.recentConceptsConsidered,provider:"OpenAI"};jobs[id]=job;saveJobs(jobs);await persistJob(job);
+    await setAgentState("script","SLEEPING",100,"OpenAI creative brief + fresh scene-by-scene script ready; voice generation intentionally skipped",id);
     if(item.category!=="AI Dental ASMR"){
       const track=await selectDailyMusicTrack(req);
       job.music={audioUrl:track.audio_url,artist:track.artist||"Swrang Swargiary",title:track.title||"Original Music",hookStartSeconds:0,hookDurationSeconds:30};

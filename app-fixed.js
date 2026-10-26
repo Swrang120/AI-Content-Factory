@@ -10,7 +10,13 @@ const defaultData={
     {id:"product",icon:"🛍️",name:"Product Promotion",desc:"Create product explainers, demos and promotional videos.",enabled:true},
     {id:"sports",icon:"⚽",name:"Sports Information",desc:"Match, player and sports-information content.",enabled:true},
     {id:"editing",icon:"🎬",name:"Editing Knowledge",desc:"Video editing, creator tips and tutorials.",enabled:true},
-    {id:"tech",icon:"🤖",name:"AI & Technology",desc:"Tools, workflows and technology explainers.",enabled:true}
+    {id:"tech",icon:"🤖",name:"AI & Technology",desc:"Tools, workflows and technology explainers.",enabled:true},
+    {id:"animal_stories",icon:"🦁",name:"Sheru Bhai Animal-Man Stories",desc:"Cinematic Hindi animal-man stories using the active Music Library master only; no voice.",enabled:true},
+    {id:"dental_asmr",icon:"🦷",name:"AI Dental ASMR",desc:"Vertical dental cross-section animation with pure ASMR rules; no music or voice.",enabled:true},
+    {id:"funny_frog",icon:"🐸",name:"Viral Funny Frog Style",desc:"Fast 3D cartoon frog comedy with exaggerated visual gags and looping endings.",enabled:true},
+    {id:"hugo_comedy",icon:"🦎",name:"3D Animated Comedy",desc:"Hugo the blue aviator gecko in consistent whimsical 3D adventures.",enabled:true},
+    {id:"loop_animation",icon:"🌀",name:"3D Loop Animation",desc:"Surreal glossy 3D animations designed to loop seamlessly.",enabled:true},
+    {id:"fruit_time",icon:"🍓",name:"Fruit Time",desc:"Animated Fruit City challenges, fixed character designs and dramatic reveals.",enabled:true}
   ],
   content:[
     {id:1,title:"Welcome to AI Content Factory",category:"Editing Knowledge",format:"Short Video",language:"English",status:"Ready",notes:"Foundation demo item."},
@@ -20,7 +26,7 @@ const defaultData={
   schedule:[],
   settings:{automationOnline:true,autoGenerate:true,approval:false,autoPublish:true}
 };
-let data=(()=>{try{const saved=JSON.parse(localStorage.getItem(KEY)||"null");if(!saved||typeof saved!=="object")return structuredClone(defaultData);return {...structuredClone(defaultData),...saved,categories:Array.isArray(saved.categories)?saved.categories:structuredClone(defaultData.categories),content:Array.isArray(saved.content)?saved.content:structuredClone(defaultData.content),schedule:Array.isArray(saved.schedule)?saved.schedule:[],settings:{...defaultData.settings,...(saved.settings&&typeof saved.settings==="object"?saved.settings:{})}};}catch(_){return structuredClone(defaultData);}})();
+let data=(()=>{try{const saved=JSON.parse(localStorage.getItem(KEY)||"null");if(!saved||typeof saved!=="object")return structuredClone(defaultData);return {...structuredClone(defaultData),...saved,categories:Array.isArray(saved.categories)?[...saved.categories,...defaultData.categories.filter(c=>!saved.categories.some(x=>x.id===c.id))]:structuredClone(defaultData.categories),content:Array.isArray(saved.content)?saved.content:structuredClone(defaultData.content),schedule:Array.isArray(saved.schedule)?saved.schedule:[],settings:{...defaultData.settings,...(saved.settings&&typeof saved.settings==="object"?saved.settings:{})}};}catch(_){return structuredClone(defaultData);}})();
 let contentSyncTimer=null;
 async function syncReadyContent(){
   try{

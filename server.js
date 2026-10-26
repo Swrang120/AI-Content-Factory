@@ -1240,6 +1240,22 @@ app.post("/api/boss/command",requireAppKey,async(req,res)=>{
     const idea=String(req.body?.idea||command).trim().slice(0,2000);
     if(!enabledCategory(settings,category))return res.status(409).json({ok:false,error:category+" is disabled. Enable this category first."});
 
+    if(category==="Sheru Bhai Animal-Man Stories"){
+      const track=await selectDailyMusicTrack(req);
+      const storyNotes="Write one original Hindi animal-man YouTube Shorts story with a strong hook, suspense, emotional conflict and a twist. Use humanoid animal-headed characters. Return a Hindi title and scene-by-scene visual direction. NO voiceover, NO narration, NO TTS. Use only the active Music Library master audio as soundtrack. Story idea: "+idea+" Format: "+format+" Frame: "+aspectRatio;
+      const id=jobId();
+      const story=await generateWithChatGPT("script",{topic:idea,category,language:"Hindi",format,notes:storyNotes,sourceText:"",research:"",sources:[]});
+      const scriptText=typeof story==="string"?story:String(story?.output||story?.text||JSON.stringify(story||""));
+      const job={id,status:"rendering",topic:idea.slice(0,180),title:idea.slice(0,180),category,language:"Hindi",format,aspectRatio,notes:storyNotes,sourceText:"",sources:[],script:scriptText,voice:null,music:{audioUrl:track.audio_url,artist:track.artist||"Swrang Swargiary",title:track.title||"Original Music",hookStartSeconds:0,hookDurationSeconds:60},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),manualUpload:true,auto:true,autoPublish:true,approved:true};
+      const jobs=loadJobs();jobs[id]=job;saveJobs(jobs);await persistJob(job);
+      await setAgentState("editor","WORKING",65,"Rendering story with existing Music Library audio; voice disabled",id);
+      job.renderedVideoUrl=await renderFactoryVideo(job,req);
+      if(!job.renderedVideoUrl)throw new Error("Story rendering returned no video URL.");
+      job.status="rendered";job.updatedAt=new Date().toISOString();jobs[id]=job;saveJobs(jobs);await persistJob(job);
+      await setAgentState("editor","SLEEPING",100,"Music-only story video rendered",id);
+      return res.json({ok:true,jobId:id,status:"generated_ready",category,title:job.title,track:publicMusicTrack(track),renderedVideoUrl:job.renderedVideoUrl,message:"Music-only story video rendered without voice generation. Preview it before publishing."});
+    }
+
     if(category==="Music Promotion"){
       const track=await selectDailyMusicTrack(req);
       const manager=await runMusicManagerAnalysis(track);

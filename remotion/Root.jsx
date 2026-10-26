@@ -10,6 +10,7 @@ const detectCategory=(category,title,script,musicUrl)=>{
   if(explicit==="news & updates"||explicit==="news")return "news";
   if(explicit==="product promotion"||explicit==="product")return "product";
   if(explicit==="ai & technology"||explicit==="ai technology"||explicit==="technology"||explicit==="tech")return "tech";
+  if(explicit==="sheru bhai animal-man stories"||explicit==="animal-man stories"||explicit==="animal stories")return "animal_stories";
   if(musicUrl)return "music";
   const s=(String(title||"")+" "+String(script||"")).toLowerCase();
   if(/capcut|alight motion|premiere pro|video edit|editing|transition|color grading|timeline|vn editor/.test(s))return "editing";
@@ -26,6 +27,7 @@ const THEMES={
  sports:{label:"SPORTS INSIGHT",a:"#a4f34a",b:"#087e68",c:"#fff176"},
  product:{label:"PRODUCT SPOTLIGHT",a:"#ffbd4a",b:"#b84e20",c:"#fff2cc"},
  tech:{label:"AI & TECHNOLOGY",a:"#55d9ff",b:"#4036b7",c:"#d6fffb"},
+ animal_stories:{label:"SHERU BHAI STORIES",a:"#f7c75d",b:"#5d1734",c:"#fff0b8"},
  general:{label:"USEFUL EXPLAINER",a:"#6ce5c4",b:"#3151a8",c:"#ffffff"}
 };
 function CategoryVisual({kind,theme,index}){

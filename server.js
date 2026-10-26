@@ -1052,7 +1052,7 @@ async function buildAutomaticYouTubeMetadata(job){
 
 async function generateAutomaticJob(item,req){
   const id=autoSlotId(item);
-  // Recover a previously rendered slot by retrying Buffer delivery instead of
+  // Recover a previously rendered slot by retrying its publishing route instead of
   // rendering the same video again every scheduler tick.
   const persisted=await loadPersistentJobs();
   const local=loadJobs();
@@ -1087,8 +1087,8 @@ async function generateAutomaticJob(item,req){
         existing.status="rendered";
         existing.updatedAt=new Date().toISOString();
         local[id]=existing;saveJobs(local);await persistJob(existing).catch(()=>{});
-        await setAgentState("publisher","ERROR",0,"Buffer retry failed: "+safeErrorMessage(error),id).catch(()=>{});
-        return {ok:false,jobId:id,status:"rendered",error:safeErrorMessage(error),retryStage:"buffer_publish"};
+        await setAgentState("publisher","ERROR",0,"Publishing retry failed: "+safeErrorMessage(error),id).catch(()=>{});
+        return {ok:false,jobId:id,status:"rendered",error:safeErrorMessage(error),retryStage:"publish"};
       }
     }
   }

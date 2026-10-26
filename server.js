@@ -1014,6 +1014,62 @@ async function generateAutomaticJob(item,req){
     }
   }
   if(await autoJobExists(id))return {ok:true,skipped:true,jobId:id,reason:"slot_already_created"};
+  const promptRotationCategories=new Set(["AI Dental ASMR","Viral Funny Frog Style","3D Animated Comedy","3D Loop Animation","Fruit Time","Sheru Bhai Animal-Man Stories"]);
+  if(promptRotationCategories.has(item.category)){
+    const settings=await hydrateSettings();
+    const promptNotes=String(item.prompt||"").trim();
+    await setAgentState("manager","WORKING",8,"Starting daily prompt-rotation video",id);
+    await setAgentState("research","WORKING",20,"Selecting a fresh story concept from the selected prompt",id);
+    const topicRaw=await generateWithChatGPT("automatic_topic",{
+      category:item.category,language:item.language,format:"exactly 30-second vertical 9:16 animated short",
+      direction:promptNotes,
+      requirement:"Return one fresh, specific video title/topic only. Follow the supplied prompt exactly, preserve fixed character designs and story rules, avoid repeating recent concepts if recent job context is supplied. The automated system must choose the concept itself; do not ask the user to select an idea."
+    });
+    const topic=String(topicRaw||item.category).replace(/^["']|["']$/g,"").trim().split("\n")[0].slice(0,180);
+    const jobs=loadJobs();
+    const job={id,status:"researching",topic,title:topic,category:item.category,language:item.language,format:"30-second Short Video",durationSeconds:30,aspectRatio:"9:16",notes:promptNotes,sourceText:"",sources:[],createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),auto:true,autoPublish:true,scheduledSlot:item.slot,voice:null};
+    jobs[id]=job;saveJobs(jobs);await persistJob(job);
+    await setAgentState("script","WORKING",30,"Writing complete 30-second scene-by-scene script",id);
+    const scriptResult=await generateWithChatGPT("script",{
+      topic,category:item.category,language:item.language,format:"30-second vertical 9:16 animated short",
+      notes:promptNotes,sourceText:"",research:"",sources:[],
+      requirement:"Write the entire original script automatically. Exactly 30 seconds total, broken into concise timed scenes covering 0–30 seconds. Include title, visual actions, character continuity, camera/motion notes, on-screen text only where appropriate, and a satisfying ending or seamless loop. Follow the provided category prompt and its audio rules. Do not ask the user to choose an idea. Do not invent facts. No voiceover, narration, dialogue or TTS; visuals and soundtrack/ASMR only. Return useful scene-by-scene visual instructions, not a list of ideas."
+    });
+    job.script=typeof scriptResult==="string"?scriptResult:String(scriptResult?.output||scriptResult?.text||JSON.stringify(scriptResult||""));
+    job.status="script_ready";job.updatedAt=new Date().toISOString();jobs[id]=job;saveJobs(jobs);await persistJob(job);
+    await setAgentState("script","SLEEPING",100,"30-second script ready; voice generation intentionally skipped",id);
+    if(item.category!=="AI Dental ASMR"){
+      const track=await selectDailyMusicTrack(req);
+      job.music={audioUrl:track.audio_url,artist:track.artist||"Swrang Swargiary",title:track.title||"Original Music",hookStartSeconds:0,hookDurationSeconds:30};
+    }else{
+      // Dental ASMR source prompt explicitly prohibits background music.
+      job.music=null;
+    }
+    job.voice=null;job.status="rendering";job.updatedAt=new Date().toISOString();jobs[id]=job;saveJobs(jobs);await persistJob(job);
+    await setAgentState("editor","WORKING",55,"Rendering 30-second vertical prompt-style video; no AI voice",id);
+    job.renderedVideoUrl=await renderFactoryVideo(job,req);
+    if(!job.renderedVideoUrl)throw new Error("The renderer returned no video URL.");
+    job.status="rendered";job.updatedAt=new Date().toISOString();jobs[id]=job;saveJobs(jobs);await persistJob(job);
+    await setAgentState("qa","WORKING",85,"Checking video output and category audio rules",id);
+    if(settings.automationOnline!==false&&settings.autoGenerate!==false&&settings.autoPublish&&enabledCategory(settings,item.category)){
+      await setAgentState("publisher","WORKING",90,"Sending daily video to connected Buffer channels",id);
+      try{
+        job.buffer=await publishVideoToBuffer({
+          videoUrl:job.renderedVideoUrl,title:job.topic,
+          description:"AI Content Factory — "+item.category+"\n30-second vertical animated short.\n"+String(job.script||"").slice(0,1500)
+        });
+        job.status=Number(job.buffer?.successfulChannels||0)===3?"published":"sent_to_buffer";
+      }catch(error){
+        job.status="rendered";job.publishError=safeErrorMessage(error);
+      }
+    }else if(!settings.autoPublish){job.publishError="Auto-publish is OFF in settings.";}
+    job.updatedAt=new Date().toISOString();jobs[id]=job;saveJobs(jobs);await persistJob(job);
+    await setAgentState("editor","SLEEPING",100,"Daily 30-second video rendered",id);
+    await setAgentState("qa","SLEEPING",100,"Prompt and audio-rule checks complete",id);
+    await setAgentState("publisher",job.publishError?"ERROR":"SLEEPING",100,job.publishError||"Daily video sent to Buffer workflow",id);
+    await setAgentState("manager",job.publishError?"ERROR":"SLEEPING",100,job.publishError||"Daily prompt-rotation job complete",id);
+    return {ok:!job.publishError,jobId:id,status:job.status,category:item.category,topic:job.topic,videoUrl:job.renderedVideoUrl,buffer:job.buffer||null,...(job.publishError?{error:job.publishError}:{})};
+  }
   if(item.category==="Music Promotion"){
     try{
       const track=await selectDailyMusicTrack(req);

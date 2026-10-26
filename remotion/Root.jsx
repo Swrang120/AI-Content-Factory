@@ -11,6 +11,11 @@ const detectCategory=(category,title,script,musicUrl)=>{
   if(explicit==="product promotion"||explicit==="product")return "product";
   if(explicit==="ai & technology"||explicit==="ai technology"||explicit==="technology"||explicit==="tech")return "tech";
   if(explicit==="sheru bhai animal-man stories"||explicit==="animal-man stories"||explicit==="animal stories")return "animal_stories";
+  if(explicit==="ai dental asmr"||explicit==="dental asmr")return "dental_asmr";
+  if(explicit==="viral funny frog style"||explicit==="funny frog")return "funny_frog";
+  if(explicit==="3d animated comedy"||explicit==="hugo comedy")return "hugo_comedy";
+  if(explicit==="3d loop animation"||explicit==="loop animation")return "loop_animation";
+  if(explicit==="fruit time"||explicit==="fruit time stories")return "fruit_time";
   if(musicUrl)return "music";
   const s=(String(title||"")+" "+String(script||"")).toLowerCase();
   if(/capcut|alight motion|premiere pro|video edit|editing|transition|color grading|timeline|vn editor/.test(s))return "editing";
@@ -28,6 +33,11 @@ const THEMES={
  product:{label:"PRODUCT SPOTLIGHT",a:"#ffbd4a",b:"#b84e20",c:"#fff2cc"},
  tech:{label:"AI & TECHNOLOGY",a:"#55d9ff",b:"#4036b7",c:"#d6fffb"},
  animal_stories:{label:"SHERU BHAI STORIES",a:"#f7c75d",b:"#5d1734",c:"#fff0b8"},
+ dental_asmr:{label:"DENTAL ASMR",a:"#ff9db3",b:"#176f8c",c:"#e8ffff"},
+ funny_frog:{label:"FUNNY FROG",a:"#8dff4f",b:"#075c48",c:"#fff36d"},
+ hugo_comedy:{label:"HUGO 3D ADVENTURE",a:"#4ab7ff",b:"#9a6535",c:"#ffd37a"},
+ loop_animation:{label:"SEAMLESS 3D LOOP",a:"#2e9bff",b:"#26ed9b",c:"#ecff45"},
+ fruit_time:{label:"FRUIT CITY",a:"#ff4e7d",b:"#8a2cdb",c:"#ffe45e"},
  general:{label:"USEFUL EXPLAINER",a:"#6ce5c4",b:"#3151a8",c:"#ffffff"}
 };
 function CategoryVisual({kind,theme,index}){

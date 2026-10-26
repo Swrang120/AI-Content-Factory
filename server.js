@@ -928,7 +928,8 @@ const AUTO_SCHEDULES=[
   {id:"product_promo",category:"Product Promotion",icon:"🛍️",time:"15:00",format:"Promo",language:"Hindi",prompt:"Useful product information or promotion. Clearly distinguish facts from opinions and do not invent specifications, prices or claims."},
   {id:"news_evening",category:"News & Updates",icon:"📰",time:"17:00",format:"Short Video",language:"Hindi",prompt:"Current news explainer. ONLY use verified source material supplied to the job; never invent current events or statistics."},
   {id:"sports_evening",category:"Sports Information",icon:"⚽",time:"19:00",format:"Short Video",language:"Hindi",prompt:"Current sports information/explainer. ONLY use verified source material supplied to the job; never invent scores, schedules or player facts."},
-  {id:"ai_tech_night",category:"AI & Technology",icon:"🤖",time:"21:00",format:"Short Video",language:"Hindi",prompt:"Practical AI and technology explainer, creator workflow, useful tool or automation idea. Use current verified facts when needed; never invent product capabilities."}
+  {id:"ai_tech_night",category:"AI & Technology",icon:"🤖",time:"21:00",format:"Short Video",language:"Hindi",prompt:"Practical AI and technology explainer, creator workflow, useful tool or automation idea. Use current verified facts when needed; never invent product capabilities."},
+  {id:"animal_stories_night",category:"Sheru Bhai Animal-Man Stories",icon:"🦁",time:"23:00",format:"YouTube Short",language:"Hindi",prompt:"Original Hindi cinematic animal-man story with suspense, emotional drama and a twist. Use the active Music Library master only; no generated voice."}
 ];
 function categoryKeyFromName(name){const n=String(name||"").toLowerCase();if(n==="music promotion")return "music";if(n==="news & updates"||n==="news")return "news";if(n==="product promotion"||n==="product")return "product";if(n==="sports information"||n==="sports")return "sports";if(n==="editing knowledge"||n==="editing")return "editing";if(n==="ai & technology"||n==="ai technology"||n==="technology")return "tech";if(n==="sheru bhai animal-man stories"||n==="animal stories")return "animal_stories";return null;}
 function enabledCategory(settings,name){const key=categoryKeyFromName(name);return key?settings?.enabledCategories?.[key]!==false:true;}
@@ -1109,6 +1110,23 @@ async function processQueuedContentJob(job,req){
   }
   const id=job.id;
   await setAgentState("manager","WORKING",8,"Starting queued content production",id);
+  if(job.category==="Sheru Bhai Animal-Man Stories"){
+    const track=await selectDailyMusicTrack(req);
+    const notes="Original Hindi animal-man short story; suspense, emotional conflict and twist; scene-by-scene visual direction; no narration, no voiceover, no TTS; use active Music Library master as the only audio. Idea: "+String(job.topic||job.notes||"Create a new story");
+    if(!job.script)job.script=await generateWithChatGPT("script",{topic:job.topic,category:job.category,language:"Hindi",format:job.format,notes,sourceText:"",research:"",sources:[]});
+    job.language="Hindi";job.voice=null;job.music={audioUrl:track.audio_url,artist:track.artist||"Swrang Swargiary",title:track.title||"Original Music",hookStartSeconds:0,hookDurationSeconds:60};
+    job.status="rendering";job.updatedAt=new Date().toISOString();await persistJob(job);
+    await setAgentState("editor","WORKING",45,"Rendering music-only story; voice skipped",id);
+    job.renderedVideoUrl=await renderFactoryVideo(job,req);
+    if(!job.renderedVideoUrl)throw new Error("Animal story render returned no video URL.");
+    job.status="rendered";
+    job.buffer=await publishVideoToBuffer({videoUrl:job.renderedVideoUrl,title:job.topic,description:"AI Content Factory — Sheru Bhai Animal-Man Story. Music-only soundtrack from Music Library.\n"+String(job.script||"").slice(0,1500)});
+    job.status=job.buffer?.successfulChannels===3?"published":"sent_to_buffer";
+    job.updatedAt=new Date().toISOString();await persistJob(job);
+    await setAgentState("editor","SLEEPING",100,"Music-only story completed",id);
+    await setAgentState("manager","SLEEPING",100,"Animal story job complete",id);
+    return job;
+  }
   await setAgentState("research","WORKING",15,"Researching queued content",id);
   if(!job.research)job.research=await generateWithChatGPT("research_plan",{topic:job.topic,category:job.category,language:job.language,format:job.format,notes:job.notes||"",sourceText:job.sourceText||"",sources:job.sources||[]});
   await setAgentState("research","SLEEPING",100,"Research complete",id);

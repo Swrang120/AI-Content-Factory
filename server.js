@@ -988,13 +988,16 @@ async function buildAutomaticYouTubeMetadata(job){
   const topic=String(job.topic||job.title||category).trim();
   const language=String(job.language||"Hindi");
   const script=String(typeof job.script==="string"?job.script:(job.script?.output||job.script?.text||"")).slice(0,3500);
-  const raw=await generateWithChatGPT("youtube_metadata",{
-    topic,category,language,script,prompt:String(job.notes||"").slice(0,2500),
-    requirement:"Create upload-ready YouTube metadata for this exact original short video. Return ONLY valid JSON with keys title, description, hashtags (array of 3-5 strings, each with #), tags (array of 8-15 plain keyword strings without #). Title must be natural, compelling, specific, search-friendly, no misleading claims, no fake trending/viral claims, maximum 95 characters. Description should be concise, accurately describe the video, include a useful CTA only if appropriate, and finish with 3-5 relevant hashtags. Tags must be relevant to the actual category/topic and total under 450 characters. Do not add facts not present in the supplied topic/script. No markdown fences."
-  });
+  let raw="";
+  try{
+    raw=await generateWithChatGPT("youtube_metadata",{
+      topic,category,language,script,prompt:String(job.notes||"").slice(0,2500),
+      requirement:"Create upload-ready YouTube metadata for this exact original short video. Return ONLY valid JSON with keys title, description, hashtags (array of 3-5 strings, each with #), tags (array of 8-15 plain keyword strings without #). Title must be natural, compelling, specific, search-friendly, no misleading claims, no fake trending/viral claims, maximum 95 characters. Description should be concise, accurately describe the video, include a useful CTA only if appropriate, and finish with 3-5 relevant hashtags. Tags must be relevant to the actual category/topic and total under 450 characters. Do not add facts not present in the supplied topic/script. No markdown fences."
+    });
+  }catch(error){console.warn("[ACF_YOUTUBE_METADATA] AI metadata fallback:",safeErrorMessage(error));}
   let parsed=null;
   try{
-    const textValue=String(raw||"").trim().replace(/^\`\`\`(?:json)?\s*/i,"").replace(/\s*\`\`\`$/,"");
+    const textValue=String(raw||"").trim();
     const start=textValue.indexOf("{"),end=textValue.lastIndexOf("}");
     parsed=JSON.parse(start>=0&&end>start?textValue.slice(start,end+1):textValue);
   }catch{}

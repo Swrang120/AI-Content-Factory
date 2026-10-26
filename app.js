@@ -9,7 +9,8 @@ const defaultData={
     {id:"product",icon:"🛍️",name:"Product Promotion",desc:"Create product explainers, demos and promotional videos.",enabled:true},
     {id:"sports",icon:"⚽",name:"Sports Information",desc:"Match, player and sports-information content.",enabled:true},
     {id:"editing",icon:"🎬",name:"Editing Knowledge",desc:"Video editing, creator tips and tutorials.",enabled:true},
-    {id:"tech",icon:"🤖",name:"AI & Technology",desc:"Tools, workflows and technology explainers.",enabled:true}
+    {id:"tech",icon:"🤖",name:"AI & Technology",desc:"Tools, workflows and technology explainers.",enabled:true},
+    {id:"animal_stories",icon:"🦁",name:"Sheru Bhai Animal-Man Stories",desc:"Cinematic Hindi animal-man stories with original Music Library audio only; no voice generation.",enabled:true}
   ],
   content:[
     {id:1,title:"Welcome to AI Content Factory",category:"Editing Knowledge",format:"Short Video",language:"English",status:"Ready",notes:"Foundation demo item."},
@@ -25,7 +26,7 @@ try {
   data=stored&&typeof stored==="object"&&!Array.isArray(stored)?{
     ...defaultData,
     ...stored,
-    categories:Array.isArray(stored.categories)?stored.categories:defaultData.categories,
+    categories:Array.isArray(stored.categories)?[...stored.categories,...defaultData.categories.filter(d=>!stored.categories.some(c=>c.id===d.id))]:defaultData.categories,
     content:Array.isArray(stored.content)?stored.content:defaultData.content,
     schedule:Array.isArray(stored.schedule)?stored.schedule:defaultData.schedule,
     settings:stored.settings&&typeof stored.settings==="object"&&!Array.isArray(stored.settings)?{...defaultData.settings,...stored.settings}:defaultData.settings
@@ -180,7 +181,7 @@ function renderBossRoom(){
     </div>
    </div>
    <div class="office-status-strip" id="officeStatusStrip">Select an employee to see their live task.</div>
-   <div class="boss-command office-command"><div class="command-label">BOSS COMMAND</div><div class="boss-config-grid"><label>Content category<select id="bossCategory"><option>Music Promotion</option><option>News &amp; Updates</option><option>Product Promotion</option><option>Sports Information</option><option>Editing Knowledge</option><option>AI &amp; Technology</option></select></label><label>Language<select id="bossLanguage"><option>Hindi</option><option>Hindi + English</option><option>English</option><option>Bodo</option><option>Hindi + Bodo</option><option>Assamese</option></select></label><label>Video format<select id="bossFormat"><option value="Short Reel">Short Reel (15–30 sec)</option><option value="Reel">Reel (30–60 sec)</option><option value="Long Video">Long Video (3–8 min)</option><option value="YouTube Short">YouTube Short (up to 60 sec)</option></select></label></div><label class="boss-idea-label" for="bossCommand">Script idea / topic</label><div class="command-row"><textarea id="bossCommand" rows="2" placeholder="Topic or script idea likho…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();bossCommandRun()}"></textarea><button class="small-btn voice-command-btn" id="bossVoiceBtn" onclick="startBossVoiceCommand()">🎙️ Speak</button><button class="primary" onclick="bossCommandRun()">⚡ Generate Preview</button></div><div class="quick-actions"><button class="small-btn" onclick="bossQuick('Create a new video idea')">🎬 New Video</button><button class="small-btn" onclick="bossQuick('Research a news topic')">🔎 Research</button><button class="small-btn" onclick="bossQuick('Write a YouTube script')">✍️ Script</button><button class="small-btn" onclick="bossQuick('Prepare a YouTube upload')">📤 Publish</button></div><div id="bossResult" class="boss-result">Waiting for the Boss order…</div></div>
+   <div class="boss-command office-command"><div class="command-label">BOSS COMMAND</div><div class="boss-config-grid"><label>Content category<select id="bossCategory">${data.categories.filter(c=>c.enabled).map(c=>`<option>${esc(c.name)}</option>`).join("")}</select></label><label>Language<select id="bossLanguage"><option>Hindi</option><option>Hindi + English</option><option>English</option><option>Bodo</option><option>Hindi + Bodo</option><option>Assamese</option></select></label><label>Video format<select id="bossFormat"><option value="Short Reel">Short Reel (15–30 sec)</option><option value="Reel">Reel (30–60 sec)</option><option value="Long Video">Long Video (3–8 min)</option><option value="YouTube Short">YouTube Short (up to 60 sec)</option></select></label></div><label class="boss-idea-label" for="bossCommand">Script idea / topic</label><div class="command-row"><textarea id="bossCommand" rows="2" placeholder="Topic or script idea likho…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();bossCommandRun()}"></textarea><button class="small-btn voice-command-btn" id="bossVoiceBtn" onclick="startBossVoiceCommand()">🎙️ Speak</button><button class="primary" onclick="bossCommandRun()">⚡ Generate Preview</button></div><div class="quick-actions"><button class="small-btn" onclick="bossQuick('Create a new video idea')">🎬 New Video</button><button class="small-btn" onclick="bossQuick('Research a news topic')">🔎 Research</button><button class="small-btn" onclick="bossQuick('Write a YouTube script')">✍️ Script</button><button class="small-btn" onclick="bossQuick('Prepare a YouTube upload')">📤 Publish</button></div><div id="bossResult" class="boss-result">Waiting for the Boss order…</div></div>
  </div>`;
  loadAgentStates(); startAgentPolling();
 }

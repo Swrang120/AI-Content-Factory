@@ -124,13 +124,14 @@ jobs:
             MEDIA_URL="live-source-video"
           fi
 
+          : > ffmpeg-startup.log
           if [ "$MEDIA_TYPE" = "car_animation" ]; then
             # Built-in free cartoon-driving scene. This is an animated scene, not an interactive game capture.
             setsid ffmpeg -hide_banner -loglevel warning -re \
               -f lavfi -i "color=c=0x8bd3ff:s=1280x720:r=30" \
               -f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=44100" \
               -filter_complex "[0:v]drawbox=x=0:y=300:w=1280:h=230:color=0x68b85b:t=fill,drawbox=x=0:y=520:w=1280:h=200:color=0x454b55:t=fill,drawbox=x=0:y=620:w=1280:h=8:color=white:t=fill,drawbox=x=mod(t*180\\,1500)-240:y=555:w=210:h=62:color=0xffc928:t=fill,drawbox=x=mod(t*180\\,1500)-190:y=520:w=120:h=42:color=0x2878d0:t=fill,drawbox=x=mod(t*180\\,1500)-205:y=610:w=42:h=42:color=0x202020:t=fill,drawbox=x=mod(t*180\\,1500)-105:y=610:w=42:h=42:color=0x202020:t=fill,drawbox=x=0:y=0:w=1280:h=105:color=0x101827@0.82:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='CARTOON CAR DRIVE LIVE':fontcolor=white:fontsize=42:x=(w-text_w)/2:y=28,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='AI Content Factory':fontcolor=0xffd76b:fontsize=24:x=(w-text_w)/2:y=76,format=yuv420p[v]" \
-              -map "[v]" -map 1:a -t 18000 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
+              -map "[v]" -map 1:a -t 18000 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" >> ffmpeg-startup.log 2>&1 &
           elif [ "$MEDIA_TYPE" = "playlist" ]; then
             # Download the selected public Drive videos and play them in filename order, then repeat the full playlist.
             python3 - <<'PY'
@@ -187,18 +188,18 @@ jobs:
           PY
             setsid ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -f concat -safe 0 -i drive-playlist.txt \
               -t 18000 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \
-              -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
+              -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" >> ffmpeg-startup.log 2>&1 &
           elif [ "$MEDIA_TYPE" = "audio" ]; then
             setsid ffmpeg -hide_banner -loglevel warning \
               -re -f lavfi -i "color=c=0x101827:s=1920x1080:r=30" \
               -stream_loop -1 -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -i "$MEDIA_URL" \
               -t 18000 -vf "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='AI CONTENT FACTORY LIVE':fontcolor=white:fontsize=54:x=(w-text_w)/2:y=h*0.40,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='Original / authorized music':fontcolor=0xD8B45A:fontsize=34:x=(w-text_w)/2:y=h*0.50" \
               -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \
-              -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
+              -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" >> ffmpeg-startup.log 2>&1 &
           else
             setsid ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -i "$MEDIA_URL" \
               -t 18000 -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 30 -g 60 \
-              -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" &
+              -c:a aac -b:a 128k -ar 44100 -f flv "$RTMP_URL" >> ffmpeg-startup.log 2>&1 &
           fi
           FFMPEG_PID=$!
           sleep 20
@@ -221,11 +222,31 @@ jobs:
             exit 0
           fi
           if ! kill -0 "$FFMPEG_PID" 2>/dev/null; then
-            wait "$FFMPEG_PID" || true
+            set +e
+            wait "$FFMPEG_PID"
+            FFMPEG_EXIT=$?
+            set -e
+            # Sanitize the RTMP URL before exposing FFmpeg output; it contains the private stream key.
+            python3 - "$RTMP_URL" <<'PY' > ffmpeg-safe.log
+          import pathlib,sys
+          p=pathlib.Path("ffmpeg-startup.log")
+          s=p.read_text(errors="replace") if p.exists() else ""
+          s=s.replace(sys.argv[1], "[REDACTED_RTMP_URL]")
+          pathlib.Path("ffmpeg-safe.log").write_text(s[-12000:],encoding="utf-8")
+          PY
+            echo "::error::FFmpeg exited before stream startup (exit code $FFMPEG_EXIT). Sanitized FFmpeg output follows:"
+            tail -n 35 ffmpeg-safe.log || true
+            export FFMPEG_EXIT
+            python3 - "$JOB_ID" <<'PY' > worker-start-error.json
+          import json,os,pathlib,sys
+          p=pathlib.Path("ffmpeg-safe.log")
+          s=" ".join((p.read_text(errors="replace") if p.exists() else "").split())
+          detail=("FFmpeg exited before stream startup (exit code "+os.environ.get("FFMPEG_EXIT","unknown")+"): "+s[-850:])[:1100]
+          print(json.dumps({"id":sys.argv[1],"error":detail}))
+          PY
             curl --silent --show-error --max-time 30 -X POST \
               -H "x-live-worker-token: ${LIVE_WORKER_TOKEN}" -H "Content-Type: application/json" \
-              -d "{\"id\":\"$JOB_ID\",\"error\":\"FFmpeg exited before stream startup\"}" \
-              "${BASE}/api/live/worker/error" || true
+              --data-binary @worker-start-error.json "${BASE}/api/live/worker/error" || true
             exit 1
           fi
           # YouTube may take several seconds to recognize the incoming RTMP feed.

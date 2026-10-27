@@ -3768,7 +3768,8 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
       job.broadcastId=null;
       job.updatedAt=new Date().toISOString();
       jobs[job.dateKey]=job;await writeLiveJobs(jobs);
-      return res.json({ok:true,job:safeLiveJob(job),message:deleted?"Queued Live cancelled; old dashboard link cleared and Start is available again.":"Queued Live was blocked from starting and dashboard link cleared, but YouTube event deletion could not be confirmed.",warning:deleteWarning||null});
+      const workerCancellation=await cancelLiveWorkerRuns();
+      return res.json({ok:true,job:safeLiveJob(job),message:deleted?"Queued Live cancelled; old dashboard link cleared, worker cancellation requested, and Start is available again.":"Queued Live was blocked from starting and dashboard link cleared, but YouTube event deletion could not be confirmed.",workerCancelled:workerCancellation.cancelled,warning:[deleteWarning,workerCancellation.warning].filter(Boolean).join(" · ")||null});
     }
     job.status="stopping";job.stopRequested=true;job.updatedAt=new Date().toISOString();jobs[job.dateKey]=job;await writeLiveJobs(jobs);
     // Finalize the YouTube broadcast immediately so the public stream stops even

@@ -3949,8 +3949,29 @@ app.post("/api/live/worker/error",async(req,res)=>{
   try{
     const id=String(req.body?.id||"");const jobs=await readLiveJobs();const job=Object.values(jobs).find(x=>x?.id===id);
     if(!job)return res.status(404).json({ok:false,error:"Live job not found."});
-    job.status="error";job.workerStatus="error";job.error=safeErrorMessage(req.body?.error||"Worker error");job.updatedAt=new Date().toISOString();
-    jobs[job.dateKey]=job;await writeLiveJobs(jobs);res.json({ok:true,job:safeLiveJob(job)});
+    const originalBroadcastId=job.broadcastId||null;
+    let broadcastCleanup="not-needed";
+    // A failed encoder can leave the YouTube broadcast stuck in Upcoming/Ready.
+    // Delete that unused broadcast so the next Start creates a clean broadcast.
+    if(originalBroadcastId){
+      try{
+        const yt=await youtube(req);
+        await yt.liveBroadcasts.delete({id:originalBroadcastId});
+        job.failedBroadcastId=originalBroadcastId;
+        job.broadcastId=null;
+        broadcastCleanup="deleted";
+      }catch(cleanupError){
+        broadcastCleanup="failed";
+        console.error("Failed to remove YouTube broadcast after live worker error:",safeErrorMessage(cleanupError));
+      }
+    }
+    job.status="error";job.workerStatus="error";
+    job.error=safeErrorMessage(req.body?.error||"Worker error");
+    job.broadcastCleanup=broadcastCleanup;
+    if(broadcastCleanup==="failed")job.error+=" | YouTube Upcoming broadcast cleanup failed; check YouTube Studio and delete the failed broadcast manually.";
+    job.updatedAt=new Date().toISOString();
+    jobs[job.dateKey]=job;await writeLiveJobs(jobs);
+    res.json({ok:true,job:safeLiveJob(job),broadcastCleanup});
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 

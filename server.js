@@ -3745,6 +3745,26 @@ app.get("/api/live/status",async(req,res)=>{
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });
 
+async function cancelLiveWorkerRuns(){
+  const token=String(process.env.GITHUB_ACTIONS_TOKEN||process.env.GH_ACTIONS_TOKEN||"").trim();
+  if(!token)return {cancelled:0,warning:"GITHUB_ACTIONS_TOKEN missing; GitHub worker could not be cancelled."};
+  const headers={Authorization:"Bearer "+token,Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"AI-Content-Factory"};
+  const base="https://api.github.com/repos/Swrang120/AI-Content-Factory/actions/workflows/live-worker.yml/runs";
+  try{
+    const response=await fetch(base+"?per_page=30", {headers});
+    if(!response.ok)return {cancelled:0,warning:"GitHub list workflow runs failed ("+response.status+"): "+(await response.text().catch(()=> "")).slice(0,300)};
+    const data=await response.json();
+    const active=(data.workflow_runs||[]).filter(run=>["queued","in_progress","waiting","requested","pending"].includes(String(run.status||"").toLowerCase()));
+    let cancelled=0;const errors=[];
+    for(const run of active){
+      const result=await fetch("https://api.github.com/repos/Swrang120/AI-Content-Factory/actions/runs/"+encodeURIComponent(run.id)+"/cancel",{method:"POST",headers});
+      if(result.ok||result.status===409)cancelled++;
+      else errors.push("#"+run.run_number+" ("+result.status+")");
+    }
+    return {cancelled,warning:errors.length?"Could not cancel workflow run(s): "+errors.join(", "):null};
+  }catch(error){return {cancelled:0,warning:"GitHub worker cancellation failed: "+safeErrorMessage(error)};}
+}
+
 app.post("/api/live/stop",requireAppKey,async(req,res)=>{
   try{
     const jobs=await readLiveJobs();

@@ -3751,6 +3751,12 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
     const job=Object.values(jobs).filter(x=>x&&["scheduled","worker_claimed","starting","live","stopping"].includes(x.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
     if(!job)return res.status(404).json({ok:false,error:"No active live session to stop."});
     job.stopRequested=true;job.updatedAt=new Date().toISOString();
+    // Signal the worker state first, then cancel any active GitHub Actions run.
+    // Do this for live/starting jobs too (not only queued jobs), otherwise the
+    // dashboard can say "stopped" while FFmpeg keeps running in the Actions runner.
+    jobs[job.dateKey]=job;
+    await writeLiveJobs(jobs);
+    const workerCancellation=await cancelLiveWorkerRuns();
     // If FFmpeg has not started, cancel the queued broadcast now instead of waiting
     // for a worker that may be sleeping until scheduledStartTime.
     if(["scheduled","worker_claimed"].includes(job.status)&&job.workerStatus!=="streaming"){
@@ -3768,7 +3774,6 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
       job.broadcastId=null;
       job.updatedAt=new Date().toISOString();
       jobs[job.dateKey]=job;await writeLiveJobs(jobs);
-      const workerCancellation=await cancelLiveWorkerRuns();
       return res.json({ok:true,job:safeLiveJob(job),message:deleted?"Queued Live cancelled; old dashboard link cleared, worker cancellation requested, and Start is available again.":"Queued Live was blocked from starting and dashboard link cleared, but YouTube event deletion could not be confirmed.",workerCancelled:workerCancellation.cancelled,warning:[deleteWarning,workerCancellation.warning].filter(Boolean).join(" · ")||null});
     }
     job.status="stopping";job.stopRequested=true;job.updatedAt=new Date().toISOString();jobs[job.dateKey]=job;await writeLiveJobs(jobs);
@@ -3789,11 +3794,11 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
       job.status="completed";job.workerStatus="stop_requested";job.completedAt=new Date().toISOString();
       job.error=null;job.broadcastId=null;job.updatedAt=new Date().toISOString();
       jobs[job.dateKey]=job;await writeLiveJobs(jobs);
-      return res.json({ok:true,job:safeLiveJob(job),message:"YouTube Live ko finalize kar diya gaya. Dashboard ab stopped dikhayega; worker cleanup background mein ho sakta hai."});
+      return res.json({ok:true,job:safeLiveJob(job),message:"YouTube Live finalize ho gaya. GitHub worker cancellation bhi request ki gayi; naya Live start kar sakte ho.",workerCancelled:workerCancellation.cancelled,warning:workerCancellation.warning||null});
     }
     job.status="stopping";job.error="YouTube finalization pending: "+finalizeWarning;job.updatedAt=new Date().toISOString();
     jobs[job.dateKey]=job;await writeLiveJobs(jobs);
-    return res.json({ok:true,job:safeLiveJob(job),message:"Stop request saved, lekin YouTube ne finalization confirm nahi kiya.",warning:finalizeWarning});
+    return res.json({ok:true,job:safeLiveJob(job),message:"Stop request saved, lekin YouTube ne finalization confirm nahi kiya.",workerCancelled:workerCancellation.cancelled,warning:[finalizeWarning,workerCancellation.warning].filter(Boolean).join(" · ")});
   }catch(e){res.status(400).json({ok:false,error:safeErrorMessage(e)});}
 });
 app.post("/api/live/recover",requireAppKey,async(req,res)=>{

@@ -3769,7 +3769,27 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
   try{
     const jobs=await readLiveJobs();
     const job=Object.values(jobs).filter(x=>x&&["scheduled","worker_claimed","starting","live","stopping"].includes(x.status)).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
-    if(!job)return res.status(404).json({ok:false,error:"No active live session to stop."});
+    if(!job){
+      // Recover an Upcoming/Ready YouTube broadcast left behind by a failed worker.
+      const failed=Object.values(jobs).filter(x=>x&&x.status==="error"&&x.broadcastId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
+      if(!failed)return res.status(404).json({ok:false,error:"No active live session or failed Upcoming broadcast to stop."});
+      try{
+        const yt=await youtube(req);
+        await yt.liveBroadcasts.delete({id:failed.broadcastId});
+        failed.failedBroadcastId=failed.broadcastId;
+        failed.broadcastId=null;
+        failed.status="completed";
+        failed.workerStatus="cancelled";
+        failed.stopRequested=true;
+        failed.error="Failed Live broadcast deleted from YouTube; Start is available again.";
+        failed.updatedAt=new Date().toISOString();
+        jobs[failed.dateKey]=failed;
+        await writeLiveJobs(jobs);
+        return res.json({ok:true,job:safeLiveJob(failed),message:"Failed Upcoming broadcast deleted. You can start a fresh Live now."});
+      }catch(cleanupError){
+        return res.status(502).json({ok:false,error:"Failed broadcast cleanup did not complete: "+safeErrorMessage(cleanupError)});
+      }
+    }
     job.stopRequested=true;job.updatedAt=new Date().toISOString();
     // Signal the worker state first, then cancel any active GitHub Actions run.
     // Do this for live/starting jobs too (not only queued jobs), otherwise the

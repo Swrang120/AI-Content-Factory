@@ -13,28 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
-      - name: Prepare FFmpeg (fast path)
-        run: |
-          # GitHub-hosted Ubuntu images commonly include FFmpeg already.
-          # Avoid a slow apt index refresh when the binary is available.
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            # Bound package-manager waits so a slow mirror cannot leave the live
-            # worker stuck forever before it even claims the queued broadcast.
-            sudo timeout 90s apt-get update -qq \
-              -o Acquire::Retries=0 \
-              -o Acquire::http::Timeout=15 \
-              -o Acquire::https::Timeout=15 || true
-            # The Ubuntu mirror was too slow for the old 120s limit, so the
-            # worker failed before it could claim the already-created broadcast.
-            # Give apt a bounded but realistic download window and retry transient
-            # mirror/network failures rather than leaving YouTube stuck at Upcoming.
-            sudo timeout 600s apt-get install -y --no-install-recommends ffmpeg \
-              -o Acquire::Retries=3 \
-              -o Acquire::http::Timeout=60 \
-              -o Acquire::https::Timeout=60
-          fi
-          command -v ffmpeg
-          ffmpeg -version | head -n 1
+      - name: Install FFmpeg without slow Ubuntu package downloads
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          ffmpeg-version: release
 
       - name: Claim live job and stream for up to five hours
         env:

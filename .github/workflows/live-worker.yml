@@ -13,10 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
-      - name: Install FFmpeg without slow Ubuntu package downloads
-        uses: FedericoCarboni/setup-ffmpeg@v3
-        with:
-          ffmpeg-version: release
+      - name: Install stable Ubuntu FFmpeg and fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          ffmpeg -hide_banner -version
+          ffprobe -hide_banner -version
 
       - name: Claim live job and stream for up to five hours
         env:

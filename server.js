@@ -3738,9 +3738,45 @@ app.delete("/api/live/playlists/:id",requireAppKey,async(req,res)=>{
 app.get("/api/live/status",async(req,res)=>{
   try{
     const jobs=await readLiveJobs();
+    // Self-heal an old Stop request. YouTube may already be offline while the
+    // dashboard remains stuck in "stopping", which prevents a new manual Live.
+    let changed=false;
+    for(const job of Object.values(jobs)){
+      if(!job||job.status!=="stopping")continue;
+      const age=Date.now()-new Date(job.updatedAt||job.createdAt||Date.now()).getTime();
+      if(age<120000)continue;
+      try{
+        await cancelLiveWorkerRuns();
+        if(job.broadcastId){
+          const yt=await youtube({});
+          const listed=await yt.liveBroadcasts.list({part:"id,status",id:job.broadcastId});
+          const life=String(listed.data.items?.[0]?.status?.lifeCycleStatus||"");
+          if(life==="live"||life==="liveStarting"||life==="ready"||life==="testing"){
+            try{await yt.liveBroadcasts.transition({part:"id,status",id:job.broadcastId,broadcastStatus:"complete"});}
+            catch(error){
+              if(!/redundant.?transition|invalid.?transition|already complete|already been completed|status.*complete|complete.*status/i.test(safeErrorMessage(error)))throw error;
+            }
+          }else if(life&&life!=="complete"&&life!=="revoked"){
+            throw new Error("YouTube broadcast lifecycle is "+life+"; cannot safely recover yet.");
+          }
+        }
+        job.status="completed";
+        job.workerStatus="stop_confirmed";
+        job.stopRequested=true;
+        job.completedAt=job.completedAt||new Date().toISOString();
+        job.lastYouTubeStatus="complete";
+        job.broadcastId=null;
+        job.error=null;
+        job.updatedAt=new Date().toISOString();
+        jobs[job.dateKey]=job;
+        changed=true;
+      }catch(error){
+        console.warn("[live] Stale stop auto-recovery pending:",safeErrorMessage(error));
+      }
+    }
+    if(changed)await writeLiveJobs(jobs);
     const keys=Object.keys(jobs).sort().reverse();
     const recent=keys.slice(0,7).map(k=>safeLiveJob(jobs[k]));
-    const settings=await hydrateSettings();
     res.json({ok:true,controlMode:"manual",schedulerEnabled:false,workerConfigured:!!(process.env.ACF_CRON_SECRET||process.env.CRON_SECRET||process.env.LIVE_WORKER_TOKEN),automationEnabled:false,jobs:recent});
   }catch(e){res.status(500).json({ok:false,error:safeErrorMessage(e)});}
 });

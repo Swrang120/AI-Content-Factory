@@ -3827,7 +3827,7 @@ app.post("/api/live/stop",requireAppKey,async(req,res)=>{
         job.lastYouTubeStatus="complete";
       }catch(e){
         const message=safeErrorMessage(e);
-        if(!/redundantTransition|invalidTransition|already complete|completed/i.test(message))finalizeWarning=message;
+        if(!/redundant.?transition|invalid.?transition|already complete|already been completed|status.*complete|complete.*status/i.test(message))finalizeWarning=message; else job.lastYouTubeStatus="complete";
       }
     }
     if(!finalizeWarning){
@@ -3956,7 +3956,7 @@ app.post("/api/live/worker/finish",async(req,res)=>{
     if(job.broadcastId){
       try{live=await transitionLiveBroadcast(job,"complete");}catch(error){
         // A worker restart may call finish twice; treat an already-complete broadcast as idempotent.
-        if(!/redundantTransition|invalidTransition/i.test(safeErrorMessage(error)))throw error;
+        if(!/redundant.?transition|invalid.?transition|already complete|already been completed|status.*complete|complete.*status/i.test(safeErrorMessage(error)))throw error;
       }
     }
     job.status="completed";job.workerStatus="finished";job.updatedAt=new Date().toISOString();job.completedAt=new Date().toISOString();
